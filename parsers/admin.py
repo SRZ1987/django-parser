@@ -3,6 +3,19 @@ from django.contrib import admin
 from .models import ParserConfig, ParserRun
 
 
+class ParserConfigListFilter(admin.SimpleListFilter):
+    title = "parser_config"
+    parameter_name = "parser_config"
+
+    def lookups(self, request, model_admin):
+        return ParserConfig.objects.order_by("name").values_list("id", "name")
+
+    def queryset(self, request, queryset):
+        if self.value():
+            return queryset.filter(parser_id=self.value())
+        return queryset
+
+
 @admin.register(ParserConfig)
 class ParserConfigAdmin(admin.ModelAdmin):
     list_display = (
@@ -37,23 +50,59 @@ class ParserConfigAdmin(admin.ModelAdmin):
 class ParserRunAdmin(admin.ModelAdmin):
     list_display = (
         "id",
-        "parser",
+        "parser_config",
         "status",
-        "trigger",
-        "started_at",
-        "finished_at",
         "products_found",
         "products_created",
         "products_updated",
         "prices_changed",
         "errors_count",
+        "started_at",
+        "finished_at",
+        "duration",
+    )
+    list_filter = ("status", ParserConfigListFilter)
+    search_fields = ("parser__name", "parser__code", "error_message")
+    readonly_fields = (
+        "parser",
+        "status",
+        "trigger",
+        "products_found",
+        "products_created",
+        "products_updated",
+        "prices_changed",
+        "errors_count",
+        "log",
+        "error_message",
+        "started_at",
+        "finished_at",
         "created_at",
     )
-    search_fields = ("parser__name", "parser__code", "error_message", "log")
-    list_filter = ("status", "trigger", "parser")
-    readonly_fields = tuple(field.name for field in ParserRun._meta.fields)
+    list_select_related = ("parser",)
     ordering = ("-created_at",)
     list_per_page = 50
+
+    @admin.display(description="Parser config", ordering="parser__name")
+    def parser_config(self, obj):
+        return obj.parser
+
+    @admin.display(description="Duration")
+    def duration(self, obj):
+        if not obj.started_at or not obj.finished_at:
+            return "-"
+
+        total_seconds = int((obj.finished_at - obj.started_at).total_seconds())
+        if total_seconds < 0:
+            return "-"
+
+        minutes, seconds = divmod(total_seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+
+        if hours:
+            return f"{hours}h {minutes}m {seconds}s"
+        if minutes:
+            return f"{minutes}m {seconds}s"
+        return f"{seconds}s"
 
     def has_add_permission(self, request):
         return False
