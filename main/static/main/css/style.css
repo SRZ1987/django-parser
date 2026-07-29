@@ -112,6 +112,116 @@ input {
     color: rgba(246, 248, 251, 0.5);
 }
 
+.search-input-wrap {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+
+.search-input-wrap input {
+    height: 100%;
+}
+
+.suggestions-panel {
+    position: absolute;
+    top: calc(100% + 12px);
+    left: 0;
+    z-index: 30;
+    width: 100%;
+    max-height: 420px;
+    padding: 8px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    background: rgba(12, 18, 30, 0.96);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(22px);
+}
+
+.suggestions-panel[hidden] {
+    display: none;
+}
+
+.suggestion-item {
+    width: 100%;
+    padding: 10px;
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    border: 0;
+    border-radius: 16px;
+    color: var(--text);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.suggestion-item:hover,
+.suggestion-item.is-active {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.suggestion-image {
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.09);
+    color: var(--muted);
+    font-size: 0.68rem;
+    text-align: center;
+}
+
+.suggestion-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.suggestion-content {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.suggestion-title,
+.suggestion-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.suggestion-title {
+    font-weight: 800;
+}
+
+.suggestion-meta {
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.suggestion-price {
+    display: grid;
+    gap: 4px;
+    justify-items: end;
+    white-space: nowrap;
+}
+
+.suggestion-price strong {
+    color: var(--accent);
+    font-size: 0.96rem;
+}
+
+.suggestion-old-price {
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-decoration: line-through;
+}
+
 .search-form button {
     min-width: 132px;
     border: 0;
@@ -291,6 +401,19 @@ input {
 
     .search-form input {
         height: 56px;
+    }
+
+    .suggestions-panel {
+        max-height: 340px;
+    }
+
+    .suggestion-item {
+        grid-template-columns: 48px minmax(0, 1fr);
+    }
+
+    .suggestion-price {
+        grid-column: 2;
+        justify-items: start;
     }
 
     .search-form button {

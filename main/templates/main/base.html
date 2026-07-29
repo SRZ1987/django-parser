@@ -5,7 +5,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'main/css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'main/css/style.css' %}?v=2">
+    <script src="{% static 'main/js/search-suggestions.js' %}?v=1" defer></script>
 </head>
 <body>
     {% block content %}{% endblock %}

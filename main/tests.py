@@ -46,6 +46,8 @@ class HomeSearchTests(TestCase):
             original_name=name,
             price=Decimal("12.99"),
             currency="EUR",
+            image_url="https://example.com/image.jpg",
+            product_url="https://example.com/product",
             is_active=is_active,
             is_available=is_available,
         )
@@ -116,3 +118,85 @@ class HomeSearchTests(TestCase):
         response = self.client.get(reverse("home"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
 
         self.assertEqual(len(response.context["offers"]), 50)
+
+    def test_suggestions_short_query_returns_empty_list(self):
+        self.create_offer(name="Bosch drill")
+
+        response = self.client.get(reverse("search_suggestions"), {"q": "b"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"results": []})
+
+    def test_suggestions_search_by_name_works(self):
+        self.create_offer(name="Bosch drill")
+
+        response = self.client.get(reverse("search_suggestions"), {"q": "bosch"}, HTTP_HOST="127.0.0.1")
+
+        payload = response.json()
+        self.assertEqual(len(payload["results"]), 1)
+        self.assertEqual(payload["results"][0]["name"], "Bosch drill")
+
+    def test_suggestions_search_by_sku_works(self):
+        self.create_offer(name="Angle grinder", sku="SKU-BOSCH-42")
+
+        response = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "SKU-BOSCH-42"},
+            HTTP_HOST="127.0.0.1",
+        )
+
+        self.assertEqual(response.json()["results"][0]["name"], "Angle grinder")
+
+    def test_suggestions_inactive_offer_is_hidden(self):
+        self.create_offer(name="Inactive Bosch", is_active=False)
+
+        response = self.client.get(reverse("search_suggestions"), {"q": "Inactive"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.json(), {"results": []})
+
+    def test_suggestions_unavailable_offer_is_hidden(self):
+        self.create_offer(name="Unavailable Bosch", is_available=False)
+
+        response = self.client.get(reverse("search_suggestions"), {"q": "Unavailable"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.json(), {"results": []})
+
+    def test_suggestions_are_limited_to_8(self):
+        for index in range(12):
+            self.create_offer(
+                name=f"Bosch product {index:02d}",
+                sku=f"SKU-SUG-{index}",
+                barcode=f"EAN-SUG-{index}",
+                external_id=f"suggestion-{index}",
+            )
+
+        response = self.client.get(reverse("search_suggestions"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(len(response.json()["results"]), 8)
+
+    def test_suggestions_json_contains_expected_fields(self):
+        offer = self.create_offer(name="Bosch drill", sku="SKU-1", barcode="EAN-1")
+        offer.sale_price = Decimal("9.99")
+        offer.save(update_fields=["sale_price"])
+
+        response = self.client.get(reverse("search_suggestions"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
+
+        result = response.json()["results"][0]
+        self.assertEqual(
+            set(result),
+            {
+                "id",
+                "name",
+                "shop",
+                "category",
+                "sku",
+                "barcode",
+                "price",
+                "sale_price",
+                "currency",
+                "image_url",
+                "product_url",
+            },
+        )
+        self.assertEqual(result["price"], "12.99")
+        self.assertEqual(result["sale_price"], "9.99")

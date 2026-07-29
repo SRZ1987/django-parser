@@ -11,16 +11,31 @@
             Ищите по названию, SKU или штрихкоду. Мы покажем только активные и доступные предложения из каталога.
         </p>
 
-        <form class="search-form" method="get" action="{% url 'home' %}" role="search">
+        <form class="search-form" method="get" action="{% url 'home' %}" role="search" data-search-form>
             <label class="visually-hidden" for="search-input">Поиск товара</label>
-            <input
-                id="search-input"
-                name="q"
-                type="search"
-                value="{{ query }}"
-                placeholder="Например: bosch, SKU или штрихкод"
-                autocomplete="off"
-            >
+            <div class="search-input-wrap">
+                <input
+                    id="search-input"
+                    name="q"
+                    type="search"
+                    value="{{ query }}"
+                    placeholder="Например: bosch, SKU или штрихкод"
+                    autocomplete="off"
+                    aria-autocomplete="list"
+                    aria-controls="search-suggestions"
+                    aria-expanded="false"
+                    data-suggestions-input
+                    data-suggestions-url="{% url 'search_suggestions' %}"
+                >
+                <div
+                    id="search-suggestions"
+                    class="suggestions-panel"
+                    role="listbox"
+                    aria-label="Подсказки товаров"
+                    data-suggestions-panel
+                    hidden
+                ></div>
+            </div>
             <button type="submit">Найти</button>
         </form>
     </section>
