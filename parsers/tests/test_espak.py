@@ -6,6 +6,7 @@ from django.test import TestCase
 from catalog.models import PriceHistory, Product, ProductOffer, Shop
 from parsers.models import ParserConfig, ParserRun
 from parsers.services.espak_client import parse_price
+from parsers.services.espak import EspakParser
 from parsers.services.runner import run_parser
 
 
@@ -58,6 +59,18 @@ class EspakParserTests(TestCase):
             new=AsyncMock(return_value=(self.categories, products, [])),
         ):
             return run_parser("espak")
+
+    def create_offer(self, external_id="101", is_active=True, is_available=True):
+        product = Product.objects.create(name=f"Product {external_id}")
+        return ProductOffer.objects.create(
+            shop=self.shop,
+            product=product,
+            external_id=external_id,
+            original_name=f"Product {external_id}",
+            price=Decimal("12.99"),
+            is_active=is_active,
+            is_available=is_available,
+        )
 
     def test_creates_new_product_offer_and_price_history(self):
         parser_run = self.run_with_products([espak_product()])
@@ -116,3 +129,58 @@ class EspakParserTests(TestCase):
         old_offer = ProductOffer.objects.get(external_id="101")
         self.assertTrue(old_offer.is_active)
         self.assertTrue(old_offer.is_available)
+
+    def test_existing_remote_product_with_processing_error_stays_active(self):
+        self.create_offer(external_id="101")
+
+        with patch(
+            "parsers.services.espak.EspakParser._fetch_remote_data",
+            new=AsyncMock(return_value=(self.categories, [espak_product(product_id=101)], [])),
+        ), patch(
+            "parsers.services.espak.EspakParser._save_product_offer",
+            side_effect=RuntimeError("bad product"),
+        ):
+            parser_run = run_parser("espak")
+
+        offer = ProductOffer.objects.get(external_id="101")
+        self.assertEqual(parser_run.status, ParserRun.STATUS_SUCCESS)
+        self.assertEqual(parser_run.errors_count, 1)
+        self.assertTrue(offer.is_active)
+        self.assertTrue(offer.is_available)
+
+    def test_empty_remote_products_fail_without_deactivation(self):
+        self.create_offer(external_id="101")
+
+        parser_run = self.run_with_products([])
+
+        offer = ProductOffer.objects.get(external_id="101")
+        self.assertEqual(parser_run.status, ParserRun.STATUS_FAILED)
+        self.assertIn("empty product list", parser_run.error_message)
+        self.assertTrue(offer.is_active)
+        self.assertTrue(offer.is_available)
+
+    def test_anomalously_small_result_fails_without_deactivation(self):
+        for index in range(100):
+            self.create_offer(external_id=f"old-{index}")
+
+        products = [espak_product(product_id=index) for index in range(10)]
+        parser_run = self.run_with_products(products)
+
+        self.assertEqual(parser_run.status, ParserRun.STATUS_FAILED)
+        self.assertIn("anomalously small product list", parser_run.error_message)
+        self.assertEqual(
+            ProductOffer.objects.filter(shop=self.shop, is_active=True, is_available=True).count(),
+            100,
+        )
+
+    def test_same_external_id_function_is_used_for_deduplication_and_save(self):
+        product = espak_product(product_id=None)
+        product["id"] = None
+        duplicate = dict(product)
+        expected_external_id = EspakParser(self.parser_config, None)._get_product_external_id(product)
+
+        parser_run = self.run_with_products([product, duplicate])
+
+        self.assertEqual(parser_run.products_found, 1)
+        self.assertEqual(ProductOffer.objects.count(), 1)
+        self.assertEqual(ProductOffer.objects.get().external_id, expected_external_id)

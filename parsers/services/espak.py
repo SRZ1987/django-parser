@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 
 from catalog.models import Category, PriceHistory, Product, ProductOffer
@@ -43,6 +42,9 @@ class ParsedEspakProduct:
 
 class EspakParser(BaseStoreParser):
     code = "espak"
+    DEACTIVATE_BATCH_SIZE = 1000
+    MIN_ACTIVE_OFFERS_FOR_ANOMALY_CHECK = 100
+    MIN_REMOTE_TO_ACTIVE_RATIO = 0.2
 
     def run(self):
         started_at = timezone.now()
@@ -56,10 +58,15 @@ class EspakParser(BaseStoreParser):
         self.log(f"ESPAK categories loaded: {len(raw_categories)}")
         self.log(f"ESPAK raw products loaded: {len(raw_products)}")
 
+        if not raw_products:
+            raise ParserError("ESPAK returned an empty product list; refusing to deactivate existing offers.")
+
         categories = self._save_categories(shop, raw_categories)
         unique_products = self._remove_duplicates(raw_products)
         result.products_found = len(unique_products)
+        remote_external_ids = self._get_remote_external_ids(unique_products)
         self.log(f"ESPAK unique products: {result.products_found}")
+        self._validate_remote_catalog_size(shop, remote_external_ids)
 
         for index, raw_product in enumerate(unique_products, start=1):
             try:
@@ -88,7 +95,7 @@ class EspakParser(BaseStoreParser):
                 result.errors_count += 1
                 self.log(f"ESPAK product error: {exc}")
 
-        self._deactivate_missing_offers(shop, started_at)
+        self._deactivate_missing_offers(shop, remote_external_ids)
         self.log(
             "ESPAK parser finished: found={found}, created={created}, updated={updated}, "
             "prices_changed={prices_changed}, errors={errors}.".format(
@@ -185,14 +192,9 @@ class EspakParser(BaseStoreParser):
 
         category = self._first_product_category(product)
         name = clean_text(product.get("name"))
-        external_id = clean_text(product.get("id")) or stable_external_id(
-            product.get("permalink"),
-            product.get("sku"),
-            name,
-        )
 
         return ParsedEspakProduct(
-            external_id=external_id,
+            external_id=self._get_product_external_id(product),
             name=name,
             brand=get_attribute(product, "Brand", "Kaubamärk", "Tootja", "Бренд"),
             model=get_attribute(product, "Mudel", "Model", "Модель"),
@@ -281,25 +283,72 @@ class EspakParser(BaseStoreParser):
 
         return created, price_changed
 
-    def _deactivate_missing_offers(self, shop, started_at):
-        updated = ProductOffer.objects.filter(shop=shop).filter(
-            Q(last_seen_at__lt=started_at) | Q(last_seen_at__isnull=True)
-        ).update(is_active=False, is_available=False)
+    def _deactivate_missing_offers(self, shop, remote_external_ids):
+        missing_offer_ids = [
+            offer_id
+            for offer_id, external_id in ProductOffer.objects.filter(shop=shop).values_list(
+                "id",
+                "external_id",
+            )
+            if external_id not in remote_external_ids
+        ]
+
+        updated = 0
+        for start in range(0, len(missing_offer_ids), self.DEACTIVATE_BATCH_SIZE):
+            batch = missing_offer_ids[start : start + self.DEACTIVATE_BATCH_SIZE]
+            updated += ProductOffer.objects.filter(id__in=batch).update(
+                is_active=False,
+                is_available=False,
+            )
+
         self.log(f"ESPAK inactive offers marked: {updated}.")
 
     def _remove_duplicates(self, raw_products):
         unique = {}
 
         for product in raw_products:
-            key = (
-                product.get("id")
-                or product.get("permalink")
-                or product.get("sku")
-                or product.get("name")
-            )
-            unique[key] = product
+            unique[self._get_product_external_id(product)] = product
 
         return list(unique.values())
+
+    def _get_product_external_id(self, product):
+        name = clean_text(product.get("name"))
+        return clean_text(product.get("id")) or stable_external_id(
+            product.get("permalink"),
+            product.get("sku"),
+            name,
+        )
+
+    def _get_remote_external_ids(self, products):
+        external_ids = set()
+
+        for product in products:
+            external_id = self._get_product_external_id(product)
+            if external_id:
+                external_ids.add(external_id)
+
+        return external_ids
+
+    def _validate_remote_catalog_size(self, shop, remote_external_ids):
+        active_count = ProductOffer.objects.filter(
+            shop=shop,
+            is_active=True,
+        ).count()
+
+        if active_count < self.MIN_ACTIVE_OFFERS_FOR_ANOMALY_CHECK:
+            return
+
+        minimum_expected = active_count * self.MIN_REMOTE_TO_ACTIVE_RATIO
+        if len(remote_external_ids) >= minimum_expected:
+            return
+
+        message = (
+            "ESPAK returned an anomalously small product list: "
+            f"{len(remote_external_ids)} remote products for {active_count} active offers. "
+            "Refusing to deactivate existing offers."
+        )
+        self.log(message)
+        raise ParserError(message)
 
     def _category_external_id(self, category):
         if not isinstance(category, dict):
