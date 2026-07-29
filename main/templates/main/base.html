@@ -5,10 +5,32 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'main/css/style.css' %}?v=2">
-    <script src="{% static 'main/js/search-suggestions.js' %}?v=1" defer></script>
+    <link rel="stylesheet" href="{% static 'main/css/style.css' %}?v=3">
+    <script src="{% static 'main/js/menu.js' %}?v=1" defer></script>
+    <script src="{% static 'main/js/search-suggestions.js' %}?v=2" defer></script>
 </head>
 <body>
+    <header class="site-header">
+        <div class="header-container">
+            <a class="brand" href="{% url 'home' %}" aria-label="Price Compare">
+                <span class="brand-mark">PC</span>
+                <span class="brand-name">Price Compare</span>
+            </a>
+
+            <nav class="header-nav" aria-label="Основная навигация" data-menu>
+                <a class="nav-link" href="{% url 'home' %}">Главная</a>
+                <a class="nav-link" href="{% url 'catalog' %}">Каталог</a>
+                <a class="nav-link" href="{% url 'catalog' %}?sort=newest">Новинки</a>
+            </nav>
+
+            <button class="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false" data-menu-toggle>
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </header>
+
     {% block content %}{% endblock %}
 </body>
 </html>

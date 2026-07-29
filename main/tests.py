@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from catalog.models import Product, ProductOffer, Shop
+from catalog.models import Category, Product, ProductOffer, Shop
 
 
 @override_settings(
@@ -16,14 +16,27 @@ from catalog.models import Product, ProductOffer, Shop
         },
     }
 )
-class HomeSearchTests(TestCase):
+class MainCatalogTests(TestCase):
     def setUp(self):
         self.shop = Shop.objects.create(name="ESPAK", code="espak")
+        self.other_shop = Shop.objects.create(name="DEPO", code="depo")
+        self.category = Category.objects.create(
+            shop=self.shop,
+            external_id="tools",
+            name="Инструменты",
+        )
+        self.other_category = Category.objects.create(
+            shop=self.other_shop,
+            external_id="garden",
+            name="Сад",
+        )
 
     def create_offer(
         self,
         *,
         name="Bosch drill",
+        shop=None,
+        category=None,
         sku="SKU-1",
         barcode="EAN-1",
         external_id="offer-1",
@@ -35,6 +48,8 @@ class HomeSearchTests(TestCase):
         is_active=True,
         is_available=True,
     ):
+        shop = shop or self.shop
+        category = self.category if category is None and shop == self.shop else category
         product = Product.objects.create(
             name=name,
             brand=brand,
@@ -42,8 +57,9 @@ class HomeSearchTests(TestCase):
             barcode=barcode,
         )
         return ProductOffer.objects.create(
-            shop=self.shop,
+            shop=shop,
             product=product,
+            category=category,
             external_id=external_id,
             sku=sku,
             barcode=barcode,
@@ -58,62 +74,154 @@ class HomeSearchTests(TestCase):
             is_available=is_available,
         )
 
+    def catalog_offer_ids(self, response):
+        return [offer.pk for offer in response.context["page_obj"].object_list]
+
     def test_home_page_opens(self):
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Найдите товар")
+        self.assertContains(response, "Сравнивайте цены")
 
-    def test_empty_search_does_not_return_all_products(self):
-        self.create_offer(name="Bosch drill")
-
+    def test_home_search_form_submits_to_catalog(self):
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Введите название, SKU или штрихкод")
-        self.assertNotContains(response, "Bosch drill")
-        self.assertEqual(list(response.context["offers"]), [])
+        self.assertContains(response, f'action="{reverse("catalog")}"')
+        self.assertContains(response, "Открыть каталог")
 
-    def test_search_by_name_works(self):
-        self.create_offer(name="Bosch drill")
+    def test_catalog_page_opens(self):
+        response = self.client.get(reverse("catalog"), HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Каталог товаров")
+
+    def test_catalog_shows_only_active_and_available_offers(self):
+        visible = self.create_offer(name="Visible Bosch", external_id="visible")
+        self.create_offer(name="Inactive Bosch", external_id="inactive", is_active=False)
+        self.create_offer(name="Unavailable Bosch", external_id="unavailable", is_available=False)
+
+        response = self.client.get(reverse("catalog"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(self.catalog_offer_ids(response), [visible.pk])
+        self.assertContains(response, "Visible Bosch")
+        self.assertNotContains(response, "Inactive Bosch")
+        self.assertNotContains(response, "Unavailable Bosch")
+
+    def test_catalog_search_by_original_name(self):
+        bosch = self.create_offer(name="Bosch drill", external_id="bosch")
         self.create_offer(
             name="Makita saw",
             sku="SKU-2",
             barcode="EAN-2",
-            external_id="offer-2",
+            external_id="makita",
             brand="Makita",
         )
 
-        response = self.client.get(reverse("home"), {"q": "bosch"}, HTTP_HOST="127.0.0.1")
+        response = self.client.get(reverse("catalog"), {"q": "bosch"}, HTTP_HOST="127.0.0.1")
 
-        self.assertContains(response, "Bosch drill")
-        self.assertNotContains(response, "Makita saw")
+        self.assertEqual(self.catalog_offer_ids(response), [bosch.pk])
 
-    def test_search_by_sku_works(self):
-        self.create_offer(name="Angle grinder", sku="SKU-BOSCH-42")
+    def test_catalog_search_by_sku(self):
+        offer = self.create_offer(name="Angle grinder", sku="SKU-BOSCH-42")
 
-        response = self.client.get(reverse("home"), {"q": "SKU-BOSCH-42"}, HTTP_HOST="127.0.0.1")
+        response = self.client.get(reverse("catalog"), {"q": "SKU-BOSCH-42"}, HTTP_HOST="127.0.0.1")
 
-        self.assertContains(response, "Angle grinder")
+        self.assertEqual(self.catalog_offer_ids(response), [offer.pk])
 
-    def test_inactive_offer_is_hidden(self):
-        self.create_offer(name="Inactive Bosch", is_active=False)
+    def test_catalog_search_by_barcode(self):
+        offer = self.create_offer(name="Barcode product", barcode="EAN-BOSCH-42")
 
-        response = self.client.get(reverse("home"), {"q": "Inactive"}, HTTP_HOST="127.0.0.1")
+        response = self.client.get(reverse("catalog"), {"q": "EAN-BOSCH-42"}, HTTP_HOST="127.0.0.1")
 
-        self.assertContains(response, "Ничего не найдено")
-        self.assertNotContains(response, "Inactive Bosch")
+        self.assertEqual(self.catalog_offer_ids(response), [offer.pk])
 
-    def test_unavailable_offer_is_hidden(self):
-        self.create_offer(name="Unavailable Bosch", is_available=False)
+    def test_catalog_filters_by_shop_code(self):
+        self.create_offer(name="ESPAK drill", external_id="espak-drill")
+        depo_offer = self.create_offer(
+            name="DEPO drill",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="SKU-DEPO",
+            barcode="EAN-DEPO",
+            external_id="depo-drill",
+        )
 
-        response = self.client.get(reverse("home"), {"q": "Unavailable"}, HTTP_HOST="127.0.0.1")
+        response = self.client.get(reverse("catalog"), {"shop": "depo"}, HTTP_HOST="127.0.0.1")
 
-        self.assertContains(response, "Ничего не найдено")
-        self.assertNotContains(response, "Unavailable Bosch")
+        self.assertEqual(self.catalog_offer_ids(response), [depo_offer.pk])
 
-    def test_results_are_limited_to_50(self):
-        for index in range(60):
+    def test_catalog_filters_by_category_id(self):
+        self.create_offer(name="Tool offer", external_id="tool")
+        garden_offer = self.create_offer(
+            name="Garden offer",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="SKU-GARDEN",
+            barcode="EAN-GARDEN",
+            external_id="garden",
+        )
+
+        response = self.client.get(
+            reverse("catalog"),
+            {"category": str(self.other_category.pk)},
+            HTTP_HOST="127.0.0.1",
+        )
+
+        self.assertEqual(self.catalog_offer_ids(response), [garden_offer.pk])
+
+    def test_catalog_name_asc_sorting(self):
+        alpha = self.create_offer(name="Alpha", external_id="alpha")
+        zeta = self.create_offer(name="Zeta", sku="SKU-Z", barcode="EAN-Z", external_id="zeta")
+
+        response = self.client.get(reverse("catalog"), {"sort": "name_asc"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(self.catalog_offer_ids(response), [alpha.pk, zeta.pk])
+
+    def test_catalog_price_asc_uses_sale_price(self):
+        regular = self.create_offer(name="Regular", external_id="regular", price=Decimal("10.00"))
+        discounted = self.create_offer(
+            name="Discounted",
+            sku="SKU-DISC",
+            barcode="EAN-DISC",
+            external_id="discounted",
+            price=Decimal("20.00"),
+            sale_price=Decimal("5.00"),
+        )
+        no_price = self.create_offer(
+            name="No price",
+            sku="SKU-NO",
+            barcode="EAN-NO",
+            external_id="no-price",
+            price=None,
+        )
+
+        response = self.client.get(reverse("catalog"), {"sort": "price_asc"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(self.catalog_offer_ids(response), [discounted.pk, regular.pk, no_price.pk])
+
+    def test_catalog_price_desc_uses_sale_price(self):
+        cheap = self.create_offer(name="Cheap", external_id="cheap", price=Decimal("3.00"))
+        expensive = self.create_offer(
+            name="Expensive",
+            sku="SKU-EXP",
+            barcode="EAN-EXP",
+            external_id="expensive",
+            price=Decimal("20.00"),
+        )
+        no_price = self.create_offer(
+            name="No price",
+            sku="SKU-NO",
+            barcode="EAN-NO",
+            external_id="no-price",
+            price=None,
+        )
+
+        response = self.client.get(reverse("catalog"), {"sort": "price_desc"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(self.catalog_offer_ids(response), [expensive.pk, cheap.pk, no_price.pk])
+
+    def test_catalog_paginates_by_24_products(self):
+        for index in range(30):
             self.create_offer(
                 name=f"Bosch product {index:02d}",
                 sku=f"SKU-{index}",
@@ -121,9 +229,61 @@ class HomeSearchTests(TestCase):
                 external_id=f"offer-{index}",
             )
 
-        response = self.client.get(reverse("home"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
+        response = self.client.get(reverse("catalog"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
 
-        self.assertEqual(len(response.context["offers"]), 50)
+        self.assertEqual(len(response.context["page_obj"].object_list), 24)
+        self.assertEqual(response.context["page_obj"].paginator.count, 30)
+
+    def test_catalog_invalid_page_does_not_error(self):
+        self.create_offer(name="Bosch drill")
+
+        response = self.client.get(reverse("catalog"), {"page": "bad"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_catalog_invalid_shop_does_not_error(self):
+        self.create_offer(name="Bosch drill")
+
+        response = self.client.get(reverse("catalog"), {"shop": "missing"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Bosch drill")
+
+    def test_catalog_invalid_category_does_not_error(self):
+        self.create_offer(name="Bosch drill")
+
+        response = self.client.get(reverse("catalog"), {"category": "not-a-number"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Bosch drill")
+
+    def test_catalog_pagination_links_keep_get_params(self):
+        for index in range(30):
+            self.create_offer(
+                name=f"Bosch product {index:02d}",
+                sku=f"SKU-{index}",
+                barcode=f"EAN-{index}",
+                external_id=f"offer-{index}",
+            )
+
+        response = self.client.get(
+            reverse("catalog"),
+            {"q": "Bosch", "shop": "espak", "category": str(self.category.pk), "sort": "name_asc"},
+            HTTP_HOST="127.0.0.1",
+        )
+
+        self.assertContains(
+            response,
+            f"q=Bosch&amp;shop=espak&amp;category={self.category.pk}&amp;sort=name_asc&amp;page=2",
+        )
+
+    def test_catalog_card_links_to_offer_detail(self):
+        offer = self.create_offer(name="Bosch drill")
+
+        response = self.client.get(reverse("catalog"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
+
+        self.assertContains(response, reverse("offer_detail", args=[offer.pk]))
+        self.assertContains(response, "Подробнее")
 
     def test_offer_detail_active_available_offer_opens(self):
         offer = self.create_offer(name="Bosch drill")
@@ -148,9 +308,9 @@ class HomeSearchTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_offer_detail_contains_price_and_store_link(self):
-        offer = self.create_offer(name="Bosch drill", sale_price=Decimal("9.99"))
+        self.create_offer(name="Bosch drill", sale_price=Decimal("9.99"))
 
-        response = self.client.get(reverse("offer_detail", args=[offer.pk]), HTTP_HOST="127.0.0.1")
+        response = self.client.get(reverse("offer_detail", args=[ProductOffer.objects.get().pk]), HTTP_HOST="127.0.0.1")
 
         self.assertContains(response, "9.99 EUR")
         self.assertContains(response, "12.99 EUR")

@@ -1,0 +1,160 @@
+{% extends 'main/base.html' %}
+
+{% block title %}Каталог товаров{% endblock %}
+
+{% block content %}
+<main class="page-shell catalog-shell">
+    <section class="catalog-head" aria-labelledby="catalog-title">
+        <p class="eyebrow">Каталог предложений</p>
+        <h1 id="catalog-title">Каталог товаров</h1>
+        <p>
+            Ищите товары по названию, SKU или штрихкоду, фильтруйте по магазину и категории.
+        </p>
+    </section>
+
+    <form class="catalog-filters" method="get" action="{% url 'catalog' %}">
+        <label>
+            <span>Поиск</span>
+            <input name="q" type="search" value="{{ query }}" placeholder="Название, SKU или штрихкод">
+        </label>
+
+        <label>
+            <span>Магазин</span>
+            <select name="shop">
+                <option value="">Все магазины</option>
+                {% for shop in shops %}
+                    <option value="{{ shop.code }}" {% if shop.code == selected_shop_code %}selected{% endif %}>
+                        {{ shop.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <label>
+            <span>Категория</span>
+            <select name="category">
+                <option value="">Все категории</option>
+                {% for category in categories %}
+                    <option value="{{ category.pk }}" {% if category.pk|stringformat:"s" == selected_category_id %}selected{% endif %}>
+                        {{ category.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <label>
+            <span>Сортировка</span>
+            <select name="sort">
+                {% for value, label in sort_options %}
+                    <option value="{{ value }}" {% if value == selected_sort %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <div class="filter-actions">
+            <button type="submit">Найти</button>
+            <a href="{% url 'catalog' %}">Сбросить фильтры</a>
+        </div>
+    </form>
+
+    <section class="catalog-results" aria-label="Результаты каталога">
+        <div class="results-header">
+            {% if query %}
+                <h2>По запросу «{{ query }}» найдено: {{ page_obj.paginator.count }}</h2>
+            {% else %}
+                <h2>Найдено товаров: {{ page_obj.paginator.count }}</h2>
+            {% endif %}
+            <span>По 24 предложения на странице</span>
+        </div>
+
+        {% if page_obj.object_list %}
+            <div class="catalog-grid">
+                {% for offer in page_obj.object_list %}
+                    <article class="catalog-card">
+                        <a class="catalog-card-image" href="{% url 'offer_detail' offer.pk %}" aria-label="Открыть {{ offer.original_name }}">
+                            {% if offer.image_url %}
+                                <img src="{{ offer.image_url }}" alt="{{ offer.original_name }}" loading="lazy">
+                            {% else %}
+                                <span>Нет фото</span>
+                            {% endif %}
+                        </a>
+
+                        <div class="catalog-card-body">
+                            <h3>
+                                <a href="{% url 'offer_detail' offer.pk %}">{{ offer.original_name }}</a>
+                            </h3>
+
+                            <div class="catalog-card-meta">
+                                <span>{{ offer.shop.name }}</span>
+                                {% if offer.category %}
+                                    <span>{{ offer.category.name }}</span>
+                                {% endif %}
+                                {% if offer.sku %}
+                                    <span>SKU: {{ offer.sku }}</span>
+                                {% endif %}
+                                {% if offer.barcode %}
+                                    <span>Штрихкод: {{ offer.barcode }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="catalog-card-footer">
+                            <div class="price-block">
+                                {% if offer.sale_price %}
+                                    <strong>{{ offer.sale_price }} {{ offer.currency }}</strong>
+                                    {% if offer.price and offer.price != offer.sale_price %}
+                                        <span class="old-price">{{ offer.price }} {{ offer.currency }}</span>
+                                    {% endif %}
+                                {% elif offer.price %}
+                                    <strong>{{ offer.price }} {{ offer.currency }}</strong>
+                                {% else %}
+                                    <strong>Цена не указана</strong>
+                                {% endif %}
+                            </div>
+
+                            <div class="catalog-card-actions">
+                                <a class="store-link" href="{% url 'offer_detail' offer.pk %}">Подробнее</a>
+                                {% if offer.product_url %}
+                                    <a class="external-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">
+                                        В магазин
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+
+            {% if page_obj.paginator.num_pages > 1 %}
+                <nav class="pagination" aria-label="Пагинация">
+                    {% if page_obj.has_previous %}
+                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page=1">Первая</a>
+                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Назад</a>
+                    {% endif %}
+
+                    {% for page_number in page_range %}
+                        {% if page_number == page_obj.paginator.ELLIPSIS %}
+                            <span>{{ page_number }}</span>
+                        {% elif page_number == page_obj.number %}
+                            <span class="is-current" aria-current="page">{{ page_number }}</span>
+                        {% else %}
+                            <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ page_number }}">{{ page_number }}</a>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page_obj.has_next %}
+                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Вперёд</a>
+                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ page_obj.paginator.num_pages }}">Последняя</a>
+                    {% endif %}
+                </nav>
+            {% endif %}
+        {% else %}
+            <div class="empty-state">
+                <h2>Товары не найдены</h2>
+                <p>Попробуйте изменить запрос, выбрать другой магазин или сбросить фильтры.</p>
+                <a class="store-link" href="{% url 'catalog' %}">Сбросить фильтры</a>
+            </div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

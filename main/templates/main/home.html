@@ -3,117 +3,82 @@
 {% block title %}Поиск товаров{% endblock %}
 
 {% block content %}
-<main class="page-shell">
-    <section class="search-hero" aria-labelledby="page-title">
-        <p class="eyebrow">Сервис сравнения цен</p>
-        <h1 id="page-title">Найдите товар и сравните предложения магазинов</h1>
-        <p class="hero-text">
-            Ищите по названию, SKU или штрихкоду. Мы покажем только активные и доступные предложения из каталога.
-        </p>
+<main>
+    <section class="hero-section" aria-labelledby="page-title">
+        <div class="hero-content">
+            <p class="hero-kicker">Сервис сравнения цен</p>
+            <h1 id="page-title">Сравнивайте цены между магазинами за секунды</h1>
+            <p class="hero-description">
+                Найдите товар по названию, SKU или штрихкоду. Мы покажем актуальные предложения из каталога.
+            </p>
 
-        <form class="search-form" method="get" action="{% url 'home' %}" role="search" data-search-form>
-            <label class="visually-hidden" for="search-input">Поиск товара</label>
-            <div class="search-input-wrap">
-                <input
-                    id="search-input"
-                    name="q"
-                    type="search"
-                    value="{{ query }}"
-                    placeholder="Например: bosch, SKU или штрихкод"
-                    autocomplete="off"
-                    aria-autocomplete="list"
-                    aria-controls="search-suggestions"
-                    aria-expanded="false"
-                    data-suggestions-input
-                    data-suggestions-url="{% url 'search_suggestions' %}"
-                >
-                <div
-                    id="search-suggestions"
-                    class="suggestions-panel"
-                    role="listbox"
-                    aria-label="Подсказки товаров"
-                    data-suggestions-panel
-                    hidden
-                ></div>
+            <form class="search-panel" method="get" action="{% url 'catalog' %}" role="search" data-search-form>
+                <label class="visually-hidden" for="search-input">Поиск товара</label>
+                <div class="search-input-wrap">
+                    <input
+                        id="search-input"
+                        name="q"
+                        type="search"
+                        value="{{ query }}"
+                        placeholder="Например: bosch, SKU или штрихкод"
+                        autocomplete="off"
+                        aria-autocomplete="list"
+                        aria-controls="search-suggestions"
+                        aria-expanded="false"
+                        data-suggestions-input
+                        data-suggestions-url="{% url 'search_suggestions' %}"
+                    >
+                    <div
+                        id="search-suggestions"
+                        class="suggestions-panel"
+                        role="listbox"
+                        aria-label="Подсказки товаров"
+                        data-suggestions-panel
+                        hidden
+                    ></div>
+                </div>
+                <button class="search-submit" type="submit" aria-label="Найти">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M10.5 4a6.5 6.5 0 0 1 5.18 10.43l3.45 3.44-1.42 1.42-3.44-3.45A6.5 6.5 0 1 1 10.5 4Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z"></path>
+                    </svg>
+                </button>
+            </form>
+
+            <div class="hero-actions">
+                <a class="action-button action-button-primary" href="{% url 'catalog' %}">Открыть каталог</a>
+                <a class="action-button" href="{% url 'catalog' %}?sort=newest">Новые предложения</a>
             </div>
-            <button type="submit">Найти</button>
-        </form>
+        </div>
     </section>
 
-    <section class="results-section" aria-label="Результаты поиска">
-        {% if query %}
-            {% if offers %}
-                <div class="results-header">
-                    <h2>Результаты поиска</h2>
-                    <span>Показано до 50 товаров</span>
-                </div>
+    <section class="features-section" aria-labelledby="features-title">
+        <div class="section-heading">
+            <p class="section-kicker">Возможности</p>
+            <h2 id="features-title">Все для быстрого выбора выгодного предложения</h2>
+        </div>
 
-                <div class="product-grid">
-                    {% for offer in offers %}
-                        <article class="product-card">
-                            <a class="product-image" href="{% url 'offer_detail' offer.pk %}" aria-label="Открыть {{ offer.original_name }}">
-                                {% if offer.image_url %}
-                                    <img src="{{ offer.image_url }}" alt="{{ offer.original_name }}">
-                                {% else %}
-                                    <span>Нет фото</span>
-                                {% endif %}
-                            </a>
-
-                            <div class="product-info">
-                                <h3>
-                                    <a href="{% url 'offer_detail' offer.pk %}">{{ offer.original_name }}</a>
-                                </h3>
-                                <dl class="product-meta">
-                                    <div>
-                                        <dt>Магазин</dt>
-                                        <dd>{{ offer.shop.name }}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Категория</dt>
-                                        <dd>{{ offer.category.name|default:"-" }}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>SKU</dt>
-                                        <dd>{{ offer.sku|default:"-" }}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Штрихкод</dt>
-                                        <dd>{{ offer.barcode|default:"-" }}</dd>
-                                    </div>
-                                </dl>
-                            </div>
-
-                            <div class="product-side">
-                                <div class="price-block">
-                                    {% if offer.sale_price %}
-                                        <strong>{{ offer.sale_price }} {{ offer.currency }}</strong>
-                                        {% if offer.price %}
-                                            <span class="old-price">{{ offer.price }} {{ offer.currency }}</span>
-                                        {% endif %}
-                                    {% elif offer.price %}
-                                        <strong>{{ offer.price }} {{ offer.currency }}</strong>
-                                    {% else %}
-                                        <strong>Цена не указана</strong>
-                                    {% endif %}
-                                </div>
-
-                                <a class="store-link" href="{% url 'offer_detail' offer.pk %}">Подробнее</a>
-                            </div>
-                        </article>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="empty-state">
-                    <h2>Ничего не найдено</h2>
-                    <p>Попробуйте изменить запрос или проверить SKU и штрихкод.</p>
-                </div>
-            {% endif %}
-        {% else %}
-            <div class="empty-state">
-                <h2>Введите название, SKU или штрихкод</h2>
-                <p>Каталог большой, поэтому мы не показываем все товары без поискового запроса.</p>
-            </div>
-        {% endif %}
+        <div class="feature-grid">
+            <article class="feature-card">
+                <div class="card-icon" aria-hidden="true">⌕</div>
+                <h3>Поиск товаров</h3>
+                <p>Ищите по названию, артикулу, штрихкоду и данным карточки товара.</p>
+            </article>
+            <article class="feature-card">
+                <div class="card-icon" aria-hidden="true">€</div>
+                <h3>Сравнение цен</h3>
+                <p>Смотрите обычную и скидочную цену без перехода между десятками страниц.</p>
+            </article>
+            <article class="feature-card">
+                <div class="card-icon" aria-hidden="true">□</div>
+                <h3>Каталог</h3>
+                <p>Фильтруйте предложения по магазину, категории и сортируйте по цене.</p>
+            </article>
+            <article class="feature-card">
+                <div class="card-icon" aria-hidden="true">↗</div>
+                <h3>Переход в магазин</h3>
+                <p>Открывайте исходную карточку товара, когда нашли подходящее предложение.</p>
+            </article>
+        </div>
     </section>
 </main>
 {% endblock %}
