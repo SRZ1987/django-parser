@@ -3,5 +3,111 @@
 {% block title %}Сравнение цен{% endblock %}
 
 {% block content %}
-    <h1>Сравнивайте цены и покупайте выгоднее</h1>
+<header class="site-header">
+    <div class="header-container">
+        <a class="brand" href="/" aria-label="Price Compare">
+            <span class="brand-mark">PC</span>
+            <span class="brand-name">Price Compare</span>
+        </a>
+
+        <nav class="header-nav" aria-label="Основная навигация" data-menu>
+            <a href="/" class="nav-link">Главная</a>
+            <a href="#" class="nav-link">Категории</a>
+            <a href="#" class="nav-link">Избранное</a>
+            <a href="#" class="nav-link">О сервисе</a>
+        </nav>
+
+        <button class="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false" data-menu-toggle>
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+    </div>
+</header>
+
+<main>
+    <section class="hero-section" aria-labelledby="hero-title">
+        <div class="hero-content">
+            <p class="hero-kicker">Умный поиск выгодных покупок</p>
+            <h1 id="hero-title">Сравнивайте цены между магазинами за секунды</h1>
+            <p class="hero-description">
+                Находите нужный товар, смотрите предложения разных магазинов и выбирайте лучшую цену без лишних вкладок.
+            </p>
+
+            <form class="search-panel" action="#" method="get" role="search">
+                <label class="visually-hidden" for="product-search">Название товара</label>
+                <input id="product-search" name="q" type="search" placeholder="Введите название товара или бренд">
+                <button class="search-submit" type="submit" aria-label="Найти товар">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M10.8 4.2a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2Zm-8.4 6.6a8.4 8.4 0 1 1 15.1 5.1l4 4a1.2 1.2 0 0 1-1.7 1.7l-4-4A8.4 8.4 0 0 1 2.4 10.8Z"/>
+                    </svg>
+                </button>
+            </form>
+
+            <div class="hero-actions" aria-label="Варианты поиска">
+                <button class="action-button action-button-primary" type="button">Поиск по названию</button>
+                <button class="action-button action-button-secondary" type="button">Поиск по штрихкоду</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="features-section" aria-labelledby="features-title">
+        <div class="section-heading">
+            <p class="section-kicker">Возможности сервиса</p>
+            <h2 id="features-title">Все для спокойного сравнения цен</h2>
+        </div>
+
+        <div class="feature-grid">
+            <article class="feature-card">
+                <div class="card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M10.8 4.2a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2Zm-8.4 6.6a8.4 8.4 0 1 1 15.1 5.1l4 4a1.2 1.2 0 0 1-1.7 1.7l-4-4A8.4 8.4 0 0 1 2.4 10.8Z"/>
+                    </svg>
+                </div>
+                <h3>Поиск товаров</h3>
+                <p>Ищите товары по названию, бренду или категории и быстро переходите к подходящим предложениям.</p>
+            </article>
+
+            <article class="feature-card">
+                <div class="card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M5 5.8A1.8 1.8 0 0 1 6.8 4h10.4A1.8 1.8 0 0 1 19 5.8v12.4a1.8 1.8 0 0 1-1.8 1.8H6.8A1.8 1.8 0 0 1 5 18.2V5.8Zm3 2.4a1 1 0 0 0 0 2h8a1 1 0 1 0 0-2H8Zm0 4a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H8Zm0 4a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2H8Z"/>
+                    </svg>
+                </div>
+                <h3>Сравнение цен</h3>
+                <p>Смотрите цены рядом, сравнивайте магазины и находите предложение, которое действительно выгоднее.</p>
+            </article>
+
+            <article class="feature-card">
+                <div class="card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M7 4a1 1 0 0 1 1-1h8a1 1 0 0 1 .9.6l1.1 2.4h1a2 2 0 0 1 2 2v1a1 1 0 1 1-2 0V8h-1.7a1 1 0 0 1-.9-.6L15.4 5H8.6L7.5 7.4a1 1 0 0 1-.9.6H5v10a1 1 0 0 0 1 1h7a1 1 0 1 1 0 2H6a3 3 0 0 1-3-3V8a2 2 0 0 1 2-2h1l1.1-2.4A1 1 0 0 1 7 4Zm11.7 9.3a1 1 0 0 1 0 1.4L17.4 16l1.3 1.3a1 1 0 1 1-1.4 1.4L16 17.4l-1.3 1.3a1 1 0 0 1-1.4-1.4l1.3-1.3-1.3-1.3a1 1 0 0 1 1.4-1.4l1.3 1.3 1.3-1.3a1 1 0 0 1 1.4 0Z"/>
+                    </svg>
+                </div>
+                <h3>Список покупок</h3>
+                <p>Собирайте товары в один список и заранее оценивайте, где покупка получится дешевле.</p>
+            </article>
+
+            <article class="feature-card">
+                <div class="card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M5 19a1 1 0 0 1-1-1V5a1 1 0 0 0-2 0v13a3 3 0 0 0 3 3h14a1 1 0 1 0 0-2H5Zm14.7-11.7a1 1 0 0 1 0 1.4l-4.2 4.2a1 1 0 0 1-1.3.1l-3.1-2.3-3.4 4a1 1 0 1 1-1.5-1.3l4-4.7a1 1 0 0 1 1.4-.1l3.1 2.3 3.6-3.6a1 1 0 0 1 1.4 0Z"/>
+                    </svg>
+                </div>
+                <h3>История цен</h3>
+                <p>Отслеживайте динамику стоимости и покупайте тогда, когда цена выглядит разумной.</p>
+            </article>
+        </div>
+    </section>
+</main>
+
+<footer class="site-footer">
+    <div class="footer-container">
+        <a class="brand footer-brand" href="/" aria-label="Price Compare">
+            <span class="brand-mark">PC</span>
+            <span class="brand-name">Price Compare</span>
+        </a>
+        <p>2026. Сервис сравнения цен для быстрых и осознанных покупок.</p>
+    </div>
+</footer>
 {% endblock %}
