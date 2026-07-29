@@ -39,6 +39,8 @@ ALLOWED_HOSTS = os.getenv(
 
 INSTALLED_APPS = [
     'main',
+    'catalog',
+    'parsers',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
