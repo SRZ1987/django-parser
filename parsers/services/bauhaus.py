@@ -5,8 +5,11 @@ import math
 import re
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
+import aiohttp
+
 from .store_catalog import (
     AsyncStoreClient,
+    HttpRequestError,
     StoreCatalogParser,
     StoreCategory,
     StoreProduct,
@@ -20,6 +23,11 @@ from .store_catalog import (
 
 
 BAUHAUS_WEBSITE_URL = "https://www.bauhaus.ee"
+BAUHAUS_ENTRYPOINTS = (
+    f"{BAUHAUS_WEBSITE_URL}/sitemap.xml",
+    f"{BAUHAUS_WEBSITE_URL}/robots.txt",
+    BAUHAUS_WEBSITE_URL,
+)
 PAGE_CONCURRENCY = 2
 MAX_PAGES_PER_CATEGORY = 500
 TOP_LEVEL_EXCLUDED_SLUGS = {
@@ -49,7 +57,7 @@ TOP_LEVEL_EXCLUDED_SLUGS = {
 class BauhausClient(AsyncStoreClient):
     base_url = BAUHAUS_WEBSITE_URL
     timeout_seconds = 90
-    max_retries = 5
+    max_retries = 3
     concurrency = PAGE_CONCURRENCY
     headers = {
         "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -61,8 +69,10 @@ class BauhausClient(AsyncStoreClient):
     }
 
     async def fetch_products(self):
-        home = await self.request_text("GET", BAUHAUS_WEBSITE_URL)
-        category_urls = extract_category_urls(home)
+        entrypoint, entry_document = await self.fetch_entry_document()
+        category_urls = extract_category_urls(entry_document)
+        await self.log(f"BAUHAUS entrypoint selected: {entrypoint}")
+        await self.log(f"BAUHAUS categories found: {len(category_urls)}")
         if not category_urls:
             raise ValueError("BAUHAUS categories were not found.")
 
@@ -81,10 +91,45 @@ class BauhausClient(AsyncStoreClient):
                 await self.log(f"BAUHAUS progress: categories={index}/{len(categories)}, products={len(products)}")
         return categories, products, True
 
+    async def fetch_entry_document(self):
+        last_error = None
+        for url in BAUHAUS_ENTRYPOINTS:
+            try:
+                await self.log(f"BAUHAUS category endpoint: {url}")
+                document = await self.request_entry_text(url)
+            except HttpRequestError as exc:
+                last_error = exc
+                await self.log(f"BAUHAUS endpoint failed: {url}; status={exc.status}; {exc}")
+                if exc.status == 429:
+                    continue
+                continue
+
+            category_urls = extract_category_urls(document)
+            await self.log(f"BAUHAUS endpoint categories: {url}; count={len(category_urls)}")
+            if category_urls:
+                return url, document
+
+        raise ValueError(f"BAUHAUS category source is unavailable. Last error: {last_error}")
+
+    async def request_entry_text(self, url):
+        if self.session is None:
+            raise RuntimeError("HTTP client is not started.")
+        try:
+            async with self.session.get(url, allow_redirects=True, timeout=aiohttp.ClientTimeout(total=20)) as response:
+                await self.log(f"GET {url} -> HTTP {response.status}")
+                if response.status == 200:
+                    return await response.text(errors="replace")
+                body = await response.text(errors="replace")
+                raise HttpRequestError(f"HTTP {response.status}: {body[:300]}", status=response.status, retryable=response.status == 429)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            raise HttpRequestError(f"Entry request failed: {url}. {exc}", retryable=True) from exc
+
     async def fetch_category(self, category):
+        await self.log(f"BAUHAUS product endpoint: {category.url}")
         first_html = await self.request_text("GET", category.url)
         first_hits = extract_hits_from_document(first_html)
         metadata = extract_catalog_metadata(first_html)
+        await self.log(f"BAUHAUS first page: {category.url}; products={len(first_hits)}; pages={metadata['nb_pages']}")
         products = [product_from_hit(hit, category) for hit in first_hits]
         products = [product for product in products if product and product.external_id]
         hits_per_page = metadata["hits_per_page"] or len(first_hits) or 40

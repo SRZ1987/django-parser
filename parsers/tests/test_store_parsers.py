@@ -7,13 +7,13 @@ from django.test import TestCase
 from catalog.models import Category, PriceHistory, Product, ProductOffer, Shop
 from parsers.models import ParserConfig, ParserRun
 from parsers.services.base import ParserError
-from parsers.services.bauhaus import BauhausParser, extract_hits_from_document, product_from_hit
+from parsers.services.bauhaus import BAUHAUS_WEBSITE_URL, BauhausClient, BauhausParser, extract_hits_from_document, product_from_hit
 from parsers.services.bauhof import BauhofParser, extract_product_from_url, normalize_product as normalize_bauhof_product
 from parsers.services.ehituseabc import EhituseABCParser, normalize_record
 from parsers.services.fere import FereParser, parse_product_fragment
 from parsers.services.registry import PARSER_REGISTRY
 from parsers.services.runner import run_parser
-from parsers.services.store_catalog import StoreCategory, StoreProduct, parse_decimal
+from parsers.services.store_catalog import HttpRequestError, StoreCategory, StoreProduct, parse_decimal
 
 
 class StoreParserMixin:
@@ -293,6 +293,75 @@ class BauhausParserTests(StoreParserMixin, TestCase):
         self.assertEqual(product.sale_price, Decimal("15.00"))
         self.assertEqual(product.barcode, "4740000000003")
         self.assertEqual(product.product_url, "https://www.bauhaus.ee/item")
+
+    def test_home_429_falls_back_to_alternative_category_source(self):
+        calls = []
+        category_document = '<a href="/tooriistad/akutrellid">Akutrellid</a>'
+
+        async def fake_entry_text(client_self, url):
+            calls.append(url)
+            if url == BAUHAUS_WEBSITE_URL:
+                raise HttpRequestError("HTTP 429", status=429, retryable=True)
+            return category_document
+
+        async def fake_fetch_category(client_self, category):
+            return [
+                StoreProduct(
+                    external_id="BH-1",
+                    sku="BH-1",
+                    name="Bauhaus drill",
+                    price=Decimal("20.00"),
+                    product_url="https://www.bauhaus.ee/bh-1",
+                )
+            ]
+
+        with patch("parsers.services.bauhaus.BAUHAUS_ENTRYPOINTS", (BAUHAUS_WEBSITE_URL, f"{BAUHAUS_WEBSITE_URL}/sitemap.xml")):
+            with patch.object(BauhausClient, "request_entry_text", fake_entry_text):
+                with patch.object(BauhausClient, "fetch_category", fake_fetch_category):
+                    client = BauhausClient(log_callback=lambda message: None)
+                    categories, products, complete = asyncio.run(client.fetch_products())
+
+        self.assertTrue(complete)
+        self.assertEqual(calls, [BAUHAUS_WEBSITE_URL, f"{BAUHAUS_WEBSITE_URL}/sitemap.xml"])
+        self.assertEqual(len(categories), 1)
+        self.assertEqual(products[0].external_id, "BH-1")
+
+    def test_entrypoint_429_is_not_retried(self):
+        calls = []
+
+        async def always_429(client_self, url):
+            calls.append(url)
+            raise HttpRequestError("HTTP 429", status=429, retryable=True)
+
+        with patch("parsers.services.bauhaus.BAUHAUS_ENTRYPOINTS", (BAUHAUS_WEBSITE_URL,)):
+            with patch.object(BauhausClient, "request_entry_text", always_429):
+                client = BauhausClient(log_callback=lambda message: None)
+                with self.assertRaises(ValueError):
+                    asyncio.run(client.fetch_entry_document())
+
+        self.assertEqual(calls, [BAUHAUS_WEBSITE_URL])
+
+    def test_bauhaus_failed_fetch_does_not_deactivate_old_offers(self):
+        product = Product.objects.create(name="Old BAUHAUS product")
+        old_offer = ProductOffer.objects.create(
+            shop=self.shop,
+            product=product,
+            external_id="old-bh",
+            original_name="Old BAUHAUS product",
+            is_active=True,
+            is_available=True,
+        )
+
+        async def failing_fetch(parser_self):
+            raise ParserError("BAUHAUS category source is unavailable")
+
+        with patch.object(BauhausParser, "_fetch_remote_data", failing_fetch):
+            result = run_parser("bauhaus")
+
+        old_offer.refresh_from_db()
+        self.assertEqual(result.status, ParserRun.STATUS_FAILED)
+        self.assertTrue(old_offer.is_active)
+        self.assertTrue(old_offer.is_available)
 
 
 class StoreCatalogUtilityTests(TestCase):

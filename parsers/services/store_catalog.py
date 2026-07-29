@@ -124,7 +124,10 @@ def choose_price_pair(regular_price, sale_price):
 
 
 class HttpRequestError(ParserError):
-    pass
+    def __init__(self, message, *, status=None, retryable=False):
+        super().__init__(message)
+        self.status = status
+        self.retryable = retryable
 
 
 class AsyncStoreClient:
@@ -171,11 +174,17 @@ class AsyncStoreClient:
             for attempt in range(1, self.max_retries + 1):
                 try:
                     async with self.session.request(method, url, allow_redirects=True, **kwargs) as response:
+                        await self.log(f"{method} {url} -> HTTP {response.status}")
                         if response.status == 200:
                             if response_type == "json":
                                 return await response.json(content_type=None)
                             return await response.text(errors="replace")
                         if response.status in {408, 425, 429, 500, 502, 503, 504}:
+                            last_error = HttpRequestError(
+                                f"HTTP {response.status}: retryable response",
+                                status=response.status,
+                                retryable=True,
+                            )
                             retry_after = response.headers.get("Retry-After")
                             try:
                                 delay = float(retry_after) if retry_after else 0
@@ -187,16 +196,23 @@ class AsyncStoreClient:
                             await asyncio.sleep(delay)
                             continue
                         body = await response.text(errors="replace")
-                        raise HttpRequestError(f"HTTP {response.status}: {body[:300]}")
+                        raise HttpRequestError(f"HTTP {response.status}: {body[:300]}", status=response.status)
                 except (aiohttp.ClientError, asyncio.TimeoutError, HttpRequestError) as exc:
                     last_error = exc
+                    if isinstance(exc, HttpRequestError) and not exc.retryable:
+                        raise
                     if attempt >= self.max_retries:
                         break
                     delay = min(60, self.retry_base_delay * (2 ** (attempt - 1)) + random.uniform(0.2, 1.0))
                     await self.log(f"Request error: {exc}; retry {attempt}/{self.max_retries} in {delay:.1f}s for {url}")
                     await asyncio.sleep(delay)
 
-            raise HttpRequestError(f"Request failed after {self.max_retries} attempts: {url}. Last error: {last_error}")
+            status = last_error.status if isinstance(last_error, HttpRequestError) else None
+            raise HttpRequestError(
+                f"Request failed after {self.max_retries} attempts: {url}. Last error: {last_error}",
+                status=status,
+                retryable=True,
+            )
 
 
 class StoreCatalogParser(BaseStoreParser):
