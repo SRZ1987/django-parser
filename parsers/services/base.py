@@ -3,6 +3,9 @@ from dataclasses import dataclass
 from django.utils import timezone
 
 
+MAX_LOG_LENGTH = 60000
+
+
 @dataclass
 class ParserResult:
     products_found: int = 0
@@ -38,6 +41,8 @@ class BaseStoreParser:
         current_log = self.parser_run.log or ""
         separator = "\n" if current_log else ""
         self.parser_run.log = f"{current_log}{separator}{message}"
+        if len(self.parser_run.log) > MAX_LOG_LENGTH:
+            self.parser_run.log = self.parser_run.log[-MAX_LOG_LENGTH:]
         self.parser_run.save(update_fields=["log"])
 
     def update_progress(
