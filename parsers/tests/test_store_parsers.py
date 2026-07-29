@@ -15,7 +15,11 @@ from parsers.services.bauhaus import (
     discover_category_tree,
     extract_catalog_metadata,
     extract_category_tree,
+    enrich_all_products_with_ean,
+    extract_ean_from_jsonld,
+    extract_ean_from_next_data,
     extract_hits_from_document,
+    fetch_product_ean,
     product_from_hit,
 )
 from parsers.services.bauhof import BauhofParser, extract_product_from_url, normalize_product as normalize_bauhof_product
@@ -383,6 +387,89 @@ class BauhausParserTests(StoreParserMixin, TestCase):
         self.assertEqual(product.sale_price, Decimal("15.00"))
         self.assertEqual(product.barcode, "4740000000003")
         self.assertEqual(product.product_url, "https://www.bauhaus.ee/item")
+
+    def test_extracts_ean_from_jsonld_with_matching_sku(self):
+        page_html = """
+        <script type="application/ld+json">
+        {
+            "@type": "Product",
+            "sku": "BH-1",
+            "gtin13": "4006381333931"
+        }
+        </script>
+        """
+
+        self.assertEqual(extract_ean_from_jsonld(page_html, expected_sku="BH-1"), "4006381333931")
+
+    def test_extracts_ean_from_next_data_fallback(self):
+        page_html = '<script>self.__next_f.push([1, "{\\"gtin13\\":\\"4006381333931\\"}"])</script>'
+
+        self.assertEqual(extract_ean_from_next_data(page_html), "4006381333931")
+
+    def test_fetch_product_ean_reads_product_page_jsonld(self):
+        class FakeResponse:
+            status_code = 200
+            text = '<script type="application/ld+json">{"@type":"Product","sku":"BH-1","gtin13":"4006381333931"}</script>'
+            headers = {}
+            url = "https://www.bauhaus.ee/bh-1"
+
+        class FakeSession:
+            async def get(self, *args, **kwargs):
+                return FakeResponse()
+
+        _, ean, source, _ = asyncio.run(
+            fetch_product_ean(FakeSession(), asyncio.Semaphore(1), "BH-1", "https://www.bauhaus.ee/bh-1")
+        )
+
+        self.assertEqual(ean, "4006381333931")
+        self.assertEqual(source, "jsonld_gtin")
+
+    def test_enrich_all_products_with_ean_sets_store_product_barcode(self):
+        class FakeResponse:
+            status_code = 200
+            text = '<script type="application/ld+json">{"@type":"Product","sku":"BH-1","gtin13":"4006381333931"}</script>'
+            headers = {}
+            url = "https://www.bauhaus.ee/bh-1"
+
+        class FakeSession:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+            async def get(self, *args, **kwargs):
+                return FakeResponse()
+
+        def fake_session_factory(*args, **kwargs):
+            return FakeSession()
+
+        product = StoreProduct(
+            external_id="BH-1",
+            sku="BH-1",
+            name="Bauhaus drill",
+            product_url="https://www.bauhaus.ee/bh-1",
+        )
+
+        with patch("parsers.services.bauhaus.CurlAsyncSession", fake_session_factory):
+            stats = asyncio.run(enrich_all_products_with_ean([product]))
+
+        self.assertEqual(product.barcode, "4006381333931")
+        self.assertEqual(stats["found"], 1)
+
+    def test_enrich_all_products_with_ean_skips_existing_barcode(self):
+        product = StoreProduct(
+            external_id="BH-1",
+            sku="BH-1",
+            barcode="4006381333931",
+            name="Bauhaus drill",
+            product_url="https://www.bauhaus.ee/bh-1",
+        )
+
+        stats = asyncio.run(enrich_all_products_with_ean([product]))
+
+        self.assertEqual(product.barcode, "4006381333931")
+        self.assertEqual(stats["scheduled"], 0)
 
     def test_curl_cffi_client_raises_429_without_repeating_blocked_request(self):
         class FakeResponse:

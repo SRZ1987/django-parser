@@ -5,6 +5,9 @@ import math
 import os
 import random
 import re
+import time
+from html.parser import HTMLParser
+from typing import Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from .store_catalog import (
@@ -35,6 +38,28 @@ MAX_RETRIES = 4
 REQUEST_DELAY_MIN = 0.15
 REQUEST_DELAY_MAX = 0.40
 RSC_ATTEMPTS = 5
+EAN_CONCURRENCY = 50
+EAN_MAX_CLIENTS = EAN_CONCURRENCY
+EAN_MAX_RETRIES = 4
+EAN_REQUEST_TIMEOUT = 45
+EAN_PROGRESS_INTERVAL = 15.0
+
+BARCODE_KEYS = (
+    "gtin",
+    "gtin8",
+    "gtin12",
+    "gtin13",
+    "gtin14",
+    "ean",
+    "ean8",
+    "ean13",
+    "ean14",
+    "barcode",
+)
+NEXT_DATA_BARCODE_PATTERN = re.compile(
+    r'(?i)(?:\\?")(?:gtin(?:8|12|13|14)?|ean(?:8|13|14)?|barcode)(?:\\?")'
+    r'\s*:\s*(?:\\?")(\d{8}|\d{12,14})(?:\\?")'
+)
 
 HEADERS = {
     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -200,6 +225,7 @@ class BauhausClient:
                 )
 
             await http_client.log(f"BAUHAUS completed: categories={len(leaf_categories)}; products={len(products)}")
+            await enrich_all_products_with_ean(products, log_callback=http_client.log)
             return category_audit, products, self.category_limit is None
 
 
@@ -288,6 +314,260 @@ async def fetch_category_products(http_client, category):
 
 def products_from_hits(hits, category):
     return [product for product in (product_from_hit(hit, category) for hit in hits) if product and product.external_id]
+
+
+class JsonLdScriptParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self._inside_jsonld = False
+        self._buffer = []
+        self.blocks = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() != "script":
+            return
+        attributes = {str(key).lower(): value or "" for key, value in attrs}
+        script_type = attributes.get("type", "").lower().split(";", 1)[0].strip()
+        if script_type == "application/ld+json":
+            self._inside_jsonld = True
+            self._buffer = []
+
+    def handle_data(self, data):
+        if self._inside_jsonld:
+            self._buffer.append(data)
+
+    def handle_endtag(self, tag):
+        if tag.lower() == "script" and self._inside_jsonld:
+            block = "".join(self._buffer).strip()
+            if block:
+                self.blocks.append(block)
+            self._inside_jsonld = False
+            self._buffer = []
+
+
+def walk_json(value: Any):
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        yield current
+        if isinstance(current, dict):
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+
+
+def json_type_contains_product(value: Any):
+    if isinstance(value, str):
+        return value.lower() == "product"
+    if isinstance(value, list):
+        return any(isinstance(item, str) and item.lower() == "product" for item in value)
+    return False
+
+
+def normalize_barcode_candidate(value: Any):
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and not value.is_integer():
+            return ""
+        text = str(int(value))
+    else:
+        text = clean_text(value)
+    digits = re.sub(r"\D", "", text)
+    if len(digits) not in {8, 12, 13, 14}:
+        return ""
+    return digits if is_valid_gtin(digits) else ""
+
+
+def is_valid_gtin(code):
+    if not code.isdigit() or len(code) not in {8, 12, 13, 14}:
+        return False
+    body = code[:-1]
+    expected = int(code[-1])
+    total = 0
+    for index, char in enumerate(reversed(body)):
+        total += int(char) * (3 if index % 2 == 0 else 1)
+    calculated = (10 - total % 10) % 10
+    return calculated == expected
+
+
+def barcode_from_mapping(mapping):
+    lowered = {str(key).lower(): value for key, value in mapping.items()}
+    for key in BARCODE_KEYS:
+        candidate = normalize_barcode_candidate(lowered.get(key))
+        if candidate:
+            return candidate
+    return ""
+
+
+def extract_ean_from_jsonld(page_html, expected_sku=""):
+    parser = JsonLdScriptParser()
+    try:
+        parser.feed(page_html)
+        parser.close()
+    except Exception:
+        return ""
+
+    expected_sku = clean_text(expected_sku)
+    fallback = ""
+    for raw_block in parser.blocks:
+        raw_block = html.unescape(raw_block).strip()
+        try:
+            payload = json.loads(raw_block)
+        except json.JSONDecodeError:
+            continue
+        for node in walk_json(payload):
+            if not isinstance(node, dict):
+                continue
+            if not json_type_contains_product(node.get("@type")):
+                continue
+            ean = barcode_from_mapping(node)
+            if not ean:
+                continue
+            node_sku = clean_text(node.get("sku"))
+            if expected_sku and node_sku and node_sku == expected_sku:
+                return ean
+            if not fallback:
+                fallback = ean
+    return fallback
+
+
+def extract_ean_from_next_data(page_html):
+    match = NEXT_DATA_BARCODE_PATTERN.search(page_html)
+    if not match:
+        return ""
+    return normalize_barcode_candidate(match.group(1))
+
+
+async def fetch_product_ean(session, semaphore, sku, product_url):
+    async with semaphore:
+        for attempt in range(1, EAN_MAX_RETRIES + 1):
+            try:
+                await asyncio.sleep(random.uniform(0.005, 0.025))
+                response = await session.get(
+                    product_url,
+                    headers={
+                        **HEADERS,
+                        "accept": "text/html,application/xhtml+xml",
+                        "referer": f"{BAUHAUS_WEBSITE_URL}/",
+                    },
+                    timeout=EAN_REQUEST_TIMEOUT,
+                    allow_redirects=True,
+                )
+                resolved_url = str(getattr(response, "url", product_url))
+                status = response.status_code
+                if status == 200:
+                    page_html = response.text
+                    ean = extract_ean_from_jsonld(page_html, expected_sku=sku)
+                    if ean:
+                        return sku, ean, "jsonld_gtin", resolved_url
+                    ean = extract_ean_from_next_data(page_html)
+                    if ean:
+                        return sku, ean, "next_data_gtin", resolved_url
+                    return sku, "", "ean_not_found", resolved_url
+
+                if status in {403, 408, 429, 500, 502, 503, 504}:
+                    retry_after = response.headers.get("retry-after") or response.headers.get("Retry-After")
+                    wait = retry_delay(attempt, retry_after)
+                    await asyncio.sleep(min(wait, 30.0))
+                    continue
+
+                return sku, "", f"http_{status}", resolved_url
+            except Exception as error:
+                if attempt == EAN_MAX_RETRIES:
+                    return sku, "", f"request_failed:{type(error).__name__}", product_url
+                await asyncio.sleep(min(30.0, 1.8 ** attempt + random.uniform(0.5, 1.8)))
+    return sku, "", "request_failed", product_url
+
+
+async def enrich_all_products_with_ean(products, log_callback=None):
+    targets = []
+    target_by_sku = {}
+    for product in products:
+        product.barcode = normalize_barcode_candidate(product.barcode)
+        if product.barcode:
+            continue
+        sku = clean_text(product.sku)
+        product_url = clean_text(product.product_url)
+        if not sku or not product_url or sku in target_by_sku:
+            continue
+        target_by_sku[sku] = product
+        targets.append((sku, product_url))
+
+    async def log(message):
+        if log_callback:
+            result = log_callback(message)
+            if asyncio.iscoroutine(result):
+                await result
+
+    if not targets:
+        await log("BAUHAUS EAN enrichment skipped: no products need barcode lookup.")
+        return {"scheduled": 0, "checked": 0, "found": 0, "not_found": 0, "errors": 0}
+
+    if CurlAsyncSession is None:
+        raise RuntimeError("curl_cffi is required for BAUHAUS EAN enrichment.")
+
+    await log(f"BAUHAUS EAN enrichment started: products={len(products)}; targets={len(targets)}")
+    queue = asyncio.Queue()
+    for item in targets:
+        queue.put_nowait(item)
+
+    semaphore = asyncio.Semaphore(EAN_CONCURRENCY)
+    stats = {"scheduled": len(targets), "checked": 0, "found": 0, "not_found": 0, "errors": 0}
+    state_lock = asyncio.Lock()
+    started_at = time.monotonic()
+    last_progress = started_at
+
+    async with CurlAsyncSession(headers=HEADERS, impersonate="chrome", max_clients=EAN_MAX_CLIENTS) as session:
+        async def worker():
+            nonlocal last_progress
+            while True:
+                item = await queue.get()
+                try:
+                    if item is None:
+                        return
+                    sku, product_url = item
+                    _, ean, source, _ = await fetch_product_ean(session, semaphore, sku, product_url)
+                    async with state_lock:
+                        stats["checked"] += 1
+                        if ean:
+                            target_by_sku[sku].barcode = ean
+                            stats["found"] += 1
+                        else:
+                            stats["not_found"] += 1
+                            if source.startswith(("request_failed", "worker_error", "http_")):
+                                stats["errors"] += 1
+                        now = time.monotonic()
+                        if now - last_progress >= EAN_PROGRESS_INTERVAL or stats["checked"] == stats["scheduled"]:
+                            last_progress = now
+                            await log(
+                                "BAUHAUS EAN progress: "
+                                f"checked={stats['checked']}/{stats['scheduled']}; "
+                                f"found={stats['found']}; not_found={stats['not_found']}; "
+                                f"errors={stats['errors']}; queue={queue.qsize()}; elapsed={now - started_at:.1f}s"
+                            )
+                except Exception as error:
+                    async with state_lock:
+                        stats["checked"] += 1
+                        stats["errors"] += 1
+                    await log(f"BAUHAUS EAN worker error: {type(error).__name__}: {error}")
+                finally:
+                    queue.task_done()
+
+        worker_count = min(EAN_CONCURRENCY, len(targets))
+        workers = [asyncio.create_task(worker()) for _ in range(worker_count)]
+        await queue.join()
+        for _ in workers:
+            queue.put_nowait(None)
+        await queue.join()
+        await asyncio.gather(*workers, return_exceptions=True)
+
+    await log(
+        "BAUHAUS EAN enrichment finished: "
+        f"checked={stats['checked']}; found={stats['found']}; "
+        f"not_found={stats['not_found']}; errors={stats['errors']}"
+    )
+    return stats
 
 
 def normalize_url(url):

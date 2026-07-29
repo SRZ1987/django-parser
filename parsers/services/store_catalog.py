@@ -240,7 +240,10 @@ class StoreCatalogParser(BaseStoreParser):
         unique_products = self._remove_duplicates(raw_products)
         remote_external_ids = {product.external_id for product in unique_products if product.external_id}
         result.products_found = len(unique_products)
-        self._validate_remote_catalog_size(shop, remote_external_ids)
+        if complete:
+            self._validate_remote_catalog_size(shop, remote_external_ids)
+        else:
+            self.log(f"{self.code.upper()} catalog was not fully loaded; anomaly-size check skipped.")
 
         for index, product in enumerate(unique_products, start=1):
             try:
