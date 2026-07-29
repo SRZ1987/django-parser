@@ -1,6 +1,7 @@
 from django.db.models import Q
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 
 from catalog.models import ProductOffer
 
@@ -71,8 +72,17 @@ def search_suggestions(request):
                     "currency": offer.currency,
                     "image_url": offer.image_url,
                     "product_url": offer.product_url,
+                    "detail_url": reverse("offer_detail", args=[offer.pk]),
                 }
                 for offer in offers
             ]
         }
     )
+
+
+def offer_detail(request, pk):
+    offer = get_object_or_404(
+        available_offers().select_related("shop", "category", "product"),
+        pk=pk,
+    )
+    return render(request, "main/offer_detail.html", {"offer": offer})

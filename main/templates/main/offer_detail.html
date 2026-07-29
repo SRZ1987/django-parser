@@ -1,0 +1,81 @@
+{% extends 'main/base.html' %}
+
+{% block title %}{{ offer.original_name }}{% endblock %}
+
+{% block content %}
+<main class="page-shell detail-shell">
+    <a class="back-link" href="{% url 'home' %}">Назад к поиску</a>
+
+    <article class="offer-detail">
+        <section class="detail-image-card" aria-label="Изображение товара">
+            {% if offer.image_url %}
+                <img src="{{ offer.image_url }}" alt="{{ offer.original_name }}">
+            {% else %}
+                <div class="detail-image-empty">Нет изображения</div>
+            {% endif %}
+        </section>
+
+        <section class="detail-info-card">
+            <p class="eyebrow">{{ offer.shop.name }}</p>
+            <h1>{{ offer.original_name }}</h1>
+
+            <div class="detail-price">
+                {% if offer.sale_price %}
+                    <strong>{{ offer.sale_price }} {{ offer.currency }}</strong>
+                    {% if offer.price %}
+                        <span class="old-price">{{ offer.price }} {{ offer.currency }}</span>
+                    {% endif %}
+                {% elif offer.price %}
+                    <strong>{{ offer.price }} {{ offer.currency }}</strong>
+                {% else %}
+                    <strong>Цена не указана</strong>
+                {% endif %}
+            </div>
+
+            <dl class="detail-meta">
+                <div>
+                    <dt>Магазин</dt>
+                    <dd>{{ offer.shop.name }}</dd>
+                </div>
+                <div>
+                    <dt>Категория</dt>
+                    <dd>{{ offer.category.name|default:"-" }}</dd>
+                </div>
+                <div>
+                    <dt>Бренд</dt>
+                    <dd>{{ offer.product.brand|default:"-" }}</dd>
+                </div>
+                <div>
+                    <dt>Модель</dt>
+                    <dd>{{ offer.product.model|default:"-" }}</dd>
+                </div>
+                <div>
+                    <dt>SKU</dt>
+                    <dd>{{ offer.sku|default:"-" }}</dd>
+                </div>
+                <div>
+                    <dt>Штрихкод</dt>
+                    <dd>{{ offer.barcode|default:"-" }}</dd>
+                </div>
+                <div>
+                    <dt>Валюта</dt>
+                    <dd>{{ offer.currency }}</dd>
+                </div>
+            </dl>
+
+            {% if offer.description %}
+                <section class="detail-description">
+                    <h2>Описание</h2>
+                    <p>{{ offer.description }}</p>
+                </section>
+            {% endif %}
+
+            {% if offer.product_url %}
+                <a class="store-link detail-store-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">
+                    Открыть в магазине
+                </a>
+            {% endif %}
+        </section>
+    </article>
+</main>
+{% endblock %}

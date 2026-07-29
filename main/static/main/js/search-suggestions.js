@@ -34,6 +34,15 @@ document.addEventListener("DOMContentLoaded", () => {
         window.location.href = url.toString();
     };
 
+    const openSuggestion = (item) => {
+        if (item.detail_url) {
+            window.location.href = item.detail_url;
+            return;
+        }
+
+        submitSearch(item.name || input.value);
+    };
+
     const setActiveItem = (nextIndex) => {
         const items = Array.from(panel.querySelectorAll(".suggestion-item"));
         if (!items.length) {
@@ -98,7 +107,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         button.append(imageBox, content, price);
         button.addEventListener("mouseenter", () => setActiveItem(index));
-        button.addEventListener("click", () => submitSearch(item.name || input.value));
+        button.addEventListener("click", () => openSuggestion(item));
 
         return button;
     };
@@ -176,7 +185,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (event.key === "Enter" && activeIndex >= 0 && suggestions[activeIndex]) {
             event.preventDefault();
-            submitSearch(suggestions[activeIndex].name || input.value);
+            openSuggestion(suggestions[activeIndex]);
         }
 
         if (event.key === "Escape") {

@@ -51,16 +51,18 @@
                 <div class="product-grid">
                     {% for offer in offers %}
                         <article class="product-card">
-                            <div class="product-image">
+                            <a class="product-image" href="{% url 'offer_detail' offer.pk %}" aria-label="Открыть {{ offer.original_name }}">
                                 {% if offer.image_url %}
                                     <img src="{{ offer.image_url }}" alt="{{ offer.original_name }}">
                                 {% else %}
                                     <span>Нет фото</span>
                                 {% endif %}
-                            </div>
+                            </a>
 
                             <div class="product-info">
-                                <h3>{{ offer.original_name }}</h3>
+                                <h3>
+                                    <a href="{% url 'offer_detail' offer.pk %}">{{ offer.original_name }}</a>
+                                </h3>
                                 <dl class="product-meta">
                                     <div>
                                         <dt>Магазин</dt>
@@ -95,13 +97,7 @@
                                     {% endif %}
                                 </div>
 
-                                {% if offer.product_url %}
-                                    <a class="store-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">
-                                        Открыть в магазине
-                                    </a>
-                                {% else %}
-                                    <span class="store-link store-link-disabled">Нет ссылки</span>
-                                {% endif %}
+                                <a class="store-link" href="{% url 'offer_detail' offer.pk %}">Подробнее</a>
                             </div>
                         </article>
                     {% endfor %}

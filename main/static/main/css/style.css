@@ -374,6 +374,129 @@ input {
     background: #e5eaf1;
 }
 
+.back-link {
+    display: inline-flex;
+    margin-bottom: 24px;
+    color: var(--accent);
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.detail-shell {
+    padding-top: 54px;
+}
+
+.offer-detail {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.detail-image-card,
+.detail-info-card {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(22px);
+}
+
+.detail-image-card {
+    min-height: 420px;
+    max-height: 560px;
+    padding: 28px;
+    display: grid;
+    place-items: center;
+}
+
+.detail-image-card img {
+    width: 100%;
+    max-height: 500px;
+    object-fit: contain;
+}
+
+.detail-image-empty {
+    width: 100%;
+    min-height: 320px;
+    display: grid;
+    place-items: center;
+    border-radius: 22px;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.detail-info-card {
+    padding: 30px;
+}
+
+.detail-info-card h1 {
+    margin: 0;
+    font-size: clamp(2rem, 5vw, 3.8rem);
+    line-height: 1.06;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+}
+
+.detail-price {
+    margin-top: 24px;
+    padding: 20px;
+    border-radius: 22px;
+    background: rgba(53, 231, 208, 0.1);
+}
+
+.detail-price strong {
+    display: block;
+    color: var(--accent);
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    line-height: 1.1;
+}
+
+.detail-meta {
+    margin: 28px 0 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.detail-meta div {
+    min-width: 0;
+    padding: 14px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.detail-meta dt {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.detail-meta dd {
+    margin: 5px 0 0;
+    overflow-wrap: anywhere;
+}
+
+.detail-description {
+    margin-top: 28px;
+}
+
+.detail-description h2 {
+    margin: 0 0 10px;
+    font-size: 1.2rem;
+}
+
+.detail-description p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.7;
+    white-space: pre-line;
+}
+
+.detail-store-link {
+    margin-top: 30px;
+}
+
 .empty-state {
     padding: 40px;
     border: 1px solid var(--border);
@@ -441,6 +564,18 @@ input {
 
     .price-block {
         text-align: left;
+    }
+
+    .offer-detail {
+        grid-template-columns: 1fr;
+    }
+
+    .detail-image-card {
+        min-height: 300px;
+    }
+
+    .detail-meta {
+        grid-template-columns: 1fr;
     }
 }
 
