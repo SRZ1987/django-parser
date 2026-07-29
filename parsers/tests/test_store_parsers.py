@@ -7,7 +7,17 @@ from django.test import TestCase
 from catalog.models import Category, PriceHistory, Product, ProductOffer, Shop
 from parsers.models import ParserConfig, ParserRun
 from parsers.services.base import ParserError
-from parsers.services.bauhaus import BAUHAUS_WEBSITE_URL, BauhausClient, BauhausParser, extract_hits_from_document, product_from_hit
+from parsers.services.bauhaus import (
+    BAUHAUS_WEBSITE_URL,
+    BauhausClient,
+    BauhausParser,
+    category_urls_from_tree,
+    discover_category_tree,
+    extract_catalog_metadata,
+    extract_category_tree,
+    extract_hits_from_document,
+    product_from_hit,
+)
 from parsers.services.bauhof import BauhofParser, extract_product_from_url, normalize_product as normalize_bauhof_product
 from parsers.services.ehituseabc import EhituseABCParser, normalize_record
 from parsers.services.fere import FereParser, parse_product_fragment
@@ -270,6 +280,86 @@ class BauhausParserTests(StoreParserMixin, TestCase):
 
         self.assertEqual(extract_hits_from_document(document)[0]["sku"], "BH-1")
 
+    def test_extracts_category_tree_from_next_document(self):
+        document = (
+            'self.__next_f.push([1, "{\\"categories\\":[{'
+            '\\"name\\":\\"Tööriistad\\",\\"url_path\\":\\"tooriistad\\",'
+            '\\"children\\":[{\\"name\\":\\"Akutrellid\\",\\"url_path\\":\\"tooriistad/akutrellid\\",\\"children\\":[]}]'
+            '}]}"])'
+        )
+
+        tree = extract_category_tree(document)
+
+        self.assertEqual(tree[0]["url_path"], "tooriistad")
+
+    def test_category_tree_uses_recursive_leaf_categories_and_excludes_service_roots(self):
+        tree = [
+            {
+                "name": "Tööriistad",
+                "url_path": "tooriistad",
+                "children": [
+                    {
+                        "name": "Akutrellid",
+                        "url_path": "tooriistad/akutrellid",
+                        "children": [
+                            {
+                                "name": "Makita",
+                                "url_path": "tooriistad/akutrellid/makita",
+                                "children": [],
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "Blog",
+                "url_path": "blog",
+                "children": [{"name": "Post", "url_path": "blog/post", "children": []}],
+            },
+        ]
+
+        root_count, leaf_categories, category_audit = category_urls_from_tree(tree)
+
+        self.assertEqual(root_count, 1)
+        self.assertEqual(len(leaf_categories), 1)
+        self.assertEqual(leaf_categories[0].url, "https://www.bauhaus.ee/tooriistad/akutrellid/makita")
+        self.assertEqual(len(category_audit), 3)
+
+    def test_rsc_fallback_extracts_category_tree_when_html_has_no_categories(self):
+        class FakeHttpClient:
+            def __init__(self):
+                self.logs = []
+                self.urls = []
+
+            async def log(self, message):
+                self.logs.append(message)
+
+            async def get_text(self, url, **kwargs):
+                self.urls.append((url, kwargs))
+                return (
+                    'self.__next_f.push([1, "{\\"categories\\":[{'
+                    '\\"name\\":\\"Aed\\",\\"url_path\\":\\"aed\\",'
+                    '\\"children\\":[{\\"name\\":\\"Grillid\\",\\"url_path\\":\\"aed/grillid\\",\\"children\\":[]}]'
+                    '}]}"])'
+                )
+
+        http_client = FakeHttpClient()
+        tree, source = asyncio.run(discover_category_tree(http_client, "<html>dpl_test</html>"))
+
+        self.assertEqual(source, "RSC")
+        self.assertEqual(tree[0]["url_path"], "aed")
+        self.assertEqual(http_client.urls[0][1]["headers"]["rsc"], "1")
+        self.assertEqual(http_client.urls[0][1]["headers"]["x-deployment-id"], "dpl_test")
+
+    def test_extracts_hits_metadata_from_next_document(self):
+        document = (
+            'self.__next_f.push([1, "{\\"nbPages\\":3,\\"nbHits\\":82,\\"hitsPerPage\\":40,'
+            '\\"hits\\":[{\\"sku\\":\\"BH-2\\",\\"name\\":\\"Bauhaus saw\\",\\"url\\":\\"/saw\\"}]}"])'
+        )
+
+        self.assertEqual(extract_catalog_metadata(document), {"nb_pages": 3, "nb_hits": 82, "hits_per_page": 40})
+        self.assertEqual(extract_hits_from_document(document)[0]["sku"], "BH-2")
+
     def test_normalizes_hit_product(self):
         product = product_from_hit(
             {
@@ -294,52 +384,120 @@ class BauhausParserTests(StoreParserMixin, TestCase):
         self.assertEqual(product.barcode, "4740000000003")
         self.assertEqual(product.product_url, "https://www.bauhaus.ee/item")
 
-    def test_home_429_falls_back_to_alternative_category_source(self):
-        calls = []
-        category_document = '<a href="/tooriistad/akutrellid">Akutrellid</a>'
+    def test_curl_cffi_client_raises_429_without_repeating_blocked_request(self):
+        class FakeResponse:
+            status_code = 429
+            text = "Vercel Security Checkpoint"
+            headers = {"Retry-After": "7"}
 
-        async def fake_entry_text(client_self, url):
-            calls.append(url)
-            if url == BAUHAUS_WEBSITE_URL:
-                raise HttpRequestError("HTTP 429", status=429, retryable=True)
-            return category_document
+        class FakeSession:
+            def __init__(self):
+                self.calls = 0
 
-        async def fake_fetch_category(client_self, category):
-            return [
-                StoreProduct(
-                    external_id="BH-1",
-                    sku="BH-1",
-                    name="Bauhaus drill",
-                    price=Decimal("20.00"),
-                    product_url="https://www.bauhaus.ee/bh-1",
-                )
-            ]
+            async def get(self, *args, **kwargs):
+                self.calls += 1
+                return FakeResponse()
 
-        with patch("parsers.services.bauhaus.BAUHAUS_ENTRYPOINTS", (BAUHAUS_WEBSITE_URL, f"{BAUHAUS_WEBSITE_URL}/sitemap.xml")):
-            with patch.object(BauhausClient, "request_entry_text", fake_entry_text):
-                with patch.object(BauhausClient, "fetch_category", fake_fetch_category):
-                    client = BauhausClient(log_callback=lambda message: None)
-                    categories, products, complete = asyncio.run(client.fetch_products())
+        client = __import__("parsers.services.bauhaus", fromlist=["BauhausHttpClient"]).BauhausHttpClient()
+        client.session = FakeSession()
 
-        self.assertTrue(complete)
-        self.assertEqual(calls, [BAUHAUS_WEBSITE_URL, f"{BAUHAUS_WEBSITE_URL}/sitemap.xml"])
-        self.assertEqual(len(categories), 1)
+        with self.assertRaises(HttpRequestError):
+            asyncio.run(client.get_text(BAUHAUS_WEBSITE_URL, endpoint_name="homepage"))
+
+        self.assertEqual(client.session.calls, 1)
+
+    def test_limited_client_processes_one_category_with_curl_transport(self):
+        category_tree = (
+            'self.__next_f.push([1, "{\\"categories\\":[{'
+            '\\"name\\":\\"Tööriistad\\",\\"url_path\\":\\"tooriistad\\",'
+            '\\"children\\":[{\\"name\\":\\"Akutrellid\\",\\"url_path\\":\\"tooriistad/akutrellid\\",\\"children\\":[]},'
+            '{\\"name\\":\\"Saed\\",\\"url_path\\":\\"tooriistad/saed\\",\\"children\\":[]}]'
+            '}]}"])'
+        )
+        products_document = (
+            'self.__next_f.push([1, "{\\"nbPages\\":1,\\"nbHits\\":1,\\"hitsPerPage\\":40,'
+            '\\"hits\\":[{\\"sku\\":\\"BH-1\\",\\"name\\":\\"Bauhaus drill\\",\\"url\\":\\"/bh-1\\",'
+            '\\"bauhaus_price\\":{\\"final_price\\":{\\"value\\":\\"20.00\\",\\"currency\\":\\"EUR\\"}}}]}"])'
+        )
+
+        class FakeHttpClient:
+            def __init__(self, log_callback=None):
+                self.log_callback = log_callback
+                self.category_calls = []
+
+            async def __aenter__(self):
+                if self.log_callback:
+                    self.log_callback("BAUHAUS transport: curl_cffi impersonate=chrome")
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+            async def log(self, message):
+                if self.log_callback:
+                    self.log_callback(message)
+
+            async def get_text(self, url, **kwargs):
+                if url == BAUHAUS_WEBSITE_URL:
+                    return category_tree
+                self.category_calls.append(url)
+                return products_document
+
+        logs = []
+        with patch("parsers.services.bauhaus.BauhausHttpClient", FakeHttpClient):
+            categories, products, complete = asyncio.run(
+                BauhausClient(log_callback=logs.append, category_limit=1).fetch_products()
+            )
+
+        self.assertFalse(complete)
+        self.assertEqual(len(products), 1)
         self.assertEqual(products[0].external_id, "BH-1")
+        self.assertTrue(any("category limit applied: 1" in message for message in logs))
+        self.assertEqual(sum(1 for category in categories if category.url.endswith(("akutrellid", "saed"))), 2)
 
-    def test_entrypoint_429_is_not_retried(self):
-        calls = []
+    def test_homepage_429_uses_rsc_category_source(self):
+        category_tree = (
+            'self.__next_f.push([1, "{\\"categories\\":[{'
+            '\\"name\\":\\"Tööriistad\\",\\"url_path\\":\\"tooriistad\\",'
+            '\\"children\\":[{\\"name\\":\\"Akutrellid\\",\\"url_path\\":\\"tooriistad/akutrellid\\",\\"children\\":[]}]'
+            '}]}"])'
+        )
+        products_document = (
+            'self.__next_f.push([1, "{\\"nbPages\\":1,\\"nbHits\\":1,\\"hitsPerPage\\":40,'
+            '\\"hits\\":[{\\"sku\\":\\"BH-9\\",\\"name\\":\\"Bauhaus drill\\",\\"url\\":\\"/bh-9\\"}]}"])'
+        )
 
-        async def always_429(client_self, url):
-            calls.append(url)
-            raise HttpRequestError("HTTP 429", status=429, retryable=True)
+        class FakeHttpClient:
+            def __init__(self, log_callback=None):
+                self.log_callback = log_callback
 
-        with patch("parsers.services.bauhaus.BAUHAUS_ENTRYPOINTS", (BAUHAUS_WEBSITE_URL,)):
-            with patch.object(BauhausClient, "request_entry_text", always_429):
-                client = BauhausClient(log_callback=lambda message: None)
-                with self.assertRaises(ValueError):
-                    asyncio.run(client.fetch_entry_document())
+            async def __aenter__(self):
+                return self
 
-        self.assertEqual(calls, [BAUHAUS_WEBSITE_URL])
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+            async def log(self, message):
+                if self.log_callback:
+                    self.log_callback(message)
+
+            async def get_text(self, url, **kwargs):
+                endpoint = kwargs.get("endpoint_name", "")
+                if endpoint == "homepage":
+                    raise HttpRequestError("HTTP 429", status=429, retryable=True)
+                if endpoint.startswith("RSC attempt"):
+                    return category_tree
+                return products_document
+
+        logs = []
+        with patch("parsers.services.bauhaus.BauhausHttpClient", FakeHttpClient):
+            categories, products, complete = asyncio.run(
+                BauhausClient(log_callback=logs.append, category_limit=1).fetch_products()
+            )
+
+        self.assertFalse(complete)
+        self.assertEqual(products[0].external_id, "BH-9")
+        self.assertTrue(any("homepage blocked by 429" in message for message in logs))
 
     def test_bauhaus_failed_fetch_does_not_deactivate_old_offers(self):
         product = Product.objects.create(name="Old BAUHAUS product")

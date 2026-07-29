@@ -221,6 +221,7 @@ class StoreCatalogParser(BaseStoreParser):
     DEACTIVATE_BATCH_SIZE = 1000
     MIN_ACTIVE_OFFERS_FOR_ANOMALY_CHECK = 100
     MIN_REMOTE_TO_ACTIVE_RATIO = 0.2
+    allow_incomplete_import = False
 
     def run(self):
         seen_at = timezone.now()
@@ -230,7 +231,7 @@ class StoreCatalogParser(BaseStoreParser):
         self.log(f"{self.code.upper()} parser started.")
         raw_categories, raw_products, complete = self._run_async(self._fetch_remote_data())
 
-        if not complete:
+        if not complete and not self.allow_incomplete_import:
             raise ParserError(f"{self.code.upper()} catalog was not fully loaded; refusing to deactivate existing offers.")
         if not raw_products:
             raise ParserError(f"{self.code.upper()} returned an empty product list; refusing to deactivate existing offers.")
@@ -257,7 +258,10 @@ class StoreCatalogParser(BaseStoreParser):
                 result.errors_count += 1
                 self.log(f"{self.code.upper()} product error: {exc}")
 
-        self._deactivate_missing_offers(shop, remote_external_ids)
+        if complete:
+            self._deactivate_missing_offers(shop, remote_external_ids)
+        else:
+            self.log(f"{self.code.upper()} catalog was not fully loaded; deactivation skipped.")
         self.log(
             f"{self.code.upper()} parser finished: found={result.products_found}, "
             f"created={result.products_created}, updated={result.products_updated}, "
