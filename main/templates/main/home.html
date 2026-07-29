@@ -1,113 +1,108 @@
 {% extends 'main/base.html' %}
 
-{% block title %}Сравнение цен{% endblock %}
+{% block title %}Поиск товаров{% endblock %}
 
 {% block content %}
-<header class="site-header">
-    <div class="header-container">
-        <a class="brand" href="/" aria-label="Price Compare">
-            <span class="brand-mark">PC</span>
-            <span class="brand-name">Price Compare</span>
-        </a>
+<main class="page-shell">
+    <section class="search-hero" aria-labelledby="page-title">
+        <p class="eyebrow">Сервис сравнения цен</p>
+        <h1 id="page-title">Найдите товар и сравните предложения магазинов</h1>
+        <p class="hero-text">
+            Ищите по названию, SKU или штрихкоду. Мы покажем только активные и доступные предложения из каталога.
+        </p>
 
-        <nav class="header-nav" aria-label="Основная навигация" data-menu>
-            <a href="/" class="nav-link">Главная</a>
-            <a href="#" class="nav-link">Категории</a>
-            <a href="#" class="nav-link">Избранное</a>
-            <a href="#" class="nav-link">О сервисе</a>
-        </nav>
-
-        <button class="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false" data-menu-toggle>
-            <span></span>
-            <span></span>
-            <span></span>
-        </button>
-    </div>
-</header>
-
-<main>
-    <section class="hero-section" aria-labelledby="hero-title">
-        <div class="hero-content">
-            <p class="hero-kicker">Умный поиск выгодных покупок</p>
-            <h1 id="hero-title">Сравнивайте цены между магазинами за секунды</h1>
-            <p class="hero-description">
-                Находите нужный товар, смотрите предложения разных магазинов и выбирайте лучшую цену без лишних вкладок.
-            </p>
-
-            <form class="search-panel" action="#" method="get" role="search">
-                <label class="visually-hidden" for="product-search">Название товара</label>
-                <input id="product-search" name="q" type="search" placeholder="Введите название товара или бренд">
-                <button class="search-submit" type="submit" aria-label="Найти товар">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M10.8 4.2a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2Zm-8.4 6.6a8.4 8.4 0 1 1 15.1 5.1l4 4a1.2 1.2 0 0 1-1.7 1.7l-4-4A8.4 8.4 0 0 1 2.4 10.8Z"/>
-                    </svg>
-                </button>
-            </form>
-
-            <div class="hero-actions" aria-label="Варианты поиска">
-                <button class="action-button action-button-primary" type="button">Поиск по названию</button>
-                <button class="action-button action-button-secondary" type="button">Поиск по штрихкоду</button>
-            </div>
-        </div>
+        <form class="search-form" method="get" action="{% url 'home' %}" role="search">
+            <label class="visually-hidden" for="search-input">Поиск товара</label>
+            <input
+                id="search-input"
+                name="q"
+                type="search"
+                value="{{ query }}"
+                placeholder="Например: bosch, SKU или штрихкод"
+                autocomplete="off"
+            >
+            <button type="submit">Найти</button>
+        </form>
     </section>
 
-    <section class="features-section" aria-labelledby="features-title">
-        <div class="section-heading">
-            <p class="section-kicker">Возможности сервиса</p>
-            <h2 id="features-title">Все для спокойного сравнения цен</h2>
-        </div>
-
-        <div class="feature-grid">
-            <article class="feature-card">
-                <div class="card-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M10.8 4.2a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2Zm-8.4 6.6a8.4 8.4 0 1 1 15.1 5.1l4 4a1.2 1.2 0 0 1-1.7 1.7l-4-4A8.4 8.4 0 0 1 2.4 10.8Z"/>
-                    </svg>
+    <section class="results-section" aria-label="Результаты поиска">
+        {% if query %}
+            {% if offers %}
+                <div class="results-header">
+                    <h2>Результаты поиска</h2>
+                    <span>Показано до 50 товаров</span>
                 </div>
-                <h3>Поиск товаров</h3>
-                <p>Ищите товары по названию, бренду или категории и быстро переходите к подходящим предложениям.</p>
-            </article>
 
-            <article class="feature-card">
-                <div class="card-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M5 5.8A1.8 1.8 0 0 1 6.8 4h10.4A1.8 1.8 0 0 1 19 5.8v12.4a1.8 1.8 0 0 1-1.8 1.8H6.8A1.8 1.8 0 0 1 5 18.2V5.8Zm3 2.4a1 1 0 0 0 0 2h8a1 1 0 1 0 0-2H8Zm0 4a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H8Zm0 4a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2H8Z"/>
-                    </svg>
-                </div>
-                <h3>Сравнение цен</h3>
-                <p>Смотрите цены рядом, сравнивайте магазины и находите предложение, которое действительно выгоднее.</p>
-            </article>
+                <div class="product-grid">
+                    {% for offer in offers %}
+                        <article class="product-card">
+                            <div class="product-image">
+                                {% if offer.image_url %}
+                                    <img src="{{ offer.image_url }}" alt="{{ offer.original_name }}">
+                                {% else %}
+                                    <span>Нет фото</span>
+                                {% endif %}
+                            </div>
 
-            <article class="feature-card">
-                <div class="card-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M7 4a1 1 0 0 1 1-1h8a1 1 0 0 1 .9.6l1.1 2.4h1a2 2 0 0 1 2 2v1a1 1 0 1 1-2 0V8h-1.7a1 1 0 0 1-.9-.6L15.4 5H8.6L7.5 7.4a1 1 0 0 1-.9.6H5v10a1 1 0 0 0 1 1h7a1 1 0 1 1 0 2H6a3 3 0 0 1-3-3V8a2 2 0 0 1 2-2h1l1.1-2.4A1 1 0 0 1 7 4Zm11.7 9.3a1 1 0 0 1 0 1.4L17.4 16l1.3 1.3a1 1 0 1 1-1.4 1.4L16 17.4l-1.3 1.3a1 1 0 0 1-1.4-1.4l1.3-1.3-1.3-1.3a1 1 0 0 1 1.4-1.4l1.3 1.3 1.3-1.3a1 1 0 0 1 1.4 0Z"/>
-                    </svg>
-                </div>
-                <h3>Список покупок</h3>
-                <p>Собирайте товары в один список и заранее оценивайте, где покупка получится дешевле.</p>
-            </article>
+                            <div class="product-info">
+                                <h3>{{ offer.original_name }}</h3>
+                                <dl class="product-meta">
+                                    <div>
+                                        <dt>Магазин</dt>
+                                        <dd>{{ offer.shop.name }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Категория</dt>
+                                        <dd>{{ offer.category.name|default:"-" }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>SKU</dt>
+                                        <dd>{{ offer.sku|default:"-" }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Штрихкод</dt>
+                                        <dd>{{ offer.barcode|default:"-" }}</dd>
+                                    </div>
+                                </dl>
+                            </div>
 
-            <article class="feature-card">
-                <div class="card-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M5 19a1 1 0 0 1-1-1V5a1 1 0 0 0-2 0v13a3 3 0 0 0 3 3h14a1 1 0 1 0 0-2H5Zm14.7-11.7a1 1 0 0 1 0 1.4l-4.2 4.2a1 1 0 0 1-1.3.1l-3.1-2.3-3.4 4a1 1 0 1 1-1.5-1.3l4-4.7a1 1 0 0 1 1.4-.1l3.1 2.3 3.6-3.6a1 1 0 0 1 1.4 0Z"/>
-                    </svg>
+                            <div class="product-side">
+                                <div class="price-block">
+                                    {% if offer.sale_price %}
+                                        <strong>{{ offer.sale_price }} {{ offer.currency }}</strong>
+                                        {% if offer.price %}
+                                            <span class="old-price">{{ offer.price }} {{ offer.currency }}</span>
+                                        {% endif %}
+                                    {% elif offer.price %}
+                                        <strong>{{ offer.price }} {{ offer.currency }}</strong>
+                                    {% else %}
+                                        <strong>Цена не указана</strong>
+                                    {% endif %}
+                                </div>
+
+                                {% if offer.product_url %}
+                                    <a class="store-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">
+                                        Открыть в магазине
+                                    </a>
+                                {% else %}
+                                    <span class="store-link store-link-disabled">Нет ссылки</span>
+                                {% endif %}
+                            </div>
+                        </article>
+                    {% endfor %}
                 </div>
-                <h3>История цен</h3>
-                <p>Отслеживайте динамику стоимости и покупайте тогда, когда цена выглядит разумной.</p>
-            </article>
-        </div>
+            {% else %}
+                <div class="empty-state">
+                    <h2>Ничего не найдено</h2>
+                    <p>Попробуйте изменить запрос или проверить SKU и штрихкод.</p>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="empty-state">
+                <h2>Введите название, SKU или штрихкод</h2>
+                <p>Каталог большой, поэтому мы не показываем все товары без поискового запроса.</p>
+            </div>
+        {% endif %}
     </section>
 </main>
-
-<footer class="site-footer">
-    <div class="footer-container">
-        <a class="brand footer-brand" href="/" aria-label="Price Compare">
-            <span class="brand-mark">PC</span>
-            <span class="brand-name">Price Compare</span>
-        </a>
-        <p>2026. Сервис сравнения цен для быстрых и осознанных покупок.</p>
-    </div>
-</footer>
 {% endblock %}
