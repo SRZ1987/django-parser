@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
+import math
 import random
 import re
 from decimal import Decimal, InvalidOperation
@@ -17,6 +19,8 @@ WORKERS = 3
 REQUEST_DELAY = 0.1
 RETRY_WAIT = 20
 MAX_RETRIES = 12
+PROGRESS_LOG_INTERVAL = 15
+WATCHDOG_TIMEOUT = 300
 
 HEADERS = {
     "User-Agent": (
@@ -88,13 +92,25 @@ def parse_price(value: Any) -> Decimal | None:
 
 
 class DepoClient:
-    def __init__(self, log_callback: Callable[[str], None] | None = None):
+    def __init__(
+        self,
+        log_callback: Callable[[str], None] | None = None,
+        progress_log_interval: float = PROGRESS_LOG_INTERVAL,
+        watchdog_timeout: float = WATCHDOG_TIMEOUT,
+    ):
         self.log_callback = log_callback
+        self.progress_log_interval = progress_log_interval
+        self.watchdog_timeout = watchdog_timeout
         self._session: aiohttp.ClientSession | None = None
         self._rate_limit_lock = asyncio.Lock()
         self._blocked_until = 0.0
         self.pages_total = 0
         self.pages_done = 0
+        self.categories_total = 0
+        self.categories_done = 0
+        self.retry_count = 0
+        self.active_workers = 0
+        self._started_at = 0.0
 
     async def __aenter__(self):
         await self.open()
@@ -146,54 +162,85 @@ class DepoClient:
         queue: asyncio.Queue = asyncio.Queue()
         products_by_key: dict[str, dict[str, Any]] = {}
         errors: list[Exception] = []
-
-        for index, category in enumerate(categories, start=1):
-            category_id = int(category["id"])
-            self._log(f"DEPO category {index}/{len(categories)}: {category_id}")
-            total, rows = await self._get_products_page(session, category_id, 0)
-            self._merge_products(products_by_key, rows)
-
-            for start in range(ROWS, total, ROWS):
-                await queue.put((category_id, start))
-                self.pages_total += 1
+        stop_progress = asyncio.Event()
+        self._started_at = asyncio.get_running_loop().time()
+        self.categories_total = len(categories)
+        self.categories_done = 0
+        self.pages_total = 0
+        self.pages_done = 0
+        self.retry_count = 0
 
         workers = [
             asyncio.create_task(self._worker(number, session, queue, products_by_key, errors))
             for number in range(1, WORKERS + 1)
         ]
+        progress_task = asyncio.create_task(self._progress_watchdog(queue, products_by_key, stop_progress))
 
-        for _ in workers:
-            await queue.put(None)
+        try:
+            for index, category in enumerate(categories, start=1):
+                category_id = int(category["id"])
+                await self._log(f"DEPO category {index}/{len(categories)}: {category_id}")
+                total, rows = await self._get_products_page(session, category_id, 0)
+                self._merge_products(products_by_key, rows)
+                self.categories_done += 1
+                self.pages_done += 1
+                self.pages_total += max(1, math.ceil(total / ROWS)) if total else 1
 
-        await queue.join()
-        await asyncio.gather(*workers)
+                for start in range(ROWS, total, ROWS):
+                    await queue.put((category_id, start))
 
-        if errors:
-            raise RuntimeError(f"DEPO product pagination failed: {errors[0]}")
+            join_task = asyncio.create_task(queue.join())
+            done, pending = await asyncio.wait(
+                {join_task, progress_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
 
-        return list(products_by_key.values())
+            for task in done:
+                exception = task.exception()
+                if exception:
+                    raise exception
+
+            if join_task in pending:
+                join_task.cancel()
+                await asyncio.gather(join_task, return_exceptions=True)
+            elif progress_task in pending:
+                stop_progress.set()
+                progress_task.cancel()
+                await asyncio.gather(progress_task, return_exceptions=True)
+
+            if errors:
+                raise RuntimeError(f"DEPO product pagination failed: {errors[0]}")
+
+            return list(products_by_key.values())
+        finally:
+            stop_progress.set()
+            progress_task.cancel()
+            for worker in workers:
+                worker.cancel()
+            await asyncio.gather(progress_task, *workers, return_exceptions=True)
 
     async def _worker(self, number, session, queue, products_by_key, errors):
         while True:
             task = await queue.get()
-            if task is None:
-                queue.task_done()
-                return
-
-            category_id, start = task
             try:
+                self.active_workers += 1
+                category_id, start = task
                 _, rows = await self._get_products_page(session, category_id, start)
                 self._merge_products(products_by_key, rows)
                 self.pages_done += 1
 
                 if self.pages_done % 10 == 0 or self.pages_done == self.pages_total:
-                    self._log(
+                    await self._log(
                         f"DEPO worker {number}: pages {self.pages_done}/{self.pages_total}, "
                         f"products={len(products_by_key)}"
                     )
+            except asyncio.CancelledError:
+                raise
             except Exception as error:
                 errors.append(error)
+                await self._log(f"DEPO worker {number} failed: {error}")
             finally:
+                self.active_workers = max(0, self.active_workers - 1)
                 queue.task_done()
 
     async def _get_products_page(self, session, category_id: int, start: int) -> tuple[int, list[dict[str, Any]]]:
@@ -254,14 +301,16 @@ class DepoClient:
             try:
                 async with session.post(GRAPHQL_URL, json=payload, headers=headers) as response:
                     if response.status == 429:
+                        self.retry_count += 1
                         wait = self._retry_after(response, RETRY_WAIT + random.uniform(0, 5))
-                        self._log(f"DEPO HTTP 429. Retry {attempt}/{MAX_RETRIES} in {wait:.1f}s.")
+                        await self._log(f"DEPO HTTP 429. Retry {attempt}/{MAX_RETRIES} in {wait:.1f}s.")
                         await self._set_global_pause(wait)
                         continue
 
                     if response.status >= 500:
+                        self.retry_count += 1
                         wait = min(attempt * 3, 30)
-                        self._log(f"DEPO HTTP {response.status}. Retry {attempt}/{MAX_RETRIES} in {wait}s.")
+                        await self._log(f"DEPO HTTP {response.status}. Retry {attempt}/{MAX_RETRIES} in {wait}s.")
                         await asyncio.sleep(wait)
                         continue
 
@@ -282,8 +331,9 @@ class DepoClient:
                 if attempt == MAX_RETRIES:
                     raise RuntimeError(f"DEPO request failed after {MAX_RETRIES} attempts: {error}") from error
 
+                self.retry_count += 1
                 wait = min(attempt * 2, 30)
-                self._log(f"DEPO request error: {error}. Retry {attempt}/{MAX_RETRIES} in {wait}s.")
+                await self._log(f"DEPO request error: {error}. Retry {attempt}/{MAX_RETRIES} in {wait}s.")
                 await asyncio.sleep(wait)
 
         raise RuntimeError("DEPO request failed.")
@@ -330,6 +380,64 @@ class DepoClient:
                 if old.get(field) in ("", None) and value not in ("", None):
                     old[field] = value
 
-    def _log(self, message: str):
+    async def _progress_watchdog(self, queue, products_by_key, stop_event):
+        loop = asyncio.get_running_loop()
+        last_progress_at = loop.time()
+        last_pages_done = self.pages_done
+        last_products_count = len(products_by_key)
+        last_queue_size = queue.qsize()
+
+        while not stop_event.is_set():
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=self.progress_log_interval)
+                break
+            except asyncio.TimeoutError:
+                pass
+
+            now = loop.time()
+            queue_size = queue.qsize()
+            products_count = len(products_by_key)
+            if (
+                self.pages_done > last_pages_done
+                or products_count > last_products_count
+                or queue_size < last_queue_size
+            ):
+                last_progress_at = now
+
+            last_pages_done = self.pages_done
+            last_products_count = products_count
+            last_queue_size = queue_size
+
+            await self._log(
+                "DEPO download progress: categories={categories_done}/{categories_total}, "
+                "pages={pages_done}/{pages_total}, products={products}, queue={queue}, "
+                "workers={workers}, retries={retries}, elapsed={elapsed}".format(
+                    categories_done=self.categories_done,
+                    categories_total=self.categories_total,
+                    pages_done=self.pages_done,
+                    pages_total=self.pages_total,
+                    products=products_count,
+                    queue=queue_size,
+                    workers=self.active_workers,
+                    retries=self.retry_count,
+                    elapsed=self._format_elapsed(now - self._started_at),
+                )
+            )
+
+            if now - last_progress_at >= self.watchdog_timeout:
+                raise RuntimeError(
+                    "DEPO download stalled: no pages, products, or queue progress for "
+                    f"{int(self.watchdog_timeout)} seconds."
+                )
+
+    def _format_elapsed(self, seconds):
+        total_seconds = int(seconds)
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    async def _log(self, message: str):
         if self.log_callback:
-            self.log_callback(message)
+            result = self.log_callback(message)
+            if inspect.isawaitable(result):
+                await result

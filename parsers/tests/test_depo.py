@@ -1,3 +1,4 @@
+import asyncio
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
@@ -5,6 +6,7 @@ from django.test import TestCase
 
 from catalog.models import PriceHistory, Product, ProductOffer, Shop
 from parsers.models import ParserConfig, ParserRun
+from parsers.services.depo_client import DepoClient, ROWS
 from parsers.services.runner import run_parser
 
 
@@ -36,7 +38,7 @@ class DepoParserTests(TestCase):
     def run_with_products(self, products):
         with patch(
             "parsers.services.depo.DepoParser._fetch_remote_data",
-            new=AsyncMock(return_value=(self.categories, products, [])),
+            new=AsyncMock(return_value=(self.categories, products)),
         ):
             return run_parser("depo")
 
@@ -155,3 +157,125 @@ class DepoParserTests(TestCase):
         espak_offer.refresh_from_db()
         self.assertTrue(espak_offer.is_active)
         self.assertTrue(espak_offer.is_available)
+
+
+class DepoClientQueueTests(TestCase):
+    def run_async(self, coroutine):
+        return asyncio.run(coroutine)
+
+    def test_worker_calls_task_done_even_when_page_fails(self):
+        async def scenario():
+            client = DepoClient()
+            queue = asyncio.Queue()
+            errors = []
+            await queue.put((1, ROWS))
+            client._get_products_page = AsyncMock(side_effect=RuntimeError("page failed"))
+            worker = asyncio.create_task(client._worker(1, None, queue, {}, errors))
+
+            await asyncio.wait_for(queue.join(), timeout=1)
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+
+            self.assertEqual(queue._unfinished_tasks, 0)
+            self.assertEqual(len(errors), 1)
+
+        self.run_async(scenario())
+
+    def test_worker_finishes_when_cancelled_after_queue_join(self):
+        async def scenario():
+            client = DepoClient()
+            queue = asyncio.Queue()
+            products = {}
+            errors = []
+            worker = asyncio.create_task(client._worker(1, None, queue, products, errors))
+            await queue.put((1, ROWS))
+            client._get_products_page = AsyncMock(return_value=(40, [depo_product(product_id="202")]))
+
+            await asyncio.wait_for(queue.join(), timeout=1)
+            worker.cancel()
+            result = await asyncio.gather(worker, return_exceptions=True)
+
+            self.assertIsInstance(result[0], asyncio.CancelledError)
+            self.assertFalse(errors)
+
+        self.run_async(scenario())
+
+    def test_fetch_products_join_does_not_hang_when_worker_raises(self):
+        async def scenario():
+            client = DepoClient(progress_log_interval=0.01, watchdog_timeout=1)
+
+            async def fake_page(session, category_id, start):
+                if start == 0:
+                    return ROWS * 2, [depo_product(product_id="101")]
+                raise RuntimeError("worker page failed")
+
+            client._get_session = AsyncMock(return_value=None)
+            client._get_products_page = AsyncMock(side_effect=fake_page)
+
+            with self.assertRaisesMessage(RuntimeError, "DEPO product pagination failed"):
+                await asyncio.wait_for(client.fetch_products([{"id": 1}]), timeout=1)
+
+        self.run_async(scenario())
+
+    def test_worker_errors_make_parser_run_failed_without_deactivation(self):
+        shop = Shop.objects.create(name="DEPO", code="depo")
+        ParserConfig.objects.create(shop=shop, name="DEPO parser", code="depo")
+        product = Product.objects.create(name="Old DEPO")
+        offer = ProductOffer.objects.create(
+            shop=shop,
+            product=product,
+            external_id="101",
+            original_name="Old DEPO",
+            is_active=True,
+            is_available=True,
+        )
+
+        with patch(
+            "parsers.services.depo.DepoParser._fetch_remote_data",
+            new=AsyncMock(side_effect=RuntimeError("DEPO product pagination failed: page failed")),
+        ):
+            parser_run = run_parser("depo")
+
+        offer.refresh_from_db()
+        self.assertEqual(parser_run.status, ParserRun.STATUS_FAILED)
+        self.assertTrue(offer.is_active)
+        self.assertTrue(offer.is_available)
+
+    def test_progress_is_logged_during_fetch(self):
+        async def scenario():
+            logs = []
+            client = DepoClient(log_callback=logs.append, progress_log_interval=0.01, watchdog_timeout=1)
+
+            async def fake_page(session, category_id, start):
+                if start == 0:
+                    return ROWS * 2, [depo_product(product_id="101")]
+                await asyncio.sleep(0.05)
+                return ROWS * 2, [depo_product(product_id="202", barcode="EAN-202")]
+
+            client._get_session = AsyncMock(return_value=None)
+            client._get_products_page = AsyncMock(side_effect=fake_page)
+
+            products = await client.fetch_products([{"id": 1}])
+
+            self.assertEqual(len(products), 2)
+            self.assertTrue(any("DEPO download progress" in message for message in logs))
+
+        self.run_async(scenario())
+
+    def test_watchdog_stops_stalled_import(self):
+        async def scenario():
+            client = DepoClient(progress_log_interval=0.01, watchdog_timeout=0.02)
+
+            async def fake_page(session, category_id, start):
+                if start == 0:
+                    return ROWS * 2, [depo_product(product_id="101")]
+                await asyncio.sleep(1)
+                return ROWS * 2, [depo_product(product_id="202")]
+
+            client._get_session = AsyncMock(return_value=None)
+            client._get_products_page = AsyncMock(side_effect=fake_page)
+
+            with self.assertRaisesMessage(RuntimeError, "DEPO download stalled"):
+                await client.fetch_products([{"id": 1}])
+
+        self.run_async(scenario())

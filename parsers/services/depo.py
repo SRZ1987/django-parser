@@ -46,9 +46,7 @@ class DepoParser(BaseStoreParser):
         result = ParserResult()
 
         self.log("DEPO parser started.")
-        raw_categories, raw_products, client_logs = self._run_async(self._fetch_remote_data())
-        for message in client_logs:
-            self.log(message)
+        raw_categories, raw_products = self._run_async(self._fetch_remote_data())
         self.log(f"DEPO categories loaded: {len(raw_categories)}")
         self.log(f"DEPO raw products loaded: {len(raw_products)}")
 
@@ -102,11 +100,14 @@ class DepoParser(BaseStoreParser):
         return result
 
     async def _fetch_remote_data(self):
-        client_logs = []
-        async with DepoClient(log_callback=client_logs.append) as client:
+        async def live_log(message):
+            print(message, flush=True)
+            await asyncio.to_thread(self.log, message)
+
+        async with DepoClient(log_callback=live_log) as client:
             categories = await client.fetch_categories()
             products = await client.fetch_products(categories)
-        return categories, products, client_logs
+        return categories, products
 
     def _run_async(self, coroutine):
         try:
