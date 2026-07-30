@@ -11,6 +11,7 @@ from parsers.models import ParserBatch, ParserBatchLock, ParserConfig, ParserExp
 from .excel_importer import ExcelCatalogImporter
 from .excel_validation import ExcelCatalogValidator
 from .export_storage import export_work_paths
+from .recovery import recover_stale_parser_state
 
 
 class ParserBatchAlreadyRunning(Exception):
@@ -30,6 +31,7 @@ class ParserCancelled(Exception):
 
 
 def run_all_parsers(trigger=ParserRun.TRIGGER_COMMAND, force=False):
+    recover_stale_parser_state()
     batch = start_batch(trigger=trigger, force=force)
     configs = ParserConfig.objects.filter(is_enabled=True, code__in=ADAPTERS.keys()).order_by("run_order", "name")
     any_failed = False
@@ -56,6 +58,7 @@ def run_all_parsers(trigger=ParserRun.TRIGGER_COMMAND, force=False):
 
 
 def start_batch(trigger, force=False):
+    recover_stale_parser_state()
     now = timezone.now()
     try:
         with transaction.atomic():
@@ -187,6 +190,7 @@ def run_excel_parser(parser_config, trigger=ParserRun.TRIGGER_COMMAND):
 
 
 def process_next_queue_job():
+    recover_stale_parser_state()
     with transaction.atomic():
         job = ParserQueueJob.objects.select_for_update(skip_locked=True).filter(status=ParserQueueJob.STATUS_PENDING).first()
         if job is None:

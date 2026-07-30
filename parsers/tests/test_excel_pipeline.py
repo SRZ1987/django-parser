@@ -1,15 +1,19 @@
 import tempfile
 import threading
 import asyncio
+from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files import File
+from django.core.management import call_command
 from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from openpyxl import Workbook
 
 from catalog.models import Product, ProductOffer, Shop
@@ -29,6 +33,12 @@ from parsers.services.batch_runner import (
 from parsers.services.export_storage import export_work_paths
 from parsers.services.excel_importer import ExcelCatalogImporter, ExcelImportError
 from parsers.services.excel_validation import ExcelCatalogValidator
+from parsers.services.recovery import (
+    STALE_BATCH_MESSAGE,
+    STALE_JOB_MESSAGE,
+    STALE_RUN_MESSAGE,
+    recover_stale_parser_state,
+)
 from parsers.standalone import espak_parser
 from parsers.standalone import fere_parser
 
@@ -425,6 +435,142 @@ class BatchRunnerTests(TestCase):
 
         self.assertEqual(run.status, ParserRun.STATUS_SUCCESS)
         self.assertEqual(ParserRun.objects.filter(parser=self.config_b, status=ParserRun.STATUS_RUNNING).count(), 0)
+
+
+class ParserRecoveryTests(TestCase):
+    def setUp(self):
+        self.shop = Shop.objects.create(name="ESPAK", code="espak")
+        self.config = ParserConfig.objects.create(shop=self.shop, name="ESPAK parser", code="espak")
+
+    @override_settings(PARSER_STALE_RUN_MINUTES=30, PARSER_STALE_JOB_MINUTES=30, PARSER_STALE_BATCH_MINUTES=30)
+    def test_stale_running_parser_run_is_marked_failed(self):
+        old_time = timezone.now() - timedelta(minutes=31)
+        parser_run = ParserRun.objects.create(
+            parser=self.config,
+            status=ParserRun.STATUS_RUNNING,
+            stage=ParserRun.STAGE_PARSING,
+            trigger=ParserRun.TRIGGER_COMMAND,
+            started_at=old_time,
+            heartbeat_at=old_time,
+        )
+
+        result = recover_stale_parser_state()
+
+        parser_run.refresh_from_db()
+        self.assertEqual(result.runs, 1)
+        self.assertEqual(parser_run.status, ParserRun.STATUS_FAILED)
+        self.assertEqual(parser_run.stage, ParserRun.STAGE_COMPLETED)
+        self.assertEqual(parser_run.error_message, STALE_RUN_MESSAGE)
+        self.assertIsNotNone(parser_run.finished_at)
+
+    @override_settings(PARSER_STALE_RUN_MINUTES=30)
+    def test_fresh_running_parser_run_is_not_changed(self):
+        parser_run = ParserRun.objects.create(
+            parser=self.config,
+            status=ParserRun.STATUS_RUNNING,
+            stage=ParserRun.STAGE_PARSING,
+            trigger=ParserRun.TRIGGER_COMMAND,
+            started_at=timezone.now() - timedelta(minutes=10),
+            heartbeat_at=timezone.now(),
+        )
+
+        result = recover_stale_parser_state()
+
+        parser_run.refresh_from_db()
+        self.assertEqual(result.runs, 0)
+        self.assertEqual(parser_run.status, ParserRun.STATUS_RUNNING)
+
+    @override_settings(PARSER_STALE_RUN_MINUTES=30)
+    def test_parser_config_can_run_again_after_stale_recovery(self):
+        old_time = timezone.now() - timedelta(minutes=31)
+        ParserRun.objects.create(
+            parser=self.config,
+            status=ParserRun.STATUS_RUNNING,
+            trigger=ParserRun.TRIGGER_COMMAND,
+            started_at=old_time,
+            heartbeat_at=old_time,
+        )
+
+        recover_stale_parser_state()
+
+        class FakeAdapter:
+            column_map = EspakAdapter.column_map
+            worksheet_name = None
+
+        def fake_run_adapter(adapter, tmp_path, log):
+            create_xlsx(tmp_path, rows=[["Hammer", 10, "", "", "", "SKU-RECOVERED", "", ""]])
+            return ParserResult(success=True, output_path=str(tmp_path), products_count=1)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with override_settings(MEDIA_ROOT=Path(tmp_dir) / "media", PARSER_EXPORT_WORK_DIR=Path(tmp_dir) / "work"):
+                with patch("parsers.services.batch_runner.get_adapter_class", return_value=FakeAdapter):
+                    with patch("parsers.services.batch_runner._run_adapter", fake_run_adapter):
+                        parser_run = run_excel_parser(self.config)
+
+        self.assertEqual(parser_run.status, ParserRun.STATUS_SUCCESS)
+
+    @override_settings(PARSER_STALE_JOB_MINUTES=30)
+    def test_stale_queue_job_is_marked_failed(self):
+        old_time = timezone.now() - timedelta(minutes=31)
+        job = ParserQueueJob.objects.create(
+            parser_config=self.config,
+            status=ParserQueueJob.STATUS_RUNNING,
+            started_at=old_time,
+            heartbeat_at=old_time,
+        )
+
+        result = recover_stale_parser_state()
+
+        job.refresh_from_db()
+        self.assertEqual(result.jobs, 1)
+        self.assertEqual(job.status, ParserQueueJob.STATUS_FAILED)
+        self.assertEqual(job.error_message, STALE_JOB_MESSAGE)
+        self.assertIsNotNone(job.finished_at)
+
+    @override_settings(PARSER_STALE_BATCH_MINUTES=30)
+    def test_stale_batch_is_marked_failed(self):
+        old_time = timezone.now() - timedelta(minutes=31)
+        batch = ParserBatch.objects.create(
+            status=ParserBatch.STATUS_RUNNING,
+            current_parser=self.config,
+            started_at=old_time,
+            heartbeat_at=old_time,
+            log="started",
+        )
+
+        result = recover_stale_parser_state()
+
+        batch.refresh_from_db()
+        self.assertEqual(result.batches, 1)
+        self.assertEqual(batch.status, ParserBatch.STATUS_FAILED)
+        self.assertIsNone(batch.current_parser)
+        self.assertIn(STALE_BATCH_MESSAGE, batch.log)
+        self.assertIsNotNone(batch.finished_at)
+
+    @override_settings(PARSER_STALE_RUN_MINUTES=30, PARSER_STALE_JOB_MINUTES=30, PARSER_STALE_BATCH_MINUTES=30)
+    def test_recover_stale_parser_jobs_command_outputs_statistics(self):
+        old_time = timezone.now() - timedelta(minutes=31)
+        ParserRun.objects.create(
+            parser=self.config,
+            status=ParserRun.STATUS_RUNNING,
+            trigger=ParserRun.TRIGGER_COMMAND,
+            started_at=old_time,
+            heartbeat_at=old_time,
+        )
+        ParserQueueJob.objects.create(
+            parser_config=self.config,
+            status=ParserQueueJob.STATUS_RUNNING,
+            started_at=old_time,
+            heartbeat_at=old_time,
+        )
+        ParserBatch.objects.create(status=ParserBatch.STATUS_RUNNING, started_at=old_time, heartbeat_at=old_time)
+        output = StringIO()
+
+        call_command("recover_stale_parser_jobs", stdout=output)
+
+        self.assertIn("runs=1", output.getvalue())
+        self.assertIn("jobs=1", output.getvalue())
+        self.assertIn("batches=1", output.getvalue())
 
 
 class BatchConcurrencyTests(TransactionTestCase):

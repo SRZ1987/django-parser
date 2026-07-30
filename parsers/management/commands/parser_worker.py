@@ -3,6 +3,7 @@ import time
 from django.core.management.base import BaseCommand
 
 from parsers.services.batch_runner import process_next_queue_job
+from parsers.services.recovery import recover_stale_parser_state
 
 
 class Command(BaseCommand):
@@ -13,6 +14,8 @@ class Command(BaseCommand):
         parser.add_argument("--sleep", type=float, default=5.0)
 
     def handle(self, *args, **options):
+        result = recover_stale_parser_state()
+        self.stdout.write(f"Recovered stale parser state: runs={result.runs}, jobs={result.jobs}, batches={result.batches}")
         while True:
             job = process_next_queue_job()
             if job:
