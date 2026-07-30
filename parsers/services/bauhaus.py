@@ -39,10 +39,14 @@ REQUEST_DELAY_MIN = 0.15
 REQUEST_DELAY_MAX = 0.40
 RSC_ATTEMPTS = 5
 EAN_CONCURRENCY = 50
+EAN_FALLBACK_CONCURRENCY = 10
+EAN_RECOVERY_STEP = 10
+EAN_RECOVERY_INTERVAL = 10.0
 EAN_MAX_CLIENTS = EAN_CONCURRENCY
 EAN_MAX_RETRIES = 4
 EAN_REQUEST_TIMEOUT = 45
 EAN_PROGRESS_INTERVAL = 15.0
+EAN_DEGRADED_HTTP_ERROR_RATIO = 0.2
 
 BARCODE_KEYS = (
     "gtin",
@@ -186,9 +190,10 @@ def retry_delay(attempt, retry_after):
 
 
 class BauhausClient:
-    def __init__(self, log_callback=None, category_limit=None):
+    def __init__(self, log_callback=None, category_limit=None, existing_barcodes=None):
         self.log_callback = log_callback
         self.category_limit = category_limit
+        self.existing_barcodes = existing_barcodes or {}
 
     async def fetch_products(self):
         async with BauhausHttpClient(log_callback=self.log_callback) as http_client:
@@ -225,6 +230,7 @@ class BauhausClient:
                 )
 
             await http_client.log(f"BAUHAUS completed: categories={len(leaf_categories)}; products={len(products)}")
+            apply_existing_barcodes(products, self.existing_barcodes)
             await enrich_all_products_with_ean(products, log_callback=http_client.log)
             return category_audit, products, self.category_limit is None
 
@@ -314,6 +320,89 @@ async def fetch_category_products(http_client, category):
 
 def products_from_hits(hits, category):
     return [product for product in (product_from_hit(hit, category) for hit in hits) if product and product.external_id]
+
+
+class AdjustableLimiter:
+    def __init__(self, limit):
+        self._limit = max(1, int(limit))
+        self._active = 0
+        self._condition = asyncio.Condition()
+
+    @property
+    def limit(self):
+        return self._limit
+
+    @property
+    def active(self):
+        return self._active
+
+    async def set_limit(self, value):
+        async with self._condition:
+            self._limit = max(1, int(value))
+            self._condition.notify_all()
+
+    async def __aenter__(self):
+        async with self._condition:
+            await self._condition.wait_for(lambda: self._active < self._limit)
+            self._active += 1
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        async with self._condition:
+            self._active = max(0, self._active - 1)
+            self._condition.notify_all()
+
+
+class AdaptiveLoadController:
+    def __init__(self, ean_limiter, log_callback=None):
+        self.ean_limiter = ean_limiter
+        self.log_callback = log_callback
+        self.ean_allowed = asyncio.Event()
+        self.ean_allowed.set()
+        self.draining = False
+        self.restrictions = 0
+        self.adaptations = 0
+        self.last_reason = ""
+        self._adaptation_lock = asyncio.Lock()
+        self._drain_task = None
+
+    async def log(self, message):
+        if self.log_callback:
+            result = self.log_callback(message)
+            if asyncio.iscoroutine(result):
+                await result
+
+    async def wait_ean_allowed(self):
+        await self.ean_allowed.wait()
+
+    async def report_restriction(self, reason):
+        self.restrictions += 1
+        self.last_reason = reason
+        if self._drain_task is None or self._drain_task.done():
+            self._drain_task = asyncio.create_task(self._adapt_after_restriction(reason))
+
+    async def _adapt_after_restriction(self, reason):
+        async with self._adaptation_lock:
+            if self.draining:
+                return
+            current = self.ean_limiter.limit
+            target = max(EAN_FALLBACK_CONCURRENCY, current - EAN_RECOVERY_STEP)
+            self.draining = True
+            self.adaptations += 1
+            self.ean_allowed.clear()
+            await self.ean_limiter.set_limit(target)
+            await self.log(
+                f"BAUHAUS EAN adaptive throttle: {reason}; concurrency={current}->{target}; "
+                f"pause={EAN_RECOVERY_INTERVAL:.0f}s"
+            )
+            await asyncio.sleep(EAN_RECOVERY_INTERVAL)
+            self.draining = False
+            self.ean_allowed.set()
+
+    async def close(self):
+        if self._drain_task is not None:
+            self._drain_task.cancel()
+            await asyncio.gather(self._drain_task, return_exceptions=True)
 
 
 class JsonLdScriptParser(HTMLParser):
@@ -439,10 +528,40 @@ def extract_ean_from_next_data(page_html):
     return normalize_barcode_candidate(match.group(1))
 
 
-async def fetch_product_ean(session, semaphore, sku, product_url):
-    async with semaphore:
+def product_page_has_data(page_html, expected_sku=""):
+    text = page_html or ""
+    lowered = text.lower()
+    if len(text) < 1000 and not any(marker in lowered for marker in ("application/ld+json", "__next", "self.__next_f")):
+        return False
+    if any(marker in lowered for marker in ("vercel security checkpoint", "security checkpoint", "access denied", "captcha")):
+        return False
+    expected_sku = clean_text(expected_sku)
+    if expected_sku and expected_sku in text:
+        return True
+    if "application/ld+json" in lowered and "product" in lowered:
+        return True
+    if ("__next_data__" in lowered or "self.__next_f" in lowered or "__next" in lowered) and any(
+        marker in lowered for marker in ("product", "sku", "gtin", "ean", "barcode")
+    ):
+        return True
+    return False
+
+
+def page_has_invalid_gtin_candidate(page_html):
+    for version in document_versions(page_html):
+        if re.search(
+            r'(?i)(?:\\?")(?:gtin(?:8|12|13|14)?|ean(?:8|13|14)?|barcode)(?:\\?")\s*:\s*(?:\\?")?\d+(?:\\?")?',
+            version,
+        ):
+            return True
+    return False
+
+
+async def fetch_product_ean(session, limiter, controller, sku, product_url):
+    async with limiter:
         for attempt in range(1, EAN_MAX_RETRIES + 1):
             try:
+                await controller.wait_ean_allowed()
                 await asyncio.sleep(random.uniform(0.005, 0.025))
                 response = await session.get(
                     product_url,
@@ -458,26 +577,38 @@ async def fetch_product_ean(session, semaphore, sku, product_url):
                 status = response.status_code
                 if status == 200:
                     page_html = response.text
+                    if not product_page_has_data(page_html, expected_sku=sku):
+                        if attempt < EAN_MAX_RETRIES:
+                            await asyncio.sleep(min(30.0, 1.8 ** attempt + random.uniform(0.5, 1.8)))
+                            continue
+                        return sku, "", "invalid_html", resolved_url
+
                     ean = extract_ean_from_jsonld(page_html, expected_sku=sku)
                     if ean:
                         return sku, ean, "jsonld_gtin", resolved_url
                     ean = extract_ean_from_next_data(page_html)
                     if ean:
                         return sku, ean, "next_data_gtin", resolved_url
-                    return sku, "", "ean_not_found", resolved_url
+                    if page_has_invalid_gtin_candidate(page_html):
+                        return sku, "", "invalid_gtin", resolved_url
+                    return sku, "", "real_not_found", resolved_url
 
                 if status in {403, 408, 429, 500, 502, 503, 504}:
+                    if status in {403, 408, 429}:
+                        await controller.report_restriction(f"HTTP {status} during EAN request")
+                    if attempt == EAN_MAX_RETRIES:
+                        return sku, "", "http_errors", resolved_url
                     retry_after = response.headers.get("retry-after") or response.headers.get("Retry-After")
                     wait = retry_delay(attempt, retry_after)
                     await asyncio.sleep(min(wait, 30.0))
                     continue
 
-                return sku, "", f"http_{status}", resolved_url
+                return sku, "", "http_errors", resolved_url
             except Exception as error:
                 if attempt == EAN_MAX_RETRIES:
-                    return sku, "", f"request_failed:{type(error).__name__}", product_url
+                    return sku, "", "request_errors", product_url
                 await asyncio.sleep(min(30.0, 1.8 ** attempt + random.uniform(0.5, 1.8)))
-    return sku, "", "request_failed", product_url
+    return sku, "", "request_errors", product_url
 
 
 async def enrich_all_products_with_ean(products, log_callback=None):
@@ -502,7 +633,7 @@ async def enrich_all_products_with_ean(products, log_callback=None):
 
     if not targets:
         await log("BAUHAUS EAN enrichment skipped: no products need barcode lookup.")
-        return {"scheduled": 0, "checked": 0, "found": 0, "not_found": 0, "errors": 0}
+        return ean_stats()
 
     if CurlAsyncSession is None:
         raise RuntimeError("curl_cffi is required for BAUHAUS EAN enrichment.")
@@ -512,13 +643,15 @@ async def enrich_all_products_with_ean(products, log_callback=None):
     for item in targets:
         queue.put_nowait(item)
 
-    semaphore = asyncio.Semaphore(EAN_CONCURRENCY)
-    stats = {"scheduled": len(targets), "checked": 0, "found": 0, "not_found": 0, "errors": 0}
+    limiter = AdjustableLimiter(EAN_CONCURRENCY)
+    stats = ean_stats(scheduled=len(targets))
     state_lock = asyncio.Lock()
     started_at = time.monotonic()
     last_progress = started_at
 
     async with CurlAsyncSession(headers=HEADERS, impersonate="chrome", max_clients=EAN_MAX_CLIENTS) as session:
+        controller = AdaptiveLoadController(limiter, log_callback=log)
+
         async def worker():
             nonlocal last_progress
             while True:
@@ -527,29 +660,29 @@ async def enrich_all_products_with_ean(products, log_callback=None):
                     if item is None:
                         return
                     sku, product_url = item
-                    _, ean, source, _ = await fetch_product_ean(session, semaphore, sku, product_url)
+                    _, ean, source, _ = await fetch_product_ean(session, limiter, controller, sku, product_url)
                     async with state_lock:
                         stats["checked"] += 1
                         if ean:
                             target_by_sku[sku].barcode = ean
                             stats["found"] += 1
                         else:
-                            stats["not_found"] += 1
-                            if source.startswith(("request_failed", "worker_error", "http_")):
-                                stats["errors"] += 1
+                            stats[source if source in stats else "request_errors"] += 1
                         now = time.monotonic()
                         if now - last_progress >= EAN_PROGRESS_INTERVAL or stats["checked"] == stats["scheduled"]:
                             last_progress = now
                             await log(
                                 "BAUHAUS EAN progress: "
                                 f"checked={stats['checked']}/{stats['scheduled']}; "
-                                f"found={stats['found']}; not_found={stats['not_found']}; "
-                                f"errors={stats['errors']}; queue={queue.qsize()}; elapsed={now - started_at:.1f}s"
+                                f"found={stats['found']}; real_not_found={stats['real_not_found']}; "
+                                f"invalid_html={stats['invalid_html']}; http_errors={stats['http_errors']}; "
+                                f"request_errors={stats['request_errors']}; invalid_gtin={stats['invalid_gtin']}; "
+                                f"queue={queue.qsize()}; concurrency={limiter.limit}; elapsed={now - started_at:.1f}s"
                             )
                 except Exception as error:
                     async with state_lock:
                         stats["checked"] += 1
-                        stats["errors"] += 1
+                        stats["request_errors"] += 1
                     await log(f"BAUHAUS EAN worker error: {type(error).__name__}: {error}")
                 finally:
                     queue.task_done()
@@ -561,13 +694,46 @@ async def enrich_all_products_with_ean(products, log_callback=None):
             queue.put_nowait(None)
         await queue.join()
         await asyncio.gather(*workers, return_exceptions=True)
+        await controller.close()
 
+    if stats["scheduled"] and stats["http_errors"] / stats["scheduled"] > EAN_DEGRADED_HTTP_ERROR_RATIO:
+        await log(
+            "BAUHAUS EAN enrichment degraded: "
+            f"http_errors={stats['http_errors']}; scheduled={stats['scheduled']}"
+        )
     await log(
         "BAUHAUS EAN enrichment finished: "
-        f"checked={stats['checked']}; found={stats['found']}; "
-        f"not_found={stats['not_found']}; errors={stats['errors']}"
+        f"scheduled={stats['scheduled']}; checked={stats['checked']}; found={stats['found']}; "
+        f"real_not_found={stats['real_not_found']}; invalid_html={stats['invalid_html']}; "
+        f"http_errors={stats['http_errors']}; request_errors={stats['request_errors']}; "
+        f"invalid_gtin={stats['invalid_gtin']}; restrictions={controller.restrictions}; "
+        f"adaptations={controller.adaptations}"
     )
     return stats
+
+
+def ean_stats(scheduled=0):
+    return {
+        "scheduled": scheduled,
+        "checked": 0,
+        "found": 0,
+        "real_not_found": 0,
+        "invalid_html": 0,
+        "http_errors": 0,
+        "request_errors": 0,
+        "invalid_gtin": 0,
+    }
+
+
+def apply_existing_barcodes(products, existing_barcodes):
+    for product in products:
+        current = normalize_barcode_candidate(product.barcode)
+        if current:
+            product.barcode = current
+            continue
+        existing = normalize_barcode_candidate(existing_barcodes.get(product.external_id) or existing_barcodes.get(product.sku))
+        if existing:
+            product.barcode = existing
 
 
 def normalize_url(url):
@@ -825,8 +991,19 @@ class BauhausParser(StoreCatalogParser):
 
         category_limit = category_limit_from_env()
         self.allow_incomplete_import = category_limit is not None
-        client = BauhausClient(log_callback=live_log, category_limit=category_limit)
+        existing_barcodes = await asyncio.to_thread(self._existing_barcodes)
+        client = BauhausClient(
+            log_callback=live_log,
+            category_limit=category_limit,
+            existing_barcodes=existing_barcodes,
+        )
         return await client.fetch_products()
+
+    def _existing_barcodes(self):
+        return {
+            external_id: barcode
+            for external_id, barcode in self.parser_config.shop.offers.exclude(barcode="").values_list("external_id", "barcode")
+        }
 
 
 def category_limit_from_env():

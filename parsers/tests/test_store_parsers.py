@@ -8,9 +8,12 @@ from catalog.models import Category, PriceHistory, Product, ProductOffer, Shop
 from parsers.models import ParserConfig, ParserRun
 from parsers.services.base import ParserError
 from parsers.services.bauhaus import (
+    AdjustableLimiter,
+    AdaptiveLoadController,
     BAUHAUS_WEBSITE_URL,
     BauhausClient,
     BauhausParser,
+    apply_existing_barcodes,
     category_urls_from_tree,
     discover_category_tree,
     extract_catalog_metadata,
@@ -401,6 +404,18 @@ class BauhausParserTests(StoreParserMixin, TestCase):
 
         self.assertEqual(extract_ean_from_jsonld(page_html, expected_sku="BH-1"), "4006381333931")
 
+    def test_extracts_ean_from_matching_product_when_jsonld_has_multiple_products(self):
+        page_html = """
+        <script type="application/ld+json">
+        [
+            {"@type": "Product", "sku": "OTHER", "gtin13": "9780201379624"},
+            {"@type": "Product", "sku": "BH-1", "gtin13": "4006381333931"}
+        ]
+        </script>
+        """
+
+        self.assertEqual(extract_ean_from_jsonld(page_html, expected_sku="BH-1"), "4006381333931")
+
     def test_extracts_ean_from_next_data_fallback(self):
         page_html = '<script>self.__next_f.push([1, "{\\"gtin13\\":\\"4006381333931\\"}"])</script>'
 
@@ -417,12 +432,102 @@ class BauhausParserTests(StoreParserMixin, TestCase):
             async def get(self, *args, **kwargs):
                 return FakeResponse()
 
+        limiter = AdjustableLimiter(1)
+        controller = AdaptiveLoadController(limiter)
         _, ean, source, _ = asyncio.run(
-            fetch_product_ean(FakeSession(), asyncio.Semaphore(1), "BH-1", "https://www.bauhaus.ee/bh-1")
+            fetch_product_ean(FakeSession(), limiter, controller, "BH-1", "https://www.bauhaus.ee/bh-1")
         )
 
         self.assertEqual(ean, "4006381333931")
         self.assertEqual(source, "jsonld_gtin")
+
+    def test_fetch_product_ean_retries_http_429_and_reads_second_response(self):
+        class FakeResponse:
+            def __init__(self, status_code, text="", headers=None):
+                self.status_code = status_code
+                self.text = text
+                self.headers = headers or {}
+                self.url = "https://www.bauhaus.ee/bh-1"
+
+        class FakeSession:
+            def __init__(self):
+                self.responses = [
+                    FakeResponse(429, headers={"Retry-After": "0"}),
+                    FakeResponse(
+                        200,
+                        '<script type="application/ld+json">{"@type":"Product","sku":"BH-1","gtin13":"4006381333931"}</script>',
+                    ),
+                ]
+
+            async def get(self, *args, **kwargs):
+                return self.responses.pop(0)
+
+        async def fake_sleep(*args, **kwargs):
+            return None
+
+        limiter = AdjustableLimiter(1)
+        controller = AdaptiveLoadController(limiter)
+        with patch("parsers.services.bauhaus.asyncio.sleep", fake_sleep):
+            _, ean, source, _ = asyncio.run(
+                fetch_product_ean(FakeSession(), limiter, controller, "BH-1", "https://www.bauhaus.ee/bh-1")
+            )
+
+        self.assertEqual(ean, "4006381333931")
+        self.assertEqual(source, "jsonld_gtin")
+        self.assertEqual(controller.restrictions, 1)
+
+    def test_fetch_product_ean_retries_incomplete_http_200_before_not_found(self):
+        class FakeResponse:
+            def __init__(self, text):
+                self.status_code = 200
+                self.text = text
+                self.headers = {}
+                self.url = "https://www.bauhaus.ee/bh-1"
+
+        class FakeSession:
+            def __init__(self):
+                self.responses = [
+                    FakeResponse("<html>Security checkpoint</html>"),
+                    FakeResponse(
+                        '<script type="application/ld+json">{"@type":"Product","sku":"BH-1","gtin13":"4006381333931"}</script>'
+                    ),
+                ]
+
+            async def get(self, *args, **kwargs):
+                return self.responses.pop(0)
+
+        async def fake_sleep(*args, **kwargs):
+            return None
+
+        limiter = AdjustableLimiter(1)
+        controller = AdaptiveLoadController(limiter)
+        with patch("parsers.services.bauhaus.asyncio.sleep", fake_sleep):
+            _, ean, source, _ = asyncio.run(
+                fetch_product_ean(FakeSession(), limiter, controller, "BH-1", "https://www.bauhaus.ee/bh-1")
+            )
+
+        self.assertEqual(ean, "4006381333931")
+        self.assertEqual(source, "jsonld_gtin")
+
+    def test_fetch_product_ean_returns_real_not_found_only_for_normal_product_page(self):
+        class FakeResponse:
+            status_code = 200
+            text = '<script type="application/ld+json">{"@type":"Product","sku":"BH-1","name":"Bauhaus item"}</script>'
+            headers = {}
+            url = "https://www.bauhaus.ee/bh-1"
+
+        class FakeSession:
+            async def get(self, *args, **kwargs):
+                return FakeResponse()
+
+        limiter = AdjustableLimiter(1)
+        controller = AdaptiveLoadController(limiter)
+        _, ean, source, _ = asyncio.run(
+            fetch_product_ean(FakeSession(), limiter, controller, "BH-1", "https://www.bauhaus.ee/bh-1")
+        )
+
+        self.assertEqual(ean, "")
+        self.assertEqual(source, "real_not_found")
 
     def test_enrich_all_products_with_ean_sets_store_product_barcode(self):
         class FakeResponse:
@@ -470,6 +575,19 @@ class BauhausParserTests(StoreParserMixin, TestCase):
 
         self.assertEqual(product.barcode, "4006381333931")
         self.assertEqual(stats["scheduled"], 0)
+
+    def test_apply_existing_barcodes_preserves_database_barcode_before_enrichment(self):
+        product = StoreProduct(
+            external_id="BH-1",
+            sku="BH-1",
+            barcode="",
+            name="Bauhaus drill",
+            product_url="https://www.bauhaus.ee/bh-1",
+        )
+
+        apply_existing_barcodes([product], {"BH-1": "4006381333931"})
+
+        self.assertEqual(product.barcode, "4006381333931")
 
     def test_curl_cffi_client_raises_429_without_repeating_blocked_request(self):
         class FakeResponse:
