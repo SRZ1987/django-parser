@@ -1,8 +1,10 @@
 from .espak import EspakAdapter
+from .fere import FereAdapter
 
 
 ADAPTERS = {
     EspakAdapter.code: EspakAdapter,
+    FereAdapter.code: FereAdapter,
 }
 
 
