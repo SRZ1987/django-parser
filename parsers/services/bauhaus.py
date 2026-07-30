@@ -190,10 +190,9 @@ def retry_delay(attempt, retry_after):
 
 
 class BauhausClient:
-    def __init__(self, log_callback=None, category_limit=None, existing_barcodes=None):
+    def __init__(self, log_callback=None, category_limit=None):
         self.log_callback = log_callback
         self.category_limit = category_limit
-        self.existing_barcodes = existing_barcodes or {}
 
     async def fetch_products(self):
         async with BauhausHttpClient(log_callback=self.log_callback) as http_client:
@@ -230,7 +229,6 @@ class BauhausClient:
                 )
 
             await http_client.log(f"BAUHAUS completed: categories={len(leaf_categories)}; products={len(products)}")
-            apply_existing_barcodes(products, self.existing_barcodes)
             await enrich_all_products_with_ean(products, log_callback=http_client.log)
             return category_audit, products, self.category_limit is None
 
@@ -613,17 +611,20 @@ async def fetch_product_ean(session, limiter, controller, sku, product_url):
 
 async def enrich_all_products_with_ean(products, log_callback=None):
     targets = []
-    target_by_sku = {}
+    target_groups = {}
     for product in products:
         product.barcode = normalize_barcode_candidate(product.barcode)
         if product.barcode:
             continue
         sku = clean_text(product.sku)
-        product_url = clean_text(product.product_url)
-        if not sku or not product_url or sku in target_by_sku:
+        product_url = normalize_url(product.product_url)
+        if not sku or not product_url:
             continue
-        target_by_sku[sku] = product
-        targets.append((sku, product_url))
+        target_key = (sku, product_url)
+        if target_key not in target_groups:
+            target_groups[target_key] = []
+            targets.append((target_key, sku, product_url))
+        target_groups[target_key].append(product)
 
     async def log(message):
         if log_callback:
@@ -659,12 +660,14 @@ async def enrich_all_products_with_ean(products, log_callback=None):
                 try:
                     if item is None:
                         return
-                    sku, product_url = item
+                    target_key, sku, product_url = item
                     _, ean, source, _ = await fetch_product_ean(session, limiter, controller, sku, product_url)
                     async with state_lock:
                         stats["checked"] += 1
                         if ean:
-                            target_by_sku[sku].barcode = ean
+                            for product in target_groups[target_key]:
+                                if not product.barcode:
+                                    product.barcode = ean
                             stats["found"] += 1
                         else:
                             stats[source if source in stats else "request_errors"] += 1
@@ -723,17 +726,6 @@ def ean_stats(scheduled=0):
         "request_errors": 0,
         "invalid_gtin": 0,
     }
-
-
-def apply_existing_barcodes(products, existing_barcodes):
-    for product in products:
-        current = normalize_barcode_candidate(product.barcode)
-        if current:
-            product.barcode = current
-            continue
-        existing = normalize_barcode_candidate(existing_barcodes.get(product.external_id) or existing_barcodes.get(product.sku))
-        if existing:
-            product.barcode = existing
 
 
 def normalize_url(url):
@@ -991,19 +983,11 @@ class BauhausParser(StoreCatalogParser):
 
         category_limit = category_limit_from_env()
         self.allow_incomplete_import = category_limit is not None
-        existing_barcodes = await asyncio.to_thread(self._existing_barcodes)
         client = BauhausClient(
             log_callback=live_log,
             category_limit=category_limit,
-            existing_barcodes=existing_barcodes,
         )
         return await client.fetch_products()
-
-    def _existing_barcodes(self):
-        return {
-            external_id: barcode
-            for external_id, barcode in self.parser_config.shop.offers.exclude(barcode="").values_list("external_id", "barcode")
-        }
 
 
 def category_limit_from_env():

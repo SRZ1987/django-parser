@@ -13,7 +13,6 @@ from parsers.services.bauhaus import (
     BAUHAUS_WEBSITE_URL,
     BauhausClient,
     BauhausParser,
-    apply_existing_barcodes,
     category_urls_from_tree,
     discover_category_tree,
     extract_catalog_metadata,
@@ -576,18 +575,104 @@ class BauhausParserTests(StoreParserMixin, TestCase):
         self.assertEqual(product.barcode, "4006381333931")
         self.assertEqual(stats["scheduled"], 0)
 
-    def test_apply_existing_barcodes_preserves_database_barcode_before_enrichment(self):
-        product = StoreProduct(
+    def test_ean_enrichment_checks_same_sku_with_different_urls_separately(self):
+        class FakeResponse:
+            status_code = 200
+            headers = {}
+
+            def __init__(self, url):
+                self.url = url
+                ean = "4006381333931" if url.endswith("variant-a") else "9780201379624"
+                self.text = f'<script type="application/ld+json">{{"@type":"Product","sku":"BH-1","gtin13":"{ean}"}}</script>'
+
+        class FakeSession:
+            def __init__(self):
+                self.calls = []
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+            async def get(self, url, *args, **kwargs):
+                self.calls.append(url)
+                return FakeResponse(url)
+
+        fake_session = FakeSession()
+
+        def fake_session_factory(*args, **kwargs):
+            return fake_session
+
+        product_a = StoreProduct(
             external_id="BH-1",
             sku="BH-1",
-            barcode="",
-            name="Bauhaus drill",
-            product_url="https://www.bauhaus.ee/bh-1",
+            name="Variant A",
+            product_url="https://www.bauhaus.ee/variant-a",
+        )
+        product_b = StoreProduct(
+            external_id="BH-1",
+            sku="BH-1",
+            name="Variant B",
+            product_url="https://www.bauhaus.ee/variant-b",
         )
 
-        apply_existing_barcodes([product], {"BH-1": "4006381333931"})
+        with patch("parsers.services.bauhaus.CurlAsyncSession", fake_session_factory):
+            stats = asyncio.run(enrich_all_products_with_ean([product_a, product_b]))
 
-        self.assertEqual(product.barcode, "4006381333931")
+        self.assertEqual(len(fake_session.calls), 2)
+        self.assertEqual(product_a.barcode, "4006381333931")
+        self.assertEqual(product_b.barcode, "9780201379624")
+        self.assertEqual(stats["scheduled"], 2)
+        self.assertEqual(stats["found"], 2)
+
+    def test_ean_enrichment_deduplicates_only_same_sku_and_same_url(self):
+        class FakeResponse:
+            status_code = 200
+            headers = {}
+            url = "https://www.bauhaus.ee/same-card"
+            text = '<script type="application/ld+json">{"@type":"Product","sku":"BH-1","gtin13":"4006381333931"}</script>'
+
+        class FakeSession:
+            def __init__(self):
+                self.calls = []
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+            async def get(self, url, *args, **kwargs):
+                self.calls.append(url)
+                return FakeResponse()
+
+        fake_session = FakeSession()
+
+        def fake_session_factory(*args, **kwargs):
+            return fake_session
+
+        product_a = StoreProduct(
+            external_id="BH-1",
+            sku="BH-1",
+            name="Same card A",
+            product_url="https://www.bauhaus.ee/same-card",
+        )
+        product_b = StoreProduct(
+            external_id="BH-1",
+            sku="BH-1",
+            name="Same card B",
+            product_url="https://www.bauhaus.ee/same-card",
+        )
+
+        with patch("parsers.services.bauhaus.CurlAsyncSession", fake_session_factory):
+            stats = asyncio.run(enrich_all_products_with_ean([product_a, product_b]))
+
+        self.assertEqual(len(fake_session.calls), 1)
+        self.assertEqual(product_a.barcode, "4006381333931")
+        self.assertEqual(product_b.barcode, "4006381333931")
+        self.assertEqual(stats["scheduled"], 1)
+        self.assertEqual(stats["found"], 1)
 
     def test_curl_cffi_client_raises_429_without_repeating_blocked_request(self):
         class FakeResponse:
