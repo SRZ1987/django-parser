@@ -2,7 +2,7 @@ import os
 import threading
 
 from django.core.files import File
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, OperationalError, transaction
 from django.utils import timezone
 
 from parsers.adapters.registry import ADAPTERS, get_adapter_class
@@ -14,6 +14,10 @@ from .export_storage import export_work_paths
 
 
 class ParserBatchAlreadyRunning(Exception):
+    pass
+
+
+class ParserBatchLockMissing(Exception):
     pass
 
 
@@ -51,7 +55,12 @@ def start_batch(trigger, force=False):
     now = timezone.now()
     try:
         with transaction.atomic():
-            ParserBatchLock.objects.select_for_update().get(name="nightly_parser_batch")
+            try:
+                ParserBatchLock.objects.select_for_update().get(name="nightly_parser_batch")
+            except ParserBatchLock.DoesNotExist as exc:
+                raise ParserBatchLockMissing(
+                    "Parser batch lock is missing. Run migrations to create the 'nightly_parser_batch' lock row."
+                ) from exc
             running = ParserBatch.objects.filter(status=ParserBatch.STATUS_RUNNING).first()
             if running and not force:
                 raise ParserBatchAlreadyRunning("Parser batch is already running.")
@@ -60,6 +69,10 @@ def start_batch(trigger, force=False):
             return ParserBatch.objects.create(status=ParserBatch.STATUS_RUNNING, trigger=trigger, started_at=now, heartbeat_at=now)
     except IntegrityError as exc:
         raise ParserBatchAlreadyRunning("Parser batch is already running.") from exc
+    except OperationalError as exc:
+        if "locked" in str(exc).lower():
+            raise ParserBatchAlreadyRunning("Parser batch is already running.") from exc
+        raise
 
 
 def run_excel_parser(parser_config, trigger=ParserRun.TRIGGER_COMMAND):

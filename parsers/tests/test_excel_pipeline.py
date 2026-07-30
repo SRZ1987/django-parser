@@ -14,8 +14,15 @@ from openpyxl import Workbook
 from catalog.models import Product, ProductOffer, Shop
 from parsers.adapters.base import ParserResult
 from parsers.adapters.espak import EspakAdapter
-from parsers.models import ParserBatch, ParserConfig, ParserExport, ParserQueueJob, ParserRun
-from parsers.services.batch_runner import ParserBatchAlreadyRunning, process_next_queue_job, run_all_parsers, run_excel_parser, start_batch
+from parsers.models import ParserBatch, ParserBatchLock, ParserConfig, ParserExport, ParserQueueJob, ParserRun
+from parsers.services.batch_runner import (
+    ParserBatchAlreadyRunning,
+    ParserBatchLockMissing,
+    process_next_queue_job,
+    run_all_parsers,
+    run_excel_parser,
+    start_batch,
+)
 from parsers.services.excel_importer import ExcelCatalogImporter, ExcelImportError
 from parsers.services.excel_validation import ExcelCatalogValidator
 from parsers.standalone import espak_parser
@@ -298,6 +305,9 @@ class BatchRunnerTests(TestCase):
 
 
 class BatchConcurrencyTests(TransactionTestCase):
+    def setUp(self):
+        ParserBatchLock.objects.get_or_create(name="nightly_parser_batch")
+
     def test_two_parallel_start_batch_calls_do_not_create_two_running_batches(self):
         barrier = threading.Barrier(2)
 
@@ -314,6 +324,12 @@ class BatchConcurrencyTests(TransactionTestCase):
         self.assertEqual(results.count(ParserBatch.STATUS_RUNNING), 1)
         self.assertEqual(results.count("blocked"), 1)
         self.assertEqual(ParserBatch.objects.filter(status=ParserBatch.STATUS_RUNNING).count(), 1)
+
+    def test_missing_batch_lock_raises_configuration_error(self):
+        ParserBatchLock.objects.filter(name="nightly_parser_batch").delete()
+
+        with self.assertRaises(ParserBatchLockMissing):
+            start_batch(ParserRun.TRIGGER_COMMAND)
 
 
 class ParserExportAdminTests(TestCase):
