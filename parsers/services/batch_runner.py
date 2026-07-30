@@ -1,11 +1,12 @@
 import os
+import threading
 
 from django.core.files import File
 from django.db import transaction
 from django.utils import timezone
 
 from parsers.adapters.registry import ADAPTERS, get_adapter_class
-from parsers.models import ParserBatch, ParserConfig, ParserExport, ParserQueueJob, ParserRun
+from parsers.models import ParserBatch, ParserBatchLock, ParserConfig, ParserExport, ParserQueueJob, ParserRun
 
 from .excel_importer import ExcelCatalogImporter
 from .excel_validation import ExcelCatalogValidator
@@ -14,6 +15,13 @@ from .export_storage import export_work_paths
 
 class ParserBatchAlreadyRunning(Exception):
     pass
+
+
+class ParserCancelled(Exception):
+    pass
+
+
+_BATCH_START_MUTEX = threading.Lock()
 
 
 def run_all_parsers(trigger=ParserRun.TRIGGER_COMMAND, force=False):
@@ -44,13 +52,16 @@ def run_all_parsers(trigger=ParserRun.TRIGGER_COMMAND, force=False):
 
 def start_batch(trigger, force=False):
     now = timezone.now()
-    with transaction.atomic():
-        running = ParserBatch.objects.select_for_update().filter(status=ParserBatch.STATUS_RUNNING).first()
-        if running and not force:
-            raise ParserBatchAlreadyRunning("Parser batch is already running.")
-        if running and force:
-            raise ParserBatchAlreadyRunning("Cannot force a second parser batch while another batch is running.")
-        return ParserBatch.objects.create(status=ParserBatch.STATUS_RUNNING, trigger=trigger, started_at=now, heartbeat_at=now)
+    with _BATCH_START_MUTEX:
+        ParserBatchLock.objects.get_or_create(name="nightly_parser_batch")
+        with transaction.atomic():
+            ParserBatchLock.objects.select_for_update().get(name="nightly_parser_batch")
+            running = ParserBatch.objects.filter(status=ParserBatch.STATUS_RUNNING).first()
+            if running and not force:
+                raise ParserBatchAlreadyRunning("Parser batch is already running.")
+            if running and force:
+                raise ParserBatchAlreadyRunning("Cannot force a second parser batch while another batch is running.")
+            return ParserBatch.objects.create(status=ParserBatch.STATUS_RUNNING, trigger=trigger, started_at=now, heartbeat_at=now)
 
 
 def run_excel_parser(parser_config, trigger=ParserRun.TRIGGER_COMMAND):
@@ -70,23 +81,43 @@ def run_excel_parser(parser_config, trigger=ParserRun.TRIGGER_COMMAND):
     adapter = adapter_class()
 
     adapter_logs = []
+    adapter_logs_lock = threading.Lock()
+    stop_log_flusher = threading.Event()
 
     def log(message):
-        adapter_logs.append(str(message))
+        with adapter_logs_lock:
+            adapter_logs.append(str(message))
+
+    def flush_logs(force=False):
+        with adapter_logs_lock:
+            if not adapter_logs:
+                return
+            message = "\n".join(adapter_logs)
+            adapter_logs.clear()
+        parser_run.log = append_log(parser_run.log, message)
+        parser_run.heartbeat_at = timezone.now()
+        parser_run.save(update_fields=["log", "heartbeat_at"])
+
+    def flush_logs_periodically():
+        while not stop_log_flusher.wait(15):
+            flush_logs()
 
     tmp_path, final_path = export_work_paths(parser_config.code)
+    log_flusher = threading.Thread(target=flush_logs_periodically, daemon=True)
+    log_flusher.start()
     try:
         result = _run_adapter(adapter, tmp_path, log)
-        if adapter_logs:
-            parser_run.log = append_log(parser_run.log, "\n".join(adapter_logs))
-            parser_run.heartbeat_at = timezone.now()
-            parser_run.save(update_fields=["log", "heartbeat_at"])
+        stop_log_flusher.set()
+        log_flusher.join(timeout=5)
+        flush_logs(force=True)
         if not result.success:
             raise RuntimeError(result.error_message or "Parser did not create Excel export.")
         os.replace(tmp_path, final_path)
 
+        _check_cancel_requested(parser_run)
         parser_run.stage = ParserRun.STAGE_EXCEL_VALIDATION
         parser_run.save(update_fields=["stage"])
+        _check_cancel_requested(parser_run)
         validation = ExcelCatalogValidator().validate(final_path, column_map=adapter.column_map, worksheet_name=adapter.worksheet_name)
         if not validation.is_valid:
             raise RuntimeError(validation.error_message)
@@ -96,10 +127,12 @@ def run_excel_parser(parser_config, trigger=ParserRun.TRIGGER_COMMAND):
         parser_run.stage = ParserRun.STAGE_DATABASE_IMPORT
         parser_run.save(update_fields=["excel_rows_count", "stage"])
 
+        _check_cancel_requested(parser_run)
         import_result = ExcelCatalogImporter().import_file(
             parser_export,
             column_map=adapter.column_map,
             worksheet_name=adapter.worksheet_name,
+            parser_run=parser_run,
         )
         parser_run.products_found = import_result.products_found
         parser_run.products_created = import_result.products_created
@@ -113,6 +146,9 @@ def run_excel_parser(parser_config, trigger=ParserRun.TRIGGER_COMMAND):
         parser_run.save()
         return parser_run
     except Exception as exc:
+        stop_log_flusher.set()
+        log_flusher.join(timeout=5)
+        flush_logs(force=True)
         parser_run.status = ParserRun.STATUS_FAILED
         parser_run.error_message = str(exc)
         parser_run.errors_count = max(parser_run.errors_count, 1)
@@ -184,3 +220,9 @@ def _failed_run(parser_config, trigger, message):
 
 def append_log(current_log, message):
     return f"{current_log}\n{message}" if current_log else message
+
+
+def _check_cancel_requested(parser_run):
+    parser_run.refresh_from_db(fields=["cancel_requested"])
+    if parser_run.cancel_requested:
+        raise ParserCancelled("Parser run was cancelled before the next stage.")

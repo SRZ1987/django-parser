@@ -182,6 +182,18 @@ class ParserBatch(models.Model):
         return f"Parser batch #{self.pk} ({self.status})"
 
 
+class ParserBatchLock(models.Model):
+    name = models.CharField(max_length=50, unique=True, default="nightly_parser_batch")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Parser batch lock"
+        verbose_name_plural = "Parser batch locks"
+
+    def __str__(self):
+        return self.name
+
+
 class ParserQueueJob(models.Model):
     STATUS_PENDING = "pending"
     STATUS_RUNNING = "running"

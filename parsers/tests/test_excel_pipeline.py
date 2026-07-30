@@ -1,18 +1,22 @@
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files import File
-from django.test import Client, TestCase, override_settings
+from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from openpyxl import Workbook
 
 from catalog.models import Product, ProductOffer, Shop
+from parsers.adapters.base import ParserResult
 from parsers.adapters.espak import EspakAdapter
 from parsers.models import ParserBatch, ParserConfig, ParserExport, ParserQueueJob, ParserRun
-from parsers.services.batch_runner import ParserBatchAlreadyRunning, process_next_queue_job, run_all_parsers
-from parsers.services.excel_importer import ExcelCatalogImporter
+from parsers.services.batch_runner import ParserBatchAlreadyRunning, process_next_queue_job, run_all_parsers, run_excel_parser, start_batch
+from parsers.services.excel_importer import ExcelCatalogImporter, ExcelImportError
 from parsers.services.excel_validation import ExcelCatalogValidator
 from parsers.standalone import espak_parser
 
@@ -125,6 +129,75 @@ class ExcelImportTests(TestCase):
         self.assertTrue(offer.is_active)
         self.assertTrue(offer.is_available)
 
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_error_after_excel_read_does_not_leave_partial_import(self):
+        product = Product.objects.create(name="Old hammer")
+        ProductOffer.objects.create(
+            shop=self.shop,
+            product=product,
+            external_id="SKU-OLD",
+            sku="SKU-OLD",
+            original_name="Old hammer",
+            is_active=True,
+            is_available=True,
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "espak.xlsx"
+            create_xlsx(path, rows=[["New hammer", 10, "", "", "", "SKU-NEW", "", ""]])
+            parser_export = self._create_export(path, rows_count=1)
+
+            with patch.object(ExcelCatalogImporter, "_deactivate_missing_offers", side_effect=RuntimeError("boom")):
+                with self.assertRaises(RuntimeError):
+                    ExcelCatalogImporter().import_file(parser_export, column_map=EspakAdapter.column_map)
+
+        self.assertFalse(ProductOffer.objects.filter(shop=self.shop, external_id="SKU-NEW").exists())
+        self.assertTrue(ProductOffer.objects.get(shop=self.shop, external_id="SKU-OLD").is_active)
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_erroneous_rows_do_not_deactivate_missing_offers(self):
+        product = Product.objects.create(name="Old hammer")
+        ProductOffer.objects.create(
+            shop=self.shop,
+            product=product,
+            external_id="SKU-OLD",
+            sku="SKU-OLD",
+            original_name="Old hammer",
+            is_active=True,
+            is_available=True,
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "espak.xlsx"
+            create_xlsx(
+                path,
+                rows=[
+                    ["New hammer", 10, "", "", "", "SKU-NEW", "", ""],
+                    ["", 12, "", "", "", "SKU-BAD", "", ""],
+                ],
+            )
+            parser_export = self._create_export(path, rows_count=2)
+
+            with self.assertRaises(ExcelImportError):
+                ExcelCatalogImporter().import_file(parser_export, column_map=EspakAdapter.column_map)
+
+        parser_export.refresh_from_db()
+        old_offer = ProductOffer.objects.get(shop=self.shop, external_id="SKU-OLD")
+        self.assertTrue(old_offer.is_active)
+        self.assertFalse(parser_export.import_success)
+        self.assertIn("row 3", parser_export.validation_error)
+        self.assertFalse(ProductOffer.objects.filter(shop=self.shop, external_id="SKU-NEW").exists())
+
+    def test_importer_reads_storage_file_without_path_property(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "espak.xlsx"
+            create_xlsx(path, rows=[["Hammer", 10, "", "", "", "SKU-1", "", ""]])
+            parser_export = PathlessExport(self.shop, path)
+
+            result = ExcelCatalogImporter().import_file(parser_export, column_map=EspakAdapter.column_map)
+
+        self.assertEqual(result.products_created, 1)
+        self.assertTrue(parser_export.import_success)
+        self.assertEqual(ProductOffer.objects.get(shop=self.shop, external_id="SKU-1").original_name, "Hammer")
+
     def _create_export(self, path, rows_count):
         parser_export = ParserExport(
             parser_run=self.run,
@@ -136,6 +209,28 @@ class ExcelImportTests(TestCase):
         with open(path, "rb") as handle:
             parser_export.file.save(path.name, File(handle), save=True)
         return parser_export
+
+
+class PathlessFile:
+    def __init__(self, path):
+        self.path_to_open = path
+
+    def open(self, mode="rb"):
+        return open(self.path_to_open, mode)
+
+
+class PathlessExport(SimpleNamespace):
+    def __init__(self, shop, path):
+        super().__init__(
+            shop=shop,
+            file=PathlessFile(path),
+            import_success=False,
+            validation_error="",
+            imported_at=None,
+        )
+
+    def save(self, update_fields=None):
+        return None
 
 
 class BatchRunnerTests(TestCase):
@@ -181,6 +276,44 @@ class BatchRunnerTests(TestCase):
         self.assertIsNone(second)
         self.assertEqual(job.status, ParserQueueJob.STATUS_SUCCESS)
         self.assertEqual(job.attempts, 1)
+
+    def test_cancel_requested_prevents_validation_stage(self):
+        class FakeAdapter:
+            column_map = EspakAdapter.column_map
+            worksheet_name = None
+
+        def fake_run_adapter(adapter, tmp_path, log):
+            create_xlsx(tmp_path, rows=[["Hammer", 10, "", "", "", "SKU-1", "", ""]])
+            ParserRun.objects.filter(parser=self.config_a, status=ParserRun.STATUS_RUNNING).update(cancel_requested=True)
+            return ParserResult(success=True, output_path=str(tmp_path), products_count=1)
+
+        with patch("parsers.services.batch_runner.get_adapter_class", return_value=FakeAdapter):
+            with patch("parsers.services.batch_runner._run_adapter", fake_run_adapter):
+                with patch.object(ExcelCatalogValidator, "validate") as validate:
+                    run = run_excel_parser(self.config_a)
+
+        validate.assert_not_called()
+        self.assertEqual(run.status, ParserRun.STATUS_FAILED)
+        self.assertIn("cancelled", run.error_message)
+
+
+class BatchConcurrencyTests(TransactionTestCase):
+    def test_two_parallel_start_batch_calls_do_not_create_two_running_batches(self):
+        barrier = threading.Barrier(2)
+
+        def call_start_batch():
+            barrier.wait()
+            try:
+                return start_batch(ParserRun.TRIGGER_COMMAND).status
+            except ParserBatchAlreadyRunning:
+                return "blocked"
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _: call_start_batch(), range(2)))
+
+        self.assertEqual(results.count(ParserBatch.STATUS_RUNNING), 1)
+        self.assertEqual(results.count("blocked"), 1)
+        self.assertEqual(ParserBatch.objects.filter(status=ParserBatch.STATUS_RUNNING).count(), 1)
 
 
 class ParserExportAdminTests(TestCase):
