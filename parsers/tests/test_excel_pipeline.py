@@ -1,6 +1,7 @@
 import tempfile
 import threading
 import asyncio
+import time
 from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
@@ -33,6 +34,7 @@ from parsers.services.batch_runner import (
 from parsers.services.export_storage import export_work_paths
 from parsers.services.excel_importer import ExcelCatalogImporter, ExcelImportError
 from parsers.services.excel_validation import ExcelCatalogValidator
+from parsers.services.heartbeat import HeartbeatTicker
 from parsers.services.recovery import (
     STALE_BATCH_MESSAGE,
     STALE_JOB_MESSAGE,
@@ -571,6 +573,105 @@ class ParserRecoveryTests(TestCase):
         self.assertIn("runs=1", output.getvalue())
         self.assertIn("jobs=1", output.getvalue())
         self.assertIn("batches=1", output.getvalue())
+
+    @override_settings(PARSER_STALE_RUN_MINUTES=30)
+    def test_recovery_does_not_overwrite_run_completed_during_recovery(self):
+        old_time = timezone.now() - timedelta(minutes=31)
+        parser_run = ParserRun.objects.create(
+            parser=self.config,
+            status=ParserRun.STATUS_RUNNING,
+            trigger=ParserRun.TRIGGER_COMMAND,
+            started_at=old_time,
+            heartbeat_at=old_time,
+        )
+
+        def complete_before_update(obj, cutoff):
+            ParserRun.objects.filter(pk=parser_run.pk).update(status=ParserRun.STATUS_SUCCESS)
+            return True
+
+        with patch("parsers.services.recovery._is_stale", complete_before_update):
+            result = recover_stale_parser_state()
+
+        parser_run.refresh_from_db()
+        self.assertEqual(result.runs, 0)
+        self.assertEqual(parser_run.status, ParserRun.STATUS_SUCCESS)
+
+
+class HeartbeatTickerTests(TransactionTestCase):
+    def setUp(self):
+        self.shop = Shop.objects.create(name="ESPAK", code="espak")
+        self.config = ParserConfig.objects.create(shop=self.shop, name="ESPAK parser", code="espak")
+
+    @override_settings(PARSER_STALE_JOB_MINUTES=1)
+    def test_live_queue_job_with_heartbeat_is_not_recovered(self):
+        old_time = timezone.now() - timedelta(minutes=2)
+        job = ParserQueueJob.objects.create(
+            parser_config=self.config,
+            status=ParserQueueJob.STATUS_RUNNING,
+            started_at=old_time,
+            heartbeat_at=old_time,
+        )
+
+        with HeartbeatTicker([(ParserQueueJob, job.pk, ParserQueueJob.STATUS_RUNNING)], interval_seconds=0.05):
+            time.sleep(0.15)
+            result = recover_stale_parser_state()
+
+        job.refresh_from_db()
+        self.assertEqual(result.jobs, 0)
+        self.assertEqual(job.status, ParserQueueJob.STATUS_RUNNING)
+        self.assertGreater(job.heartbeat_at, old_time)
+
+    @override_settings(PARSER_STALE_BATCH_MINUTES=1)
+    def test_live_batch_with_heartbeat_is_not_recovered(self):
+        old_time = timezone.now() - timedelta(minutes=2)
+        batch = ParserBatch.objects.create(
+            status=ParserBatch.STATUS_RUNNING,
+            started_at=old_time,
+            heartbeat_at=old_time,
+        )
+
+        with HeartbeatTicker([(ParserBatch, batch.pk, ParserBatch.STATUS_RUNNING)], interval_seconds=0.05):
+            time.sleep(0.15)
+            result = recover_stale_parser_state()
+
+        batch.refresh_from_db()
+        self.assertEqual(result.batches, 0)
+        self.assertEqual(batch.status, ParserBatch.STATUS_RUNNING)
+        self.assertGreater(batch.heartbeat_at, old_time)
+
+    def test_parser_run_without_logs_receives_heartbeat(self):
+        old_time = timezone.now() - timedelta(minutes=2)
+        parser_run = ParserRun.objects.create(
+            parser=self.config,
+            status=ParserRun.STATUS_RUNNING,
+            trigger=ParserRun.TRIGGER_COMMAND,
+            started_at=old_time,
+            heartbeat_at=old_time,
+        )
+
+        with HeartbeatTicker([(ParserRun, parser_run.pk, ParserRun.STATUS_RUNNING)], interval_seconds=0.05):
+            time.sleep(0.15)
+
+        parser_run.refresh_from_db()
+        self.assertGreater(parser_run.heartbeat_at, old_time)
+
+    def test_ticker_stops_after_context_exit(self):
+        old_time = timezone.now() - timedelta(minutes=2)
+        job = ParserQueueJob.objects.create(
+            parser_config=self.config,
+            status=ParserQueueJob.STATUS_RUNNING,
+            started_at=old_time,
+            heartbeat_at=old_time,
+        )
+
+        with HeartbeatTicker([(ParserQueueJob, job.pk, ParserQueueJob.STATUS_RUNNING)], interval_seconds=0.05):
+            time.sleep(0.12)
+
+        job.refresh_from_db()
+        stopped_at = job.heartbeat_at
+        time.sleep(0.15)
+        job.refresh_from_db()
+        self.assertEqual(job.heartbeat_at, stopped_at)
 
 
 class BatchConcurrencyTests(TransactionTestCase):

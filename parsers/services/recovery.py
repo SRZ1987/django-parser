@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
+from django.db.models import F
 from django.utils import timezone
 
 from parsers.models import ParserBatch, ParserQueueJob, ParserRun
@@ -35,13 +36,14 @@ def recover_stale_runs(now=None):
     for parser_run in ParserRun.objects.filter(status=ParserRun.STATUS_RUNNING).select_related("parser"):
         if not _is_stale(parser_run, cutoff):
             continue
-        parser_run.status = ParserRun.STATUS_FAILED
-        parser_run.stage = ParserRun.STAGE_COMPLETED
-        parser_run.finished_at = now
-        parser_run.error_message = STALE_RUN_MESSAGE
-        parser_run.errors_count = max(parser_run.errors_count, 1)
-        parser_run.save(update_fields=["status", "stage", "finished_at", "error_message", "errors_count"])
-        recovered += 1
+        updated = _stale_filter(ParserRun.objects.filter(pk=parser_run.pk, status=ParserRun.STATUS_RUNNING), parser_run, cutoff).update(
+            status=ParserRun.STATUS_FAILED,
+            stage=ParserRun.STAGE_COMPLETED,
+            finished_at=now,
+            error_message=STALE_RUN_MESSAGE,
+            errors_count=F("errors_count") + 1,
+        )
+        recovered += updated
     return recovered
 
 
@@ -52,11 +54,12 @@ def recover_stale_queue_jobs(now=None):
     for job in ParserQueueJob.objects.filter(status=ParserQueueJob.STATUS_RUNNING):
         if not _is_stale(job, cutoff):
             continue
-        job.status = ParserQueueJob.STATUS_FAILED
-        job.finished_at = now
-        job.error_message = STALE_JOB_MESSAGE
-        job.save(update_fields=["status", "finished_at", "error_message"])
-        recovered += 1
+        updated = _stale_filter(ParserQueueJob.objects.filter(pk=job.pk, status=ParserQueueJob.STATUS_RUNNING), job, cutoff).update(
+            status=ParserQueueJob.STATUS_FAILED,
+            finished_at=now,
+            error_message=STALE_JOB_MESSAGE,
+        )
+        recovered += updated
     return recovered
 
 
@@ -67,18 +70,25 @@ def recover_stale_batches(now=None):
     for batch in ParserBatch.objects.filter(status=ParserBatch.STATUS_RUNNING):
         if not _is_stale(batch, cutoff):
             continue
-        batch.status = ParserBatch.STATUS_FAILED
-        batch.finished_at = now
-        batch.current_parser = None
-        batch.log = _append_log(batch.log, STALE_BATCH_MESSAGE)
-        batch.save(update_fields=["status", "finished_at", "current_parser", "log"])
-        recovered += 1
+        updated = _stale_filter(ParserBatch.objects.filter(pk=batch.pk, status=ParserBatch.STATUS_RUNNING), batch, cutoff).update(
+            status=ParserBatch.STATUS_FAILED,
+            finished_at=now,
+            current_parser=None,
+            log=_append_log(batch.log, STALE_BATCH_MESSAGE),
+        )
+        recovered += updated
     return recovered
 
 
 def _is_stale(obj, cutoff):
     timestamp = obj.heartbeat_at or obj.started_at
     return timestamp is not None and timestamp < cutoff
+
+
+def _stale_filter(queryset, obj, cutoff):
+    if obj.heartbeat_at is not None:
+        return queryset.filter(heartbeat_at__lt=cutoff)
+    return queryset.filter(heartbeat_at__isnull=True, started_at__lt=cutoff)
 
 
 def _append_log(current_log, message):
