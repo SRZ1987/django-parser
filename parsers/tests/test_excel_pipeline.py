@@ -12,6 +12,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.files import File
 from django.core.management import call_command
+from django.db import OperationalError
 from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -966,6 +967,18 @@ class HeartbeatTickerTests(TransactionTestCase):
 
         parser_run.refresh_from_db()
         self.assertGreater(parser_run.heartbeat_at, old_time)
+
+    def test_heartbeat_database_error_does_not_escape(self):
+        parser_run = ParserRun.objects.create(
+            parser=self.config,
+            status=ParserRun.STATUS_RUNNING,
+            trigger=ParserRun.TRIGGER_COMMAND,
+            heartbeat_at=timezone.now(),
+        )
+        ticker = HeartbeatTicker([(ParserRun, parser_run.pk, ParserRun.STATUS_RUNNING)], interval_seconds=0.05)
+
+        with patch("django.db.models.query.QuerySet.update", side_effect=OperationalError("database is locked")):
+            ticker.beat()
 
     def test_ticker_stops_after_context_exit(self):
         old_time = timezone.now() - timedelta(minutes=2)

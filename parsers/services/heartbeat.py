@@ -1,7 +1,7 @@
 import threading
 
 from django.conf import settings
-from django.db import close_old_connections
+from django.db import DatabaseError, close_old_connections
 from django.utils import timezone
 
 
@@ -36,7 +36,10 @@ class HeartbeatTicker:
         close_old_connections()
         try:
             for model, pk, running_status in list(self.targets):
-                model.objects.filter(pk=pk, status=running_status).update(heartbeat_at=now)
+                try:
+                    model.objects.filter(pk=pk, status=running_status).update(heartbeat_at=now)
+                except DatabaseError:
+                    continue
         finally:
             close_old_connections()
 
