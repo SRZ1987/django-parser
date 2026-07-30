@@ -20,6 +20,7 @@ from openpyxl import Workbook, load_workbook
 from catalog.models import Product, ProductOffer, Shop
 from parsers.adapters.base import ParserResult
 from parsers.adapters.bauhof import BauhofAdapter
+from parsers.adapters.depo import DepoAdapter
 from parsers.adapters.ehituseabc import EhituseABCAdapter
 from parsers.adapters.espak import EspakAdapter
 from parsers.adapters.fere import FereAdapter
@@ -44,6 +45,7 @@ from parsers.services.recovery import (
     recover_stale_parser_state,
 )
 from parsers.standalone import bauhof_parser
+from parsers.standalone import depo_parser
 from parsers.standalone import espak_parser
 from parsers.standalone import ehituseabc_parser
 from parsers.standalone import fere_parser
@@ -448,9 +450,88 @@ class BauhofAdapterTests(TestCase):
         self.assertEqual(logs, ["Bauhof progress"])
 
 
+class DepoAdapterTests(TestCase):
+    def test_standalone_wrapper_creates_excel(self):
+        class FakeDepoParser(depo_parser.DepoParser):
+            async def get_categories(self, session):
+                return [1]
+
+            async def prepare_queue(self, session, categories, queue):
+                self.products["SKU-DEPO-1"] = {
+                    "Название товара": "DEPO hammer",
+                    "Цена": 11.25,
+                    "Цена со скидкой": "",
+                    "Цена со скидкой 2": "",
+                    "Штрихкод": "4740000000001",
+                    "Код магазина": "SKU-DEPO-1",
+                    "Фото": "https://img.test/depo.jpg",
+                    "Ссылка": "https://online.depo.ee/product/SKU-DEPO-1",
+                }
+
+            async def worker(self, number, session, queue):
+                task = await queue.get()
+                queue.task_done()
+                if task is None:
+                    return
+
+        logs = []
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "depo.xlsx"
+            with patch("parsers.standalone.depo_parser.DepoParser", FakeDepoParser):
+                asyncio.run(depo_parser.main(output_path=output_path, log_callback=logs.append))
+
+            workbook = load_workbook(output_path, read_only=True, data_only=True)
+            try:
+                worksheet = workbook[DepoAdapter.worksheet_name]
+                rows_count = max(worksheet.max_row - 1, 0)
+            finally:
+                workbook.close()
+
+        self.assertEqual(rows_count, 1)
+        self.assertTrue(logs)
+
+    def test_adapter_runs_standalone_and_counts_products(self):
+        calls = {}
+
+        async def fake_main(output_path=None, log_callback=None):
+            calls["output_path"] = output_path
+            calls["log_callback"] = log_callback
+            log_callback("DEPO progress")
+            create_xlsx(
+                output_path,
+                headers=depo_parser.COLUMNS,
+                sheet_name=DepoAdapter.worksheet_name,
+                rows=[
+                    [
+                        "DEPO hammer",
+                        11.25,
+                        "",
+                        "",
+                        "4740000000001",
+                        "SKU-DEPO-1",
+                        "https://img.test/depo.jpg",
+                        "https://online.depo.ee/product/SKU-DEPO-1",
+                    ]
+                ],
+            )
+
+        logs = []
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "depo.xlsx"
+            with patch("parsers.adapters.depo.depo_parser.main", fake_main):
+                result = asyncio.run(DepoAdapter().run(output_path, log_callback=logs.append))
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output_path, str(output_path))
+        self.assertEqual(result.products_count, 1)
+        self.assertEqual(calls["output_path"], output_path)
+        self.assertEqual(logs, ["DEPO progress"])
+
+
 class AdapterRegistryTests(TestCase):
     def test_registry_contains_espak_and_fere(self):
         self.assertIs(ADAPTERS["bauhof"], BauhofAdapter)
+        self.assertIs(ADAPTERS["depo"], DepoAdapter)
         self.assertIs(ADAPTERS["ehituseabc"], EhituseABCAdapter)
         self.assertIs(ADAPTERS["espak"], EspakAdapter)
         self.assertIs(ADAPTERS["fere"], FereAdapter)
