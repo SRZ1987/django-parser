@@ -128,6 +128,10 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", BASE_DIR / "media"))
+PARSER_EXPORT_RETENTION_DAYS = int(os.getenv("PARSER_EXPORT_RETENTION_DAYS", "30"))
+PARSER_EXPORT_WORK_DIR = Path(os.getenv("PARSER_EXPORT_WORK_DIR", MEDIA_ROOT / "parser_export_work"))
 
 STORAGES = {
     "default": {
