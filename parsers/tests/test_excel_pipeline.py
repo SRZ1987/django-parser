@@ -15,10 +15,11 @@ from django.core.management import call_command
 from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from catalog.models import Product, ProductOffer, Shop
 from parsers.adapters.base import ParserResult
+from parsers.adapters.ehituseabc import EhituseABCAdapter
 from parsers.adapters.espak import EspakAdapter
 from parsers.adapters.fere import FereAdapter
 from parsers.adapters.registry import ADAPTERS
@@ -42,12 +43,15 @@ from parsers.services.recovery import (
     recover_stale_parser_state,
 )
 from parsers.standalone import espak_parser
+from parsers.standalone import ehituseabc_parser
 from parsers.standalone import fere_parser
 
 
-def create_xlsx(path, headers=None, rows=None):
+def create_xlsx(path, headers=None, rows=None, sheet_name=None):
     workbook = Workbook()
     worksheet = workbook.active
+    if sheet_name:
+        worksheet.title = sheet_name
     worksheet.append(headers or espak_parser.COLUMNS)
     for row in rows or []:
         worksheet.append(row)
@@ -305,8 +309,76 @@ class FereAdapterTests(TestCase):
         self.assertEqual(logs, ["FERE progress"])
 
 
+class EhituseABCAdapterTests(TestCase):
+    def test_standalone_wrapper_creates_excel(self):
+        products = [
+            {
+                "sku": "A065162",
+                "name": "6-KANTVÕTMETE KOMPLEKT 16 OSA KREATOR",
+                "price": 25.9,
+                "salePrice": 16.9,
+                "image": "/images/product.jpeg",
+                "url": "/ee/product",
+            }
+        ]
+        logs = []
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "ehituseabc.xlsx"
+            with patch("parsers.standalone.ehituseabc_parser.download_all_products", return_value=products):
+                asyncio.run(ehituseabc_parser.main(output_path=output_path, log_callback=logs.append))
+
+            workbook = load_workbook(output_path, read_only=True, data_only=True)
+            try:
+                worksheet = workbook[EhituseABCAdapter.worksheet_name]
+                rows_count = max(worksheet.max_row - 1, 0)
+            finally:
+                workbook.close()
+
+        self.assertEqual(rows_count, 1)
+        self.assertTrue(logs)
+
+    def test_adapter_runs_standalone_and_counts_products(self):
+        calls = {}
+
+        async def fake_main(output_path=None, log_callback=None):
+            calls["output_path"] = output_path
+            calls["log_callback"] = log_callback
+            log_callback("EhituseABC progress")
+            create_xlsx(
+                output_path,
+                headers=ehituseabc_parser.COLUMNS,
+                sheet_name=EhituseABCAdapter.worksheet_name,
+                rows=[
+                    [
+                        "Hammer",
+                        10,
+                        "",
+                        "",
+                        "4740000000001",
+                        "ABC-1",
+                        "https://img.test/abc.jpg",
+                        "https://www.ehituseabc.ee/ee/item",
+                    ]
+                ],
+            )
+
+        logs = []
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "ehituseabc.xlsx"
+            with patch("parsers.adapters.ehituseabc.ehituseabc_parser.main", fake_main):
+                result = asyncio.run(EhituseABCAdapter().run(output_path, log_callback=logs.append))
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output_path, str(output_path))
+        self.assertEqual(result.products_count, 1)
+        self.assertEqual(calls["output_path"], output_path)
+        self.assertEqual(logs, ["EhituseABC progress"])
+
+
 class AdapterRegistryTests(TestCase):
     def test_registry_contains_espak_and_fere(self):
+        self.assertIs(ADAPTERS["ehituseabc"], EhituseABCAdapter)
         self.assertIs(ADAPTERS["espak"], EspakAdapter)
         self.assertIs(ADAPTERS["fere"], FereAdapter)
 
