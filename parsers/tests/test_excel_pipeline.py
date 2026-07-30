@@ -293,7 +293,7 @@ class BatchRunnerTests(TestCase):
                     run = run_excel_parser(self.config_a)
 
         validate.assert_not_called()
-        self.assertEqual(run.status, ParserRun.STATUS_FAILED)
+        self.assertEqual(run.status, ParserRun.STATUS_CANCELLED)
         self.assertIn("cancelled", run.error_message)
 
 

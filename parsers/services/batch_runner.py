@@ -2,7 +2,7 @@ import os
 import threading
 
 from django.core.files import File
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from parsers.adapters.registry import ADAPTERS, get_adapter_class
@@ -19,9 +19,6 @@ class ParserBatchAlreadyRunning(Exception):
 
 class ParserCancelled(Exception):
     pass
-
-
-_BATCH_START_MUTEX = threading.Lock()
 
 
 def run_all_parsers(trigger=ParserRun.TRIGGER_COMMAND, force=False):
@@ -52,8 +49,7 @@ def run_all_parsers(trigger=ParserRun.TRIGGER_COMMAND, force=False):
 
 def start_batch(trigger, force=False):
     now = timezone.now()
-    with _BATCH_START_MUTEX:
-        ParserBatchLock.objects.get_or_create(name="nightly_parser_batch")
+    try:
         with transaction.atomic():
             ParserBatchLock.objects.select_for_update().get(name="nightly_parser_batch")
             running = ParserBatch.objects.filter(status=ParserBatch.STATUS_RUNNING).first()
@@ -62,6 +58,8 @@ def start_batch(trigger, force=False):
             if running and force:
                 raise ParserBatchAlreadyRunning("Cannot force a second parser batch while another batch is running.")
             return ParserBatch.objects.create(status=ParserBatch.STATUS_RUNNING, trigger=trigger, started_at=now, heartbeat_at=now)
+    except IntegrityError as exc:
+        raise ParserBatchAlreadyRunning("Parser batch is already running.") from exc
 
 
 def run_excel_parser(parser_config, trigger=ParserRun.TRIGGER_COMMAND):
@@ -142,6 +140,15 @@ def run_excel_parser(parser_config, trigger=ParserRun.TRIGGER_COMMAND):
         parser_run.errors_count = import_result.errors_count
         parser_run.status = ParserRun.STATUS_SUCCESS
         parser_run.stage = ParserRun.STAGE_COMPLETED
+        parser_run.finished_at = timezone.now()
+        parser_run.save()
+        return parser_run
+    except ParserCancelled as exc:
+        stop_log_flusher.set()
+        log_flusher.join(timeout=5)
+        flush_logs(force=True)
+        parser_run.status = ParserRun.STATUS_CANCELLED
+        parser_run.error_message = str(exc)
         parser_run.finished_at = timezone.now()
         parser_run.save()
         return parser_run

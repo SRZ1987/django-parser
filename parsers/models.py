@@ -177,6 +177,13 @@ class ParserBatch(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["status"],
+                condition=models.Q(status="running"),
+                name="unique_running_parser_batch",
+            )
+        ]
 
     def __str__(self):
         return f"Parser batch #{self.pk} ({self.status})"

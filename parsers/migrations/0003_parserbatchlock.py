@@ -3,6 +3,16 @@
 from django.db import migrations, models
 
 
+def create_parser_batch_lock(apps, schema_editor):
+    ParserBatchLock = apps.get_model("parsers", "ParserBatchLock")
+    ParserBatchLock.objects.get_or_create(name="nightly_parser_batch")
+
+
+def remove_parser_batch_lock(apps, schema_editor):
+    ParserBatchLock = apps.get_model("parsers", "ParserBatchLock")
+    ParserBatchLock.objects.filter(name="nightly_parser_batch").delete()
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -22,4 +32,5 @@ class Migration(migrations.Migration):
                 'verbose_name_plural': 'Parser batch locks',
             },
         ),
+        migrations.RunPython(create_parser_batch_lock, remove_parser_batch_lock),
     ]
