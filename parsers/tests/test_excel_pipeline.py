@@ -19,6 +19,7 @@ from openpyxl import Workbook, load_workbook
 
 from catalog.models import Product, ProductOffer, Shop
 from parsers.adapters.base import ParserResult
+from parsers.adapters.bauhof import BauhofAdapter
 from parsers.adapters.ehituseabc import EhituseABCAdapter
 from parsers.adapters.espak import EspakAdapter
 from parsers.adapters.fere import FereAdapter
@@ -42,6 +43,7 @@ from parsers.services.recovery import (
     STALE_RUN_MESSAGE,
     recover_stale_parser_state,
 )
+from parsers.standalone import bauhof_parser
 from parsers.standalone import espak_parser
 from parsers.standalone import ehituseabc_parser
 from parsers.standalone import fere_parser
@@ -376,8 +378,79 @@ class EhituseABCAdapterTests(TestCase):
         self.assertEqual(logs, ["EhituseABC progress"])
 
 
+class BauhofAdapterTests(TestCase):
+    def test_standalone_wrapper_creates_excel(self):
+        products = {
+            "SKU-BH-1": {
+                "Название товара": "Bauhof hammer",
+                "Цена": 12.5,
+                "Цена со скидкой": "",
+                "Цена со скидкой 2": "",
+                "Штрихкод": "4740000000001",
+                "Код магазина": "SKU-BH-1",
+                "Фото": "https://img.test/bauhof.jpg",
+                "Ссылка": "https://www.bauhof.ee/item",
+            }
+        }
+        logs = []
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "bauhof.xlsx"
+            with patch("parsers.standalone.bauhof_parser.get_sku_map", return_value={"SKU-BH-1": "https://www.bauhof.ee/item"}):
+                with patch("parsers.standalone.bauhof_parser.collect_products", return_value=products):
+                    asyncio.run(bauhof_parser.main(output_path=output_path, log_callback=logs.append))
+
+            workbook = load_workbook(output_path, read_only=True, data_only=True)
+            try:
+                worksheet = workbook[BauhofAdapter.worksheet_name]
+                rows_count = max(worksheet.max_row - 1, 0)
+            finally:
+                workbook.close()
+
+        self.assertEqual(rows_count, 1)
+        self.assertTrue(logs)
+
+    def test_adapter_runs_standalone_and_counts_products(self):
+        calls = {}
+
+        async def fake_main(output_path=None, log_callback=None):
+            calls["output_path"] = output_path
+            calls["log_callback"] = log_callback
+            log_callback("Bauhof progress")
+            create_xlsx(
+                output_path,
+                headers=bauhof_parser.COLUMNS,
+                sheet_name=BauhofAdapter.worksheet_name,
+                rows=[
+                    [
+                        "Bauhof hammer",
+                        12.5,
+                        "",
+                        "",
+                        "4740000000001",
+                        "SKU-BH-1",
+                        "https://img.test/bauhof.jpg",
+                        "https://www.bauhof.ee/item",
+                    ]
+                ],
+            )
+
+        logs = []
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "bauhof.xlsx"
+            with patch("parsers.adapters.bauhof.bauhof_parser.main", fake_main):
+                result = asyncio.run(BauhofAdapter().run(output_path, log_callback=logs.append))
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output_path, str(output_path))
+        self.assertEqual(result.products_count, 1)
+        self.assertEqual(calls["output_path"], output_path)
+        self.assertEqual(logs, ["Bauhof progress"])
+
+
 class AdapterRegistryTests(TestCase):
     def test_registry_contains_espak_and_fere(self):
+        self.assertIs(ADAPTERS["bauhof"], BauhofAdapter)
         self.assertIs(ADAPTERS["ehituseabc"], EhituseABCAdapter)
         self.assertIs(ADAPTERS["espak"], EspakAdapter)
         self.assertIs(ADAPTERS["fere"], FereAdapter)
