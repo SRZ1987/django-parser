@@ -5,6 +5,7 @@ from pathlib import Path
 from parsers.standalone import espak_parser
 
 from .base import ParserAdapter, ParserResult
+from .utils import count_excel_rows
 
 
 class CallbackWriter(io.TextIOBase):
@@ -69,14 +70,3 @@ class EspakAdapter(ParserAdapter):
             )
         finally:
             espak_parser.OUTPUT_FILE = original_output_file
-
-
-def count_excel_rows(path):
-    from openpyxl import load_workbook
-
-    workbook = load_workbook(path, read_only=True, data_only=True)
-    try:
-        worksheet = workbook.active
-        return max(worksheet.max_row - 1, 0)
-    finally:
-        workbook.close()

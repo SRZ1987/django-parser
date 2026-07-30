@@ -21,6 +21,10 @@ class ParserBatchLockMissing(Exception):
     pass
 
 
+class ParserAlreadyRunning(Exception):
+    pass
+
+
 class ParserCancelled(Exception):
     pass
 
@@ -80,14 +84,19 @@ def run_excel_parser(parser_config, trigger=ParserRun.TRIGGER_COMMAND):
     if adapter_class is None:
         return _failed_run(parser_config, trigger, f"No Excel adapter registered for parser '{parser_config.code}'.")
 
-    parser_run = ParserRun.objects.create(
-        parser=parser_config,
-        status=ParserRun.STATUS_RUNNING,
-        stage=ParserRun.STAGE_PARSING,
-        trigger=trigger,
-        started_at=timezone.now(),
-        heartbeat_at=timezone.now(),
-    )
+    try:
+        with transaction.atomic():
+            parser_run = ParserRun.objects.create(
+                parser=parser_config,
+                status=ParserRun.STATUS_RUNNING,
+                stage=ParserRun.STAGE_PARSING,
+                trigger=trigger,
+                started_at=timezone.now(),
+                heartbeat_at=timezone.now(),
+            )
+    except IntegrityError as exc:
+        error = ParserAlreadyRunning(f"Parser '{parser_config.code}' is already running.")
+        return _failed_run(parser_config, trigger, str(error))
 
     adapter = adapter_class()
 

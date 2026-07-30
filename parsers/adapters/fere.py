@@ -3,7 +3,7 @@ from pathlib import Path
 from parsers.standalone import fere_parser
 
 from .base import ParserAdapter, ParserResult
-from .espak import count_excel_rows
+from .utils import count_excel_rows
 
 
 class FereAdapter(ParserAdapter):

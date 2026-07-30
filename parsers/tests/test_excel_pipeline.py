@@ -16,6 +16,7 @@ from catalog.models import Product, ProductOffer, Shop
 from parsers.adapters.base import ParserResult
 from parsers.adapters.espak import EspakAdapter
 from parsers.adapters.fere import FereAdapter
+from parsers.adapters.registry import ADAPTERS
 from parsers.models import ParserBatch, ParserBatchLock, ParserConfig, ParserExport, ParserQueueJob, ParserRun
 from parsers.services.batch_runner import (
     ParserBatchAlreadyRunning,
@@ -25,6 +26,7 @@ from parsers.services.batch_runner import (
     run_excel_parser,
     start_batch,
 )
+from parsers.services.export_storage import export_work_paths
 from parsers.services.excel_importer import ExcelCatalogImporter, ExcelImportError
 from parsers.services.excel_validation import ExcelCatalogValidator
 from parsers.standalone import espak_parser
@@ -60,6 +62,19 @@ class ExcelValidationTests(TestCase):
 
         self.assertFalse(result.is_valid)
         self.assertIn("cannot be opened", result.error_message)
+
+
+class ExportStorageTests(TestCase):
+    def test_export_work_paths_are_unique_for_same_parser_code(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with override_settings(PARSER_EXPORT_WORK_DIR=Path(tmp_dir)):
+                first_tmp, first_final = export_work_paths("espak")
+                second_tmp, second_final = export_work_paths("espak")
+
+        self.assertNotEqual(first_tmp, second_tmp)
+        self.assertNotEqual(first_final, second_final)
+        self.assertEqual(first_tmp.suffix, ".xlsx")
+        self.assertTrue(first_tmp.name.endswith(".tmp.xlsx"))
 
 
 class ExcelImportTests(TestCase):
@@ -278,6 +293,12 @@ class FereAdapterTests(TestCase):
         self.assertEqual(logs, ["FERE progress"])
 
 
+class AdapterRegistryTests(TestCase):
+    def test_registry_contains_espak_and_fere(self):
+        self.assertIs(ADAPTERS["espak"], EspakAdapter)
+        self.assertIs(ADAPTERS["fere"], FereAdapter)
+
+
 class PathlessFile:
     def __init__(self, path):
         self.path_to_open = path
@@ -362,6 +383,48 @@ class BatchRunnerTests(TestCase):
         validate.assert_not_called()
         self.assertEqual(run.status, ParserRun.STATUS_CANCELLED)
         self.assertIn("cancelled", run.error_message)
+
+    def test_same_parser_config_cannot_create_second_running_run(self):
+        ParserRun.objects.create(
+            parser=self.config_a,
+            status=ParserRun.STATUS_RUNNING,
+            trigger=ParserRun.TRIGGER_COMMAND,
+        )
+
+        class FakeAdapter:
+            column_map = EspakAdapter.column_map
+            worksheet_name = None
+
+        with patch("parsers.services.batch_runner.get_adapter_class", return_value=FakeAdapter):
+            run = run_excel_parser(self.config_a)
+
+        self.assertEqual(run.status, ParserRun.STATUS_FAILED)
+        self.assertIn("already running", run.error_message)
+        self.assertEqual(ParserRun.objects.filter(parser=self.config_a, status=ParserRun.STATUS_RUNNING).count(), 1)
+
+    def test_different_parser_config_can_run_while_another_parser_is_running(self):
+        ParserRun.objects.create(
+            parser=self.config_a,
+            status=ParserRun.STATUS_RUNNING,
+            trigger=ParserRun.TRIGGER_COMMAND,
+        )
+
+        class FakeAdapter:
+            column_map = EspakAdapter.column_map
+            worksheet_name = None
+
+        def fake_run_adapter(adapter, tmp_path, log):
+            create_xlsx(tmp_path, rows=[["Hammer", 10, "", "", "", "SKU-B", "", ""]])
+            return ParserResult(success=True, output_path=str(tmp_path), products_count=1)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with override_settings(MEDIA_ROOT=Path(tmp_dir) / "media", PARSER_EXPORT_WORK_DIR=Path(tmp_dir) / "work"):
+                with patch("parsers.services.batch_runner.get_adapter_class", return_value=FakeAdapter):
+                    with patch("parsers.services.batch_runner._run_adapter", fake_run_adapter):
+                        run = run_excel_parser(self.config_b)
+
+        self.assertEqual(run.status, ParserRun.STATUS_SUCCESS)
+        self.assertEqual(ParserRun.objects.filter(parser=self.config_b, status=ParserRun.STATUS_RUNNING).count(), 0)
 
 
 class BatchConcurrencyTests(TransactionTestCase):

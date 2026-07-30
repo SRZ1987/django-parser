@@ -106,6 +106,13 @@ class ParserRun(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["parser", "status"],
+                condition=models.Q(status="running"),
+                name="unique_running_parser_run_per_parser",
+            )
+        ]
 
     def __str__(self):
         return f"{self.parser.code} #{self.pk} ({self.status})"
