@@ -1,3 +1,4 @@
+from .bauhaus import BauhausAdapter
 from .bauhof import BauhofAdapter
 from .depo import DepoAdapter
 from .ehituseabc import EhituseABCAdapter
@@ -6,6 +7,7 @@ from .fere import FereAdapter
 
 
 ADAPTERS = {
+    BauhausAdapter.code: BauhausAdapter,
     BauhofAdapter.code: BauhofAdapter,
     DepoAdapter.code: DepoAdapter,
     EhituseABCAdapter.code: EhituseABCAdapter,

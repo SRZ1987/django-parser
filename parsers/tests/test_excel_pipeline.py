@@ -19,6 +19,7 @@ from openpyxl import Workbook, load_workbook
 
 from catalog.models import Product, ProductOffer, Shop
 from parsers.adapters.base import ParserResult
+from parsers.adapters.bauhaus import BauhausAdapter
 from parsers.adapters.bauhof import BauhofAdapter
 from parsers.adapters.depo import DepoAdapter
 from parsers.adapters.ehituseabc import EhituseABCAdapter
@@ -44,6 +45,7 @@ from parsers.services.recovery import (
     STALE_RUN_MESSAGE,
     recover_stale_parser_state,
 )
+from parsers.standalone import bauhaus_parser
 from parsers.standalone import bauhof_parser
 from parsers.standalone import depo_parser
 from parsers.standalone import espak_parser
@@ -380,6 +382,89 @@ class EhituseABCAdapterTests(TestCase):
         self.assertEqual(logs, ["EhituseABC progress"])
 
 
+class BauhausAdapterTests(TestCase):
+    def test_standalone_wrapper_creates_excel(self):
+        products = [
+            {
+                "sku": "SKU-BAUHAUS-1",
+                "name": "BAUHAUS hammer",
+                "price": 14.95,
+                "ordinary_price": 19.95,
+                "ean": "4740000000001",
+                "image_url": "https://img.test/bauhaus.jpg",
+                "product_url": "https://www.bauhaus.ee/item",
+            }
+        ]
+        logs = []
+
+        async def fake_request_text(session, url, semaphore):
+            return "<html></html>"
+
+        async def fake_discover_categories(session, semaphore, home):
+            return [{"url": "https://www.bauhaus.ee/category"}]
+
+        async def fake_collect_catalog(session, semaphore, categories):
+            return products, {}
+
+        async def fake_enrich_ean(ean_session, page_semaphore, ean_semaphore, found_products):
+            return found_products, {}
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "bauhaus.xlsx"
+            with patch("parsers.standalone.bauhaus_parser.request_text", fake_request_text):
+                with patch("parsers.standalone.bauhaus_parser.discover_top_level_categories", fake_discover_categories):
+                    with patch("parsers.standalone.bauhaus_parser.collect_full_catalog", fake_collect_catalog):
+                        with patch("parsers.standalone.bauhaus_parser.enrich_all_products_with_ean", fake_enrich_ean):
+                            asyncio.run(bauhaus_parser.main(output_path=output_path, log_callback=logs.append))
+
+            workbook = load_workbook(output_path, read_only=True, data_only=True)
+            try:
+                worksheet = workbook[BauhausAdapter.worksheet_name]
+                rows_count = max(worksheet.max_row - 1, 0)
+            finally:
+                workbook.close()
+
+        self.assertEqual(rows_count, 1)
+        self.assertTrue(logs)
+
+    def test_adapter_runs_standalone_and_counts_products(self):
+        calls = {}
+
+        async def fake_main(output_path=None, log_callback=None):
+            calls["output_path"] = output_path
+            calls["log_callback"] = log_callback
+            log_callback("BAUHAUS progress")
+            create_xlsx(
+                output_path,
+                headers=bauhaus_parser.COLUMNS,
+                sheet_name=BauhausAdapter.worksheet_name,
+                rows=[
+                    [
+                        "BAUHAUS hammer",
+                        14.95,
+                        12.95,
+                        "",
+                        "4740000000001",
+                        "SKU-BAUHAUS-1",
+                        "https://img.test/bauhaus.jpg",
+                        "https://www.bauhaus.ee/item",
+                    ]
+                ],
+            )
+
+        logs = []
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "bauhaus.xlsx"
+            with patch("parsers.adapters.bauhaus.bauhaus_parser.main", fake_main):
+                result = asyncio.run(BauhausAdapter().run(output_path, log_callback=logs.append))
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.output_path, str(output_path))
+        self.assertEqual(result.products_count, 1)
+        self.assertEqual(calls["output_path"], output_path)
+        self.assertEqual(logs, ["BAUHAUS progress"])
+
+
 class BauhofAdapterTests(TestCase):
     def test_standalone_wrapper_creates_excel(self):
         products = {
@@ -530,6 +615,7 @@ class DepoAdapterTests(TestCase):
 
 class AdapterRegistryTests(TestCase):
     def test_registry_contains_espak_and_fere(self):
+        self.assertIs(ADAPTERS["bauhaus"], BauhausAdapter)
         self.assertIs(ADAPTERS["bauhof"], BauhofAdapter)
         self.assertIs(ADAPTERS["depo"], DepoAdapter)
         self.assertIs(ADAPTERS["ehituseabc"], EhituseABCAdapter)
