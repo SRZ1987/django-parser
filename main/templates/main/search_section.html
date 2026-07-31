@@ -1,0 +1,72 @@
+{% if matches %}
+<section class="match-section" aria-label="{{ title }}">
+    <div class="results-header">
+        <h2>{{ title }}</h2>
+        <span>{{ matches|length }}</span>
+    </div>
+
+    <div class="product-grid">
+        {% for match in matches %}
+            {% with offer=match.offer %}
+                <article class="product-card match-card" data-offer-id="{{ offer.pk }}">
+                    <a class="product-image" href="{% url 'offer_detail' offer.pk %}" aria-label="Open {{ offer.original_name }}">
+                        {% if offer.image_url %}
+                            <img src="{{ offer.image_url }}" alt="{{ offer.original_name }}" loading="lazy">
+                        {% else %}
+                            <span>No image</span>
+                        {% endif %}
+                    </a>
+
+                    <div class="product-info">
+                        <h3><a href="{% url 'offer_detail' offer.pk %}">{{ offer.original_name }}</a></h3>
+                        <dl class="product-meta">
+                            <div>
+                                <dt>Store</dt>
+                                <dd>{{ offer.shop.name }}</dd>
+                            </div>
+                            <div>
+                                <dt>Category</dt>
+                                <dd>{% if offer.category %}{{ offer.category.name }}{% else %}-{% endif %}</dd>
+                            </div>
+                            <div>
+                                <dt>Shop code</dt>
+                                <dd>{% firstof offer.sku offer.external_id "-" %}</dd>
+                            </div>
+                            <div>
+                                <dt>Barcode</dt>
+                                <dd>{% firstof offer.barcode offer.product.barcode "-" %}</dd>
+                            </div>
+                        </dl>
+                        {% if debug_scores %}
+                            <div class="match-debug">
+                                <strong>{{ match.confidence }} / {{ match.score }}</strong>
+                                <span>{{ match.reasons|join:", " }}</span>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="product-side">
+                        <div class="price-block">
+                            {% if offer.sale_price %}
+                                <strong>{{ offer.sale_price }} {{ offer.currency }}</strong>
+                                {% if offer.price and offer.price != offer.sale_price %}
+                                    <span class="old-price">{{ offer.price }} {{ offer.currency }}</span>
+                                {% endif %}
+                            {% elif offer.price %}
+                                <strong>{{ offer.price }} {{ offer.currency }}</strong>
+                            {% else %}
+                                <strong>Price missing</strong>
+                            {% endif %}
+                        </div>
+                        {% if offer.product_url %}
+                            <a class="store-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">Open in store</a>
+                        {% else %}
+                            <a class="store-link" href="{% url 'offer_detail' offer.pk %}">Details</a>
+                        {% endif %}
+                    </div>
+                </article>
+            {% endwith %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}

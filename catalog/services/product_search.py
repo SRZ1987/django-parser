@@ -1,0 +1,189 @@
+from dataclasses import dataclass, field
+
+from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
+from django.db.models import Q
+
+from catalog.models import ProductOffer
+
+from .attribute_extraction import extract_product_attributes
+from .normalization import normalize_product_name, normalize_text, tokenize
+from .product_matching import (
+    MATCH_BUNDLE_OR_VARIANT,
+    MATCH_EXACT,
+    MATCH_SAME_PRODUCT,
+    MATCH_SIMILAR_PRODUCT,
+    MatchResult,
+    PriceSummary,
+    build_offer_attributes,
+    build_price_summary,
+    score_offer_against_offer,
+    score_offer_against_query,
+)
+
+
+DEFAULT_CANDIDATE_LIMIT = 350
+DEFAULT_RESULTS_LIMIT = 120
+DEFAULT_PAGE_SIZE = 24
+
+
+@dataclass
+class SearchResults:
+    query: str
+    normalized_query: str
+    exact_matches: list[MatchResult] = field(default_factory=list)
+    same_product: list[MatchResult] = field(default_factory=list)
+    bundles_or_variants: list[MatchResult] = field(default_factory=list)
+    similar_products: list[MatchResult] = field(default_factory=list)
+    price_summary: PriceSummary | None = None
+    total_count: int = 0
+    candidates_count: int = 0
+
+    @property
+    def has_results(self) -> bool:
+        return bool(self.total_count)
+
+
+def available_offer_queryset():
+    return ProductOffer.objects.filter(is_active=True, is_available=True).select_related("shop", "category", "product")
+
+
+def search_products(
+    query: str,
+    *,
+    candidate_limit: int = DEFAULT_CANDIDATE_LIMIT,
+    results_limit: int = DEFAULT_RESULTS_LIMIT,
+) -> SearchResults:
+    query = (query or "").strip()
+    normalized_query = normalize_product_name(query)
+    if not normalized_query:
+        return SearchResults(query=query, normalized_query=normalized_query)
+
+    source_offer = _find_source_offer(query, normalized_query)
+    source_attributes = build_offer_attributes(source_offer) if source_offer else extract_product_attributes(query)
+    candidates = list(_retrieve_candidates(normalized_query, source_offer, source_attributes, candidate_limit))
+    ranked = [
+        score_offer_against_offer(candidate, source_offer)
+        if source_offer
+        else score_offer_against_query(candidate, query, source_attributes=source_attributes)
+        for candidate in candidates
+    ]
+    ranked = [match for match in ranked if match.score >= 0.05 or match.match_type == MATCH_EXACT]
+    ranked.sort(key=lambda match: (-_match_type_weight(match.match_type), -match.score, _price_sort_value(match), match.offer.original_name))
+    ranked = ranked[:results_limit]
+
+    results = SearchResults(
+        query=query,
+        normalized_query=normalized_query,
+        candidates_count=len(candidates),
+    )
+    for match in ranked:
+        _append_match(results, match)
+
+    same_product_for_price = results.exact_matches + results.same_product
+    results.price_summary = build_price_summary(same_product_for_price) if same_product_for_price else None
+    results.total_count = sum(
+        len(group)
+        for group in (
+            results.exact_matches,
+            results.same_product,
+            results.bundles_or_variants,
+            results.similar_products,
+        )
+    )
+    return results
+
+
+def find_matches(offer_or_product, *, candidate_limit: int = DEFAULT_CANDIDATE_LIMIT) -> SearchResults:
+    offer = offer_or_product
+    if not isinstance(offer, ProductOffer):
+        offer = ProductOffer.objects.filter(product=offer_or_product, is_active=True, is_available=True).first()
+    if offer is None:
+        return SearchResults(query="", normalized_query="")
+    return search_products(offer.sku or offer.barcode or offer.original_name, candidate_limit=candidate_limit)
+
+
+def paginate_group(items, page_number, *, page_size: int = DEFAULT_PAGE_SIZE):
+    paginator = Paginator(items, page_size)
+    try:
+        return paginator.page(page_number)
+    except PageNotAnInteger:
+        return paginator.page(1)
+    except EmptyPage:
+        return paginator.page(paginator.num_pages)
+
+
+def _find_source_offer(raw_query: str, normalized_query: str) -> ProductOffer | None:
+    return (
+        available_offer_queryset()
+        .filter(
+            Q(barcode__iexact=raw_query)
+            | Q(barcode__iexact=normalized_query)
+            | Q(product__barcode__iexact=raw_query)
+            | Q(product__barcode__iexact=normalized_query)
+            | Q(sku__iexact=raw_query)
+            | Q(sku__iexact=normalized_query)
+            | Q(external_id__iexact=raw_query)
+            | Q(external_id__iexact=normalized_query)
+        )
+        .order_by("shop__name", "original_name")
+        .first()
+    )
+
+
+def _retrieve_candidates(normalized_query, source_offer, source_attributes, candidate_limit):
+    queryset = available_offer_queryset()
+    query = Q()
+    tokens = tokenize(normalized_query)
+    meaningful_tokens = [token for token in tokens if len(token) >= 2][:6]
+
+    if normalized_query:
+        query |= Q(barcode__iexact=normalized_query) | Q(product__barcode__iexact=normalized_query)
+        query |= Q(sku__iexact=normalized_query) | Q(external_id__iexact=normalized_query)
+        query |= Q(normalized_name__icontains=normalized_query) | Q(search_text__icontains=normalized_query)
+
+    if source_offer:
+        if source_offer.barcode:
+            query |= Q(barcode=source_offer.barcode) | Q(product__barcode=source_offer.barcode)
+        if source_offer.sku:
+            query |= Q(sku=source_offer.sku, shop=source_offer.shop)
+
+    if source_attributes.brand:
+        query |= Q(product__normalized_brand=source_attributes.brand) | Q(search_text__icontains=source_attributes.brand)
+    if source_attributes.model:
+        query |= Q(product__normalized_model=source_attributes.model) | Q(search_text__icontains=source_attributes.model)
+    if source_attributes.base_model and source_attributes.base_model != source_attributes.model:
+        query |= Q(search_text__icontains=source_attributes.base_model)
+    for dimension in source_attributes.dimensions:
+        query |= Q(search_text__icontains=dimension)
+
+    for token in meaningful_tokens:
+        query |= Q(search_text__icontains=token)
+
+    if not query:
+        return queryset.none()
+
+    return queryset.filter(query).distinct().order_by("shop__name", "original_name", "id")[:candidate_limit]
+
+
+def _append_match(results: SearchResults, match: MatchResult):
+    if match.match_type == MATCH_EXACT:
+        results.exact_matches.append(match)
+    elif match.match_type == MATCH_SAME_PRODUCT:
+        results.same_product.append(match)
+    elif match.match_type == MATCH_BUNDLE_OR_VARIANT:
+        results.bundles_or_variants.append(match)
+    else:
+        results.similar_products.append(match)
+
+
+def _match_type_weight(match_type: str) -> int:
+    return {
+        MATCH_EXACT: 4,
+        MATCH_SAME_PRODUCT: 3,
+        MATCH_BUNDLE_OR_VARIANT: 2,
+        MATCH_SIMILAR_PRODUCT: 1,
+    }.get(match_type, 0)
+
+
+def _price_sort_value(match: MatchResult):
+    return match.offer.current_price if match.offer.current_price is not None else 999999999

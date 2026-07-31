@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
 from catalog.models import Category, ProductOffer, Shop
+from catalog.services.product_search import DEFAULT_PAGE_SIZE, paginate_group, search_products
 
 
 CATALOG_PAGE_SIZE = 24
@@ -43,6 +44,31 @@ def home(request):
         "main/home.html",
         {
             "query": query,
+        },
+    )
+
+
+def product_search_view(request):
+    query = request.GET.get("q", "").strip()
+    results = search_products(query) if query else None
+    similar_page = paginate_group(
+        results.similar_products if results else [],
+        request.GET.get("page"),
+        page_size=DEFAULT_PAGE_SIZE,
+    )
+
+    page_params = request.GET.copy()
+    page_params.pop("page", None)
+
+    return render(
+        request,
+        "main/search.html",
+        {
+            "query": query,
+            "results": results,
+            "similar_page": similar_page,
+            "page_params": page_params.urlencode(),
+            "debug_scores": request.user.is_staff if request.user.is_authenticated else False,
         },
     )
 

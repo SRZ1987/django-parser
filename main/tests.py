@@ -83,11 +83,38 @@ class MainCatalogTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Сравнивайте цены")
 
-    def test_home_search_form_submits_to_catalog(self):
+    def test_home_search_form_submits_to_product_search(self):
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
 
-        self.assertContains(response, f'action="{reverse("catalog")}"')
+        self.assertContains(response, f'action="{reverse("product_search")}"')
         self.assertContains(response, "Открыть каталог")
+
+    def test_product_search_page_opens_without_query(self):
+        response = self.client.get(reverse("product_search"), HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Enter product name, SKU or barcode")
+
+    def test_product_search_groups_exact_barcode_and_same_product(self):
+        exact = self.create_offer(name="Makita DDF482Z drill", barcode="4000000000001", brand="Makita", model="DDF482Z")
+        same = self.create_offer(
+            name="Akutrell MAKITA DDF 482 Z",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-DDF482",
+            barcode="",
+            external_id="depo-ddf482",
+            brand="Makita",
+            model="DDF482Z",
+        )
+
+        response = self.client.get(reverse("product_search"), {"q": "4000000000001"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Exact match")
+        self.assertContains(response, "Same product in other stores")
+        self.assertContains(response, exact.original_name)
+        self.assertContains(response, same.original_name)
 
     def test_catalog_page_opens(self):
         response = self.client.get(reverse("catalog"), HTTP_HOST="127.0.0.1")

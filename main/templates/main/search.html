@@ -1,0 +1,69 @@
+{% extends 'main/base.html' %}
+
+{% block title %}Product search{% endblock %}
+
+{% block content %}
+<main class="page-shell search-results-shell">
+    <section class="catalog-head" aria-labelledby="search-title">
+        <p class="eyebrow">Search and matching</p>
+        <h1 id="search-title">Find products across stores</h1>
+        <p>Search by name, EAN, shop code, brand, model or size. Exact matches are shown first, then likely same products, kits and similar offers.</p>
+    </section>
+
+    <form class="catalog-filters search-page-form" method="get" action="{% url 'product_search' %}">
+        <label>
+            <span>Search query</span>
+            <input name="q" type="search" value="{{ query }}" placeholder="Makita DDF482, 5x70, EAN or SKU" autofocus>
+        </label>
+        <div class="filter-actions">
+            <button type="submit">Find</button>
+            <a href="{% url 'product_search' %}">Reset</a>
+        </div>
+    </form>
+
+    {% if not query %}
+        <section class="empty-state search-empty">
+            <h2>Enter product name, SKU or barcode</h2>
+            <p>The search will compare active available offers from all connected stores.</p>
+        </section>
+    {% elif results and results.has_results %}
+        <section class="search-summary">
+            <div>
+                <h2>{{ results.total_count }} results</h2>
+                <p>{{ results.candidates_count }} candidates checked after database retrieval.</p>
+            </div>
+            {% if results.price_summary %}
+                <div class="price-comparison">
+                    <span>From {{ results.price_summary.min_price }} EUR to {{ results.price_summary.max_price }} EUR</span>
+                    <strong>Cheapest: {{ results.price_summary.cheapest_shop }}</strong>
+                    {% if results.price_summary.price_difference %}
+                        <span>Difference: {{ results.price_summary.price_difference }} EUR</span>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </section>
+
+        {% include "main/search_section.html" with title="Exact match" matches=results.exact_matches debug_scores=debug_scores %}
+        {% include "main/search_section.html" with title="Same product in other stores" matches=results.same_product debug_scores=debug_scores %}
+        {% include "main/search_section.html" with title="Kits / variants" matches=results.bundles_or_variants debug_scores=debug_scores %}
+        {% include "main/search_section.html" with title="Similar products" matches=similar_page.object_list debug_scores=debug_scores %}
+
+        {% if similar_page.paginator.num_pages > 1 %}
+            <nav class="pagination" aria-label="Similar products pagination">
+                {% if similar_page.has_previous %}
+                    <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ similar_page.previous_page_number }}">Previous</a>
+                {% endif %}
+                <span class="is-current">{{ similar_page.number }} / {{ similar_page.paginator.num_pages }}</span>
+                {% if similar_page.has_next %}
+                    <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ similar_page.next_page_number }}">Next</a>
+                {% endif %}
+            </nav>
+        {% endif %}
+    {% else %}
+        <section class="empty-state search-empty">
+            <h2>Nothing found</h2>
+            <p>Try a shorter query, product model, barcode or shop code.</p>
+        </section>
+    {% endif %}
+</main>
+{% endblock %}
