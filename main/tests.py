@@ -1,9 +1,12 @@
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from catalog.models import Category, Product, ProductOffer, Shop
+from main.models import ShoppingListItem
+from main.services import add_offer_to_shopping_list, build_purchase_plan, get_best_offer
 
 
 @override_settings(
@@ -77,23 +80,26 @@ class MainCatalogTests(TestCase):
     def catalog_offer_ids(self, response):
         return [offer.pk for offer in response.context["page_obj"].object_list]
 
+    def create_user(self, username="user", password="StrongPass123"):
+        return get_user_model().objects.create_user(username=username, password=password)
+
     def test_home_page_opens(self):
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Сравнивайте цены")
+        self.assertContains(response, "Найдите товар и выберите")
 
     def test_home_search_form_submits_to_product_search(self):
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
 
         self.assertContains(response, f'action="{reverse("product_search")}"')
-        self.assertContains(response, "Открыть каталог")
+        self.assertContains(response, "Название товара, SKU или штрихкод")
 
     def test_product_search_page_opens_without_query(self):
         response = self.client.get(reverse("product_search"), HTTP_HOST="127.0.0.1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Enter product name, SKU or barcode")
+        self.assertContains(response, "Введите название, SKU или штрихкод")
 
     def test_product_search_groups_exact_barcode_and_same_product(self):
         exact = self.create_offer(name="Makita DDF482Z drill", barcode="4000000000001", brand="Makita", model="DDF482Z")
@@ -111,10 +117,109 @@ class MainCatalogTests(TestCase):
         response = self.client.get(reverse("product_search"), {"q": "4000000000001"}, HTTP_HOST="127.0.0.1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Exact match")
-        self.assertContains(response, "Same product in other stores")
+        self.assertContains(response, "Точные совпадения")
+        self.assertContains(response, "Тот же товар")
         self.assertContains(response, exact.original_name)
         self.assertContains(response, same.original_name)
+
+    def test_registration_creates_and_logs_in_user(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "newuser",
+                "password1": "StrongPass123",
+                "password2": "StrongPass123",
+            },
+        )
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        self.assertTrue(get_user_model().objects.filter(username="newuser").exists())
+        self.assertIn("_auth_user_id", self.client.session)
+
+    def test_login_uses_django_auth(self):
+        self.create_user(username="login-user", password="StrongPass123")
+
+        response = self.client.post(
+            reverse("login"),
+            {"username": "login-user", "password": "StrongPass123", "next": reverse("shopping_list")},
+        )
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        self.assertIn("_auth_user_id", self.client.session)
+
+    def test_logout_uses_post_and_redirects_home(self):
+        self.client.force_login(self.create_user())
+
+        response = self.client.post(reverse("logout"))
+
+        self.assertRedirects(response, reverse("home"))
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_my_list_requires_login(self):
+        response = self.client.get(reverse("shopping_list"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("login"), response["Location"])
+
+    def test_guest_cannot_add_item_to_shopping_list(self):
+        offer = self.create_offer(name="Makita drill")
+
+        response = self.client.post(reverse("add_to_shopping_list", args=[offer.pk]))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("login"), response["Location"])
+        self.assertFalse(ShoppingListItem.objects.exists())
+
+    def test_authenticated_user_can_add_item_to_shopping_list(self):
+        user = self.create_user()
+        self.client.force_login(user)
+        offer = self.create_offer(name="Makita drill")
+
+        response = self.client.post(reverse("add_to_shopping_list", args=[offer.pk]))
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        item = ShoppingListItem.objects.get(shopping_list__user=user)
+        self.assertEqual(item.source_offer, offer)
+        self.assertEqual(item.product, offer.product)
+
+    def test_duplicate_item_is_not_created(self):
+        user = self.create_user()
+        self.client.force_login(user)
+        offer = self.create_offer(name="Makita drill")
+
+        self.client.post(reverse("add_to_shopping_list", args=[offer.pk]))
+        self.client.post(reverse("add_to_shopping_list", args=[offer.pk]))
+
+        self.assertEqual(ShoppingListItem.objects.filter(shopping_list__user=user).count(), 1)
+
+    def test_user_does_not_see_another_users_list(self):
+        owner = self.create_user("owner")
+        other = self.create_user("other")
+        offer = self.create_offer(name="Private Makita drill")
+        add_offer_to_shopping_list(owner, offer)
+        self.client.force_login(other)
+
+        response = self.client.get(reverse("shopping_list"))
+
+        self.assertNotContains(response, "Private Makita drill")
+
+    def test_user_can_delete_only_own_item(self):
+        owner = self.create_user("owner")
+        other = self.create_user("other")
+        offer = self.create_offer(name="Private Makita drill")
+        item = add_offer_to_shopping_list(owner, offer)
+        self.client.force_login(other)
+
+        response = self.client.post(reverse("remove_from_shopping_list", args=[item.pk]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(ShoppingListItem.objects.filter(pk=item.pk).exists())
+
+        self.client.force_login(owner)
+        response = self.client.post(reverse("remove_from_shopping_list", args=[item.pk]))
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        self.assertFalse(ShoppingListItem.objects.filter(pk=item.pk).exists())
 
     def test_catalog_page_opens(self):
         response = self.client.get(reverse("catalog"), HTTP_HOST="127.0.0.1")
@@ -460,3 +565,95 @@ class MainCatalogTests(TestCase):
         response = self.client.get(reverse("search_suggestions"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
 
         self.assertEqual(response.json()["results"][0]["detail_url"], f"/offer/{offer.pk}/")
+
+    def test_best_offer_selects_cheapest_offer_across_same_product(self):
+        user = self.create_user()
+        source = self.create_offer(name="Makita DDF482Z", barcode="4000000000001", brand="Makita", model="DDF482Z", price=Decimal("120.00"))
+        cheapest = self.create_offer(
+            name="Akutrell Makita DDF482Z",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-DDF482",
+            barcode="4000000000001",
+            external_id="depo-ddf482",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("105.00"),
+        )
+        self.create_offer(
+            name="Makita DDF482Z Bauhof",
+            shop=Shop.objects.create(name="Bauhof", code="bauhof"),
+            category=None,
+            sku="BAUHOF-DDF482",
+            barcode="4000000000001",
+            external_id="bauhof-ddf482",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("115.00"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, cheapest)
+        self.assertEqual(result.best_price, Decimal("105.00"))
+        self.assertEqual(result.price_difference, Decimal("15.00"))
+
+    def test_price_change_is_reflected_without_changing_shopping_list_item(self):
+        user = self.create_user()
+        source = self.create_offer(name="Makita DDF482Z", barcode="4000000000001", brand="Makita", model="DDF482Z", price=Decimal("120.00"))
+        item = add_offer_to_shopping_list(user, source)
+
+        source.price = Decimal("99.00")
+        source.save()
+
+        result = get_best_offer(item)
+
+        self.assertEqual(ShoppingListItem.objects.get(pk=item.pk).source_offer, source)
+        self.assertEqual(result.best_price, Decimal("99.00"))
+
+    def test_purchase_plan_groups_items_by_cheapest_shop_and_counts_saving(self):
+        user = self.create_user()
+        bauhof = Shop.objects.create(name="Bauhof", code="bauhof")
+        first = self.create_offer(name="Makita DDF482Z", barcode="4000000000001", brand="Makita", model="DDF482Z", price=Decimal("120.00"))
+        first_cheapest = self.create_offer(
+            name="Akutrell Makita DDF482Z",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-DDF482",
+            barcode="4000000000001",
+            external_id="depo-ddf482",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("100.00"),
+        )
+        second = self.create_offer(
+            name="Bosch GSR 18V",
+            sku="BOSCH-1",
+            barcode="4000000000002",
+            external_id="bosch-1",
+            brand="Bosch",
+            model="GSR18V",
+            price=Decimal("50.00"),
+        )
+        second_cheapest = self.create_offer(
+            name="Bosch GSR 18V Bauhof",
+            shop=bauhof,
+            category=None,
+            sku="BAUHOF-BOSCH",
+            barcode="4000000000002",
+            external_id="bauhof-bosch",
+            brand="Bosch",
+            model="GSR18V",
+            price=Decimal("40.00"),
+        )
+        add_offer_to_shopping_list(user, first)
+        add_offer_to_shopping_list(user, second)
+
+        plan = build_purchase_plan(user.shopping_list)
+
+        self.assertIn(first_cheapest.shop, plan.grouped_by_shop)
+        self.assertIn(second_cheapest.shop, plan.grouped_by_shop)
+        self.assertEqual(plan.total_best_cost, Decimal("140.00"))
+        self.assertEqual(plan.total_highest_cost, Decimal("170.00"))
+        self.assertEqual(plan.potential_saving, Decimal("30.00"))

@@ -75,6 +75,22 @@
                     Открыть в магазине
                 </a>
             {% endif %}
+
+            <div class="detail-actions">
+                {% if user.is_authenticated %}
+                    {% if offer.pk in list_offer_ids %}
+                        <span class="list-state">✓ В списке</span>
+                    {% else %}
+                        <form method="post" action="{% url 'add_to_shopping_list' offer.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button class="list-button" type="submit">+ В список</button>
+                        </form>
+                    {% endif %}
+                {% else %}
+                    <a class="list-button" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">+ В список</a>
+                {% endif %}
+            </div>
         </section>
     </article>
 </main>

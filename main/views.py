@@ -1,13 +1,20 @@
+from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import UserCreationForm
 from django.core.paginator import Paginator
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from catalog.models import Category, ProductOffer, Shop
 from catalog.services.normalization import normalize_product_name, tokenize
 from catalog.services.product_search import DEFAULT_PAGE_SIZE, paginate_group, search_products
+
+from .models import ShoppingListItem
+from .services import add_offer_to_shopping_list, build_purchase_plan, get_or_create_shopping_list
 
 
 CATALOG_PAGE_SIZE = 24
@@ -71,6 +78,29 @@ def home(request):
     )
 
 
+def register(request):
+    if request.user.is_authenticated:
+        return redirect("shopping_list")
+
+    if request.method == "POST":
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            return redirect(get_safe_next_url(request, request.POST.get("next")) or "shopping_list")
+    else:
+        form = UserCreationForm()
+
+    return render(
+        request,
+        "registration/register.html",
+        {
+            "form": form,
+            "next": request.GET.get("next", ""),
+        },
+    )
+
+
 def product_search_view(request):
     query = request.GET.get("q", "").strip()
     results = search_products(query) if query else None
@@ -82,6 +112,7 @@ def product_search_view(request):
 
     page_params = request.GET.copy()
     page_params.pop("page", None)
+    list_offer_ids = get_list_offer_ids(request.user)
 
     return render(
         request,
@@ -92,6 +123,7 @@ def product_search_view(request):
             "similar_page": similar_page,
             "page_params": page_params.urlencode(),
             "debug_scores": request.user.is_staff if request.user.is_authenticated else False,
+            "list_offer_ids": list_offer_ids,
         },
     )
 
@@ -212,6 +244,7 @@ def catalog_view(request):
             "page_obj": page_obj,
             "page_params": page_params.urlencode(),
             "page_range": paginator.get_elided_page_range(page_obj.number),
+            "list_offer_ids": get_list_offer_ids(request.user),
         },
     )
 
@@ -257,4 +290,51 @@ def offer_detail(request, pk):
         available_offers().select_related("shop", "category", "product"),
         pk=pk,
     )
-    return render(request, "main/offer_detail.html", {"offer": offer})
+    return render(
+        request,
+        "main/offer_detail.html",
+        {
+            "offer": offer,
+            "list_offer_ids": get_list_offer_ids(request.user),
+        },
+    )
+
+
+@login_required
+def shopping_list(request):
+    user_list = get_or_create_shopping_list(request.user)
+    plan = build_purchase_plan(user_list)
+    return render(request, "main/shopping_list.html", {"shopping_list": user_list, "plan": plan})
+
+
+@login_required
+def add_to_shopping_list(request, offer_pk):
+    offer = get_object_or_404(
+        available_offers().select_related("shop", "category", "product"),
+        pk=offer_pk,
+    )
+    if request.method == "POST":
+        add_offer_to_shopping_list(request.user, offer)
+    return redirect(get_safe_next_url(request, request.POST.get("next") or request.GET.get("next")) or "shopping_list")
+
+
+@login_required
+def remove_from_shopping_list(request, item_pk):
+    if request.method == "POST":
+        item = get_object_or_404(ShoppingListItem, pk=item_pk, shopping_list__user=request.user)
+        item.delete()
+    return redirect("shopping_list")
+
+
+def get_list_offer_ids(user):
+    if not user.is_authenticated:
+        return set()
+    return set(
+        ShoppingListItem.objects.filter(shopping_list__user=user).values_list("source_offer_id", flat=True)
+    )
+
+
+def get_safe_next_url(request, next_url):
+    if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        return next_url
+    return ""

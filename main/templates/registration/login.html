@@ -1,0 +1,29 @@
+{% extends 'main/base.html' %}
+
+{% block title %}Войти{% endblock %}
+
+{% block content %}
+<main class="page-shell auth-shell">
+    <section class="auth-card">
+        <p class="eyebrow">Аккаунт</p>
+        <h1>Войти</h1>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next }}">
+            {{ form.non_field_errors }}
+            <label>
+                <span>Имя пользователя</span>
+                {{ form.username }}
+                {{ form.username.errors }}
+            </label>
+            <label>
+                <span>Пароль</span>
+                {{ form.password }}
+                {{ form.password.errors }}
+            </label>
+            <button type="submit">Войти</button>
+        </form>
+        <p class="auth-note">Нет аккаунта? <a href="{% url 'register' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Зарегистрироваться</a></p>
+    </section>
+</main>
+{% endblock %}

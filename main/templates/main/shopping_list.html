@@ -1,0 +1,87 @@
+{% extends 'main/base.html' %}
+
+{% block title %}Мой список{% endblock %}
+
+{% block content %}
+<main class="page-shell list-shell">
+    <section class="catalog-head" aria-labelledby="list-title">
+        <p class="eyebrow">Мой список</p>
+        <h1 id="list-title">Что выгоднее купить сейчас</h1>
+        <p>Список пересчитывается по свежим предложениям из каталога. После ночного обновления цены и рекомендации обновятся автоматически.</p>
+    </section>
+
+    {% if plan.rows %}
+        <section class="purchase-plan">
+            <div>
+                <h2>Ваш оптимальный план покупки</h2>
+                <p>Итого по лучшим ценам: <strong>{{ plan.total_best_cost }} EUR</strong></p>
+                <p>Потенциальная экономия: <strong>{{ plan.potential_saving }} EUR</strong></p>
+            </div>
+            <div class="shop-plan-grid">
+                {% for shop, rows in plan.grouped_by_shop.items %}
+                    <article class="shop-plan-card">
+                        <h3>{{ shop.name }}</h3>
+                        {% for row in rows %}
+                            <p>{{ row.item.name }} — {{ row.best_price }} EUR</p>
+                        {% endfor %}
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="list-items" aria-label="Товары в списке">
+            {% for row in plan.rows %}
+                {% with item=row.item offer=row.best_offer %}
+                    <article class="list-item-card">
+                        <a class="product-image" href="{% url 'offer_detail' item.source_offer.pk %}">
+                            {% if item.source_offer.image_url %}
+                                <img src="{{ item.source_offer.image_url }}" alt="{{ item.name }}" loading="lazy">
+                            {% else %}
+                                <span>Нет фото</span>
+                            {% endif %}
+                        </a>
+
+                        <div class="list-item-main">
+                            <h2>{{ item.name }}</h2>
+                            {% if offer %}
+                                <p class="recommendation">Лучше купить в {{ offer.shop.name }} — {{ row.best_price }} {{ offer.currency }}</p>
+                                {% if row.price_difference %}
+                                    <p class="saving-line">Разница между найденными предложениями: {{ row.price_difference }} {{ offer.currency }}</p>
+                                {% endif %}
+                                {% if row.other_offers %}
+                                    <div class="other-offers">
+                                        <span>Другие магазины:</span>
+                                        {% for other in row.other_offers|slice:":4" %}
+                                            <span>{{ other.shop.name }} — {{ other.current_price }} {{ other.currency }}</span>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            {% else %}
+                                <p class="recommendation">Сейчас нет доступных предложений</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="list-item-actions">
+                            {% if offer and offer.product_url %}
+                                <a class="store-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">Перейти в магазин</a>
+                            {% elif offer %}
+                                <a class="store-link" href="{% url 'offer_detail' offer.pk %}">Открыть товар</a>
+                            {% endif %}
+                            <form method="post" action="{% url 'remove_from_shopping_list' item.pk %}">
+                                {% csrf_token %}
+                                <button class="list-button list-button-muted" type="submit">Удалить</button>
+                            </form>
+                        </div>
+                    </article>
+                {% endwith %}
+            {% endfor %}
+        </section>
+    {% else %}
+        <section class="empty-state">
+            <h2>Список пока пуст</h2>
+            <p>Найдите товар и добавьте его в список — здесь появится рекомендация, где купить дешевле.</p>
+            <a class="store-link" href="{% url 'home' %}">Найти товар</a>
+        </section>
+    {% endif %}
+</main>
+{% endblock %}

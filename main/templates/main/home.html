@@ -1,15 +1,15 @@
 {% extends 'main/base.html' %}
 
-{% block title %}Поиск товаров{% endblock %}
+{% block title %}Price Compare{% endblock %}
 
 {% block content %}
 <main>
-    <section class="hero-section" aria-labelledby="page-title">
+    <section class="hero-section simple-hero" aria-labelledby="page-title">
         <div class="hero-content">
-            <p class="hero-kicker">Сервис сравнения цен</p>
-            <h1 id="page-title">Сравнивайте цены между магазинами за секунды</h1>
+            <p class="hero-kicker">Сравнение цен между магазинами</p>
+            <h1 id="page-title">Найдите товар и выберите, где купить дешевле</h1>
             <p class="hero-description">
-                Найдите товар по названию, SKU или штрихкоду. Мы покажем актуальные предложения из каталога.
+                Найдите товар, добавьте его в список — мы покажем, где купить дешевле после каждого обновления каталога.
             </p>
 
             <form class="search-panel" method="get" action="{% url 'product_search' %}" role="search" data-search-form>
@@ -20,7 +20,7 @@
                         name="q"
                         type="search"
                         value="{{ query }}"
-                        placeholder="Например: bosch, SKU или штрихкод"
+                        placeholder="Название товара, SKU или штрихкод"
                         autocomplete="off"
                         aria-autocomplete="list"
                         aria-controls="search-suggestions"
@@ -37,47 +37,8 @@
                         hidden
                     ></div>
                 </div>
-                <button class="search-submit" type="submit" aria-label="Найти">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M10.5 4a6.5 6.5 0 0 1 5.18 10.43l3.45 3.44-1.42 1.42-3.44-3.45A6.5 6.5 0 1 1 10.5 4Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z"></path>
-                    </svg>
-                </button>
+                <button class="search-submit search-submit-text" type="submit">Найти</button>
             </form>
-
-            <div class="hero-actions">
-                <a class="action-button action-button-primary" href="{% url 'catalog' %}">Открыть каталог</a>
-                <a class="action-button" href="{% url 'catalog' %}?sort=newest">Новые предложения</a>
-            </div>
-        </div>
-    </section>
-
-    <section class="features-section" aria-labelledby="features-title">
-        <div class="section-heading">
-            <p class="section-kicker">Возможности</p>
-            <h2 id="features-title">Все для быстрого выбора выгодного предложения</h2>
-        </div>
-
-        <div class="feature-grid">
-            <article class="feature-card">
-                <div class="card-icon" aria-hidden="true">⌕</div>
-                <h3>Поиск товаров</h3>
-                <p>Ищите по названию, артикулу, штрихкоду и данным карточки товара.</p>
-            </article>
-            <article class="feature-card">
-                <div class="card-icon" aria-hidden="true">€</div>
-                <h3>Сравнение цен</h3>
-                <p>Смотрите обычную и скидочную цену без перехода между десятками страниц.</p>
-            </article>
-            <article class="feature-card">
-                <div class="card-icon" aria-hidden="true">□</div>
-                <h3>Каталог</h3>
-                <p>Фильтруйте предложения по магазину, категории и сортируйте по цене.</p>
-            </article>
-            <article class="feature-card">
-                <div class="card-icon" aria-hidden="true">↗</div>
-                <h3>Переход в магазин</h3>
-                <p>Открывайте исходную карточку товара, когда нашли подходящее предложение.</p>
-            </article>
         </div>
     </section>
 </main>

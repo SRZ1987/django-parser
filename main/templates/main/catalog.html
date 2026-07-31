@@ -113,6 +113,19 @@
                             </div>
 
                             <div class="catalog-card-actions">
+                                {% if user.is_authenticated %}
+                                    {% if offer.pk in list_offer_ids %}
+                                        <span class="list-state">✓ В списке</span>
+                                    {% else %}
+                                        <form method="post" action="{% url 'add_to_shopping_list' offer.pk %}">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                            <button class="list-button" type="submit">+ В список</button>
+                                        </form>
+                                    {% endif %}
+                                {% else %}
+                                    <a class="list-button" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">+ В список</a>
+                                {% endif %}
                                 <a class="store-link" href="{% url 'offer_detail' offer.pk %}">Подробнее</a>
                                 {% if offer.product_url %}
                                     <a class="external-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">
