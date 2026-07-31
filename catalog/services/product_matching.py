@@ -83,6 +83,10 @@ def score_offer_against_query(
     if token_score:
         score += token_score * 0.28
         reasons.append("name tokens overlap")
+    token_coverage = _token_coverage(query_tokens or target_attributes.tokens, offer_attributes.tokens)
+    if token_coverage:
+        score += token_coverage * 0.18
+        reasons.append("query tokens covered")
 
     sequence_score = SequenceMatcher(None, normalized_query, offer_attributes.normalized_name).ratio() if normalized_query else 0
     if sequence_score >= 0.55:
@@ -189,9 +193,23 @@ def _identifier_matches(offer: ProductOffer, normalized_query: str) -> bool:
 def _token_similarity(left: set[str], right: set[str]) -> float:
     if not left or not right:
         return 0.0
-    intersection = len(left & right)
+    intersection = sum(1 for token in left if _token_matches(token, right))
     union = len(left | right)
     return intersection / union if union else 0.0
+
+
+def _token_coverage(query_tokens: set[str], offer_tokens: set[str]) -> float:
+    if not query_tokens or not offer_tokens:
+        return 0.0
+    return sum(1 for token in query_tokens if _token_matches(token, offer_tokens)) / len(query_tokens)
+
+
+def _token_matches(query_token: str, offer_tokens: set[str]) -> bool:
+    if query_token in offer_tokens:
+        return True
+    if len(query_token) < 4:
+        return False
+    return any(query_token in offer_token for offer_token in offer_tokens)
 
 
 def _dimensions_match(source: ProductAttributes, candidate: ProductAttributes) -> bool:

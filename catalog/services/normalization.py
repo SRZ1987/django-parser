@@ -6,7 +6,7 @@ _DASHES_RE = re.compile(r"[\u2010-\u2015\u2212\-]+")
 _DECIMAL_COMMA_RE = re.compile(r"(?<=\d),(?=\d)")
 _MODEL_SPLIT_RE = re.compile(r"\b([a-z]{2,6})\s+(\d{2,5})([a-z0-9]*)\b")
 _DIMENSION_RE = re.compile(
-    r"\b(\d+(?:\.\d+)?)\s*[xх]\s*(\d+(?:\.\d+)?)(?:\s*[xх]\s*(\d+(?:\.\d+)?))?\s*(mm|мм|cm|см|m|м)?\b",
+    r"\b(\d+(?:\.\d+)?)\s*[xх]\s*(\d+(?:\.\d+)?)(?:\s*[xх]\s*(\d+(?:\.\d+)?))?(?:\s*(mm|мм|cm|см|m|м)\b)?",
     re.IGNORECASE,
 )
 _NUMBER_UNIT_RE = re.compile(

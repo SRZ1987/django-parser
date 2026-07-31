@@ -57,6 +57,9 @@ class ProductSearchTests(TestCase):
     def ids(self, matches):
         return [match.offer.pk for match in matches]
 
+    def result_ids(self, results):
+        return self.ids(results.exact_matches + results.same_product + results.bundles_or_variants + results.similar_products)
+
     def test_exact_barcode_returns_all_barcode_matches_first(self):
         espak = self.offer("Makita DDF482Z drill", barcode="4000000000001", brand="Makita", model="DDF482Z")
         depo = self.offer("Akutrell Makita DDF 482 Z", shop=self.depo, barcode="4000000000001", brand="Makita", model="DDF482Z")
@@ -107,7 +110,7 @@ class ProductSearchTests(TestCase):
         other_size = self.offer("Screw 5x90mm 100 pcs", category=self.fasteners, sku="OTHER", price="6.00")
 
         results = search_products("screw 5x70")
-        ranked_ids = self.ids(results.similar_products + results.same_product + results.bundles_or_variants)
+        ranked_ids = self.result_ids(results)
 
         self.assertLess(ranked_ids.index(same_size.pk), ranked_ids.index(other_size.pk))
 
@@ -116,7 +119,7 @@ class ProductSearchTests(TestCase):
         pack_1000 = self.offer("Screw 5x70mm 1000 pcs", category=self.fasteners, sku="PACK1000")
 
         results = search_products("screw 5x70 100 pcs")
-        ranked_ids = self.ids(results.similar_products + results.same_product + results.bundles_or_variants)
+        ranked_ids = self.result_ids(results)
 
         self.assertLess(ranked_ids.index(pack_100.pk), ranked_ids.index(pack_1000.pk))
 
@@ -138,6 +141,46 @@ class ProductSearchTests(TestCase):
 
         self.assertIn(drill.pk, self.ids(results.similar_products + results.same_product))
         self.assertNotIn(saw.pk, self.ids(results.exact_matches))
+
+    def test_text_search_is_order_independent_for_brand_and_name(self):
+        target = self.offer("Akutrell MAKITA DDF482Z 18V", shop=self.depo, brand="Makita", model="DDF482Z")
+        makita_partial = self.offer("Makita saag", shop=self.bauhof, brand="Makita")
+        self.offer("Trell Bosch GSR 18V", brand="Bosch", model="GSR18V")
+
+        direct = search_products("trell makita")
+        reversed_query = search_products("makita trell")
+        direct_ids = self.result_ids(direct)
+        reversed_ids = self.result_ids(reversed_query)
+
+        self.assertIn(target.pk, direct_ids)
+        self.assertIn(target.pk, reversed_ids)
+        self.assertEqual(direct_ids[:1], [target.pk])
+        self.assertEqual(reversed_ids[:1], [target.pk])
+        self.assertLess(reversed_ids.index(target.pk), reversed_ids.index(makita_partial.pk))
+
+    def test_text_search_is_order_independent_for_model_and_brand(self):
+        target = self.offer("Akutrell Makita DDF482Z", shop=self.depo, brand="Makita", model="DDF482Z")
+
+        direct = search_products("ddf482 makita")
+        reversed_query = search_products("makita ddf482")
+
+        self.assertIn(target.pk, self.result_ids(direct))
+        self.assertIn(target.pk, self.result_ids(reversed_query))
+        self.assertEqual(self.result_ids(direct)[:1], self.result_ids(reversed_query)[:1])
+
+    def test_text_search_is_order_independent_for_dimensions_and_name(self):
+        target = self.offer("Kruvi 5x70mm 100 pcs", category=self.fasteners, sku="KRUVI-5X70")
+        other_size = self.offer("Kruvi 5x90mm 100 pcs", category=self.fasteners, sku="KRUVI-5X90")
+
+        direct = search_products("5x70 kruvi")
+        reversed_query = search_products("kruvi 5x70")
+        direct_ids = self.result_ids(direct)
+        reversed_ids = self.result_ids(reversed_query)
+
+        self.assertIn(target.pk, direct_ids)
+        self.assertIn(target.pk, reversed_ids)
+        self.assertLess(direct_ids.index(target.pk), direct_ids.index(other_size.pk))
+        self.assertLess(reversed_ids.index(target.pk), reversed_ids.index(other_size.pk))
 
     def test_absent_barcode_and_brand_still_search_by_name(self):
         offer = self.offer("Generic screw 5x70mm", barcode="", brand="", model="", category=self.fasteners)

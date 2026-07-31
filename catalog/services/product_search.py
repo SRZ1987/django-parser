@@ -60,7 +60,7 @@ def search_products(
 
     source_offer = _find_source_offer(query, normalized_query)
     source_attributes = build_offer_attributes(source_offer) if source_offer else extract_product_attributes(query)
-    candidates = list(_retrieve_candidates(normalized_query, source_offer, source_attributes, candidate_limit))
+    candidates = _retrieve_candidates(normalized_query, source_offer, source_attributes, candidate_limit)
     ranked = [
         score_offer_against_offer(candidate, source_offer)
         if source_offer
@@ -132,37 +132,58 @@ def _find_source_offer(raw_query: str, normalized_query: str) -> ProductOffer | 
 
 def _retrieve_candidates(normalized_query, source_offer, source_attributes, candidate_limit):
     queryset = available_offer_queryset()
-    query = Q()
+    broad_query = Q()
     tokens = tokenize(normalized_query)
     meaningful_tokens = [token for token in tokens if len(token) >= 2][:6]
+    candidates = []
+    seen_ids = set()
 
     if normalized_query:
-        query |= Q(barcode__iexact=normalized_query) | Q(product__barcode__iexact=normalized_query)
-        query |= Q(sku__iexact=normalized_query) | Q(external_id__iexact=normalized_query)
-        query |= Q(normalized_name__icontains=normalized_query) | Q(search_text__icontains=normalized_query)
+        exact_query = Q(barcode__iexact=normalized_query) | Q(product__barcode__iexact=normalized_query)
+        exact_query |= Q(sku__iexact=normalized_query) | Q(external_id__iexact=normalized_query)
+        _extend_candidates(candidates, seen_ids, queryset.filter(exact_query), candidate_limit)
+
+        broad_query |= exact_query
+        broad_query |= Q(normalized_name__icontains=normalized_query) | Q(search_text__icontains=normalized_query)
+
+    if meaningful_tokens:
+        all_tokens_query = Q()
+        for token in meaningful_tokens:
+            all_tokens_query &= Q(search_text__icontains=token) | Q(normalized_name__icontains=token)
+        _extend_candidates(candidates, seen_ids, queryset.filter(all_tokens_query), candidate_limit)
 
     if source_offer:
         if source_offer.barcode:
-            query |= Q(barcode=source_offer.barcode) | Q(product__barcode=source_offer.barcode)
+            broad_query |= Q(barcode=source_offer.barcode) | Q(product__barcode=source_offer.barcode)
         if source_offer.sku:
-            query |= Q(sku=source_offer.sku, shop=source_offer.shop)
+            broad_query |= Q(sku=source_offer.sku, shop=source_offer.shop)
 
     if source_attributes.brand:
-        query |= Q(product__normalized_brand=source_attributes.brand) | Q(search_text__icontains=source_attributes.brand)
+        broad_query |= Q(product__normalized_brand=source_attributes.brand) | Q(search_text__icontains=source_attributes.brand)
     if source_attributes.model:
-        query |= Q(product__normalized_model=source_attributes.model) | Q(search_text__icontains=source_attributes.model)
+        broad_query |= Q(product__normalized_model=source_attributes.model) | Q(search_text__icontains=source_attributes.model)
     if source_attributes.base_model and source_attributes.base_model != source_attributes.model:
-        query |= Q(search_text__icontains=source_attributes.base_model)
+        broad_query |= Q(search_text__icontains=source_attributes.base_model)
     for dimension in source_attributes.dimensions:
-        query |= Q(search_text__icontains=dimension)
+        broad_query |= Q(search_text__icontains=dimension)
 
     for token in meaningful_tokens:
-        query |= Q(search_text__icontains=token)
+        broad_query |= Q(search_text__icontains=token)
 
-    if not query:
-        return queryset.none()
+    if broad_query and len(candidates) < candidate_limit:
+        _extend_candidates(candidates, seen_ids, queryset.filter(broad_query), candidate_limit)
 
-    return queryset.filter(query).distinct().order_by("shop__name", "original_name", "id")[:candidate_limit]
+    return candidates
+
+
+def _extend_candidates(candidates, seen_ids, queryset, candidate_limit):
+    for offer in queryset.distinct().order_by("shop__name", "original_name", "id")[:candidate_limit]:
+        if offer.pk in seen_ids:
+            continue
+        candidates.append(offer)
+        seen_ids.add(offer.pk)
+        if len(candidates) >= candidate_limit:
+            break
 
 
 def _append_match(results: SearchResults, match: MatchResult):
