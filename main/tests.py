@@ -148,6 +148,20 @@ class MainCatalogTests(TestCase):
 
         self.assertEqual(self.catalog_offer_ids(response), [bosch.pk])
 
+    def test_catalog_search_is_order_independent_for_tokens(self):
+        offer = self.create_offer(
+            name="AKULÖÖKTRELL MAKITA DHP482Z",
+            external_id="makita-impact-drill",
+            brand="Makita",
+            model="DHP482Z",
+        )
+
+        direct = self.client.get(reverse("catalog"), {"q": "trell makita"}, HTTP_HOST="127.0.0.1")
+        reversed_query = self.client.get(reverse("catalog"), {"q": "makita trell"}, HTTP_HOST="127.0.0.1")
+
+        self.assertIn(offer.pk, self.catalog_offer_ids(direct))
+        self.assertIn(offer.pk, self.catalog_offer_ids(reversed_query))
+
     def test_catalog_search_by_sku(self):
         offer = self.create_offer(name="Angle grinder", sku="SKU-BOSCH-42")
 
@@ -360,6 +374,20 @@ class MainCatalogTests(TestCase):
         payload = response.json()
         self.assertEqual(len(payload["results"]), 1)
         self.assertEqual(payload["results"][0]["name"], "Bosch drill")
+
+    def test_suggestions_search_is_order_independent_for_tokens(self):
+        offer = self.create_offer(
+            name="AKULÖÖKTRELL MAKITA DHP482Z",
+            external_id="suggestion-makita-impact-drill",
+            brand="Makita",
+            model="DHP482Z",
+        )
+
+        direct = self.client.get(reverse("search_suggestions"), {"q": "trell makita"}, HTTP_HOST="127.0.0.1")
+        reversed_query = self.client.get(reverse("search_suggestions"), {"q": "makita trell"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(direct.json()["results"][0]["id"], offer.pk)
+        self.assertEqual(reversed_query.json()["results"][0]["id"], offer.pk)
 
     def test_suggestions_search_by_sku_works(self):
         self.create_offer(name="Angle grinder", sku="SKU-BOSCH-42")

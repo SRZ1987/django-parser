@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
 from catalog.models import Category, ProductOffer, Shop
+from catalog.services.normalization import normalize_product_name, tokenize
 from catalog.services.product_search import DEFAULT_PAGE_SIZE, paginate_group, search_products
 
 
@@ -21,8 +22,13 @@ CATALOG_SORT_OPTIONS = {
 
 
 def product_offer_search_query(query):
-    return (
+    normalized_query = normalize_product_name(query)
+    tokens = [token for token in tokenize(normalized_query) if len(token) >= 2][:6]
+    phrase_query = (
         Q(original_name__icontains=query)
+        | Q(original_name__icontains=normalized_query)
+        | Q(normalized_name__icontains=normalized_query)
+        | Q(search_text__icontains=normalized_query)
         | Q(sku__icontains=query)
         | Q(barcode__icontains=query)
         | Q(external_id__icontains=query)
@@ -30,6 +36,23 @@ def product_offer_search_query(query):
         | Q(product__brand__icontains=query)
         | Q(product__model__icontains=query)
     )
+    if not tokens:
+        return phrase_query
+
+    token_query = Q()
+    for token in tokens:
+        token_query &= (
+            Q(original_name__icontains=token)
+            | Q(normalized_name__icontains=token)
+            | Q(search_text__icontains=token)
+            | Q(sku__icontains=token)
+            | Q(barcode__icontains=token)
+            | Q(external_id__icontains=token)
+            | Q(product__name__icontains=token)
+            | Q(product__brand__icontains=token)
+            | Q(product__model__icontains=token)
+        )
+    return phrase_query | token_query
 
 
 def available_offers():
