@@ -615,13 +615,31 @@ class DepoAdapterTests(TestCase):
 
 
 class AdapterRegistryTests(TestCase):
-    def test_registry_contains_espak_and_fere(self):
+    expected_production_codes = {"espak", "depo", "bauhof", "ehituseabc", "fere", "bauhaus"}
+
+    def test_registry_contains_exactly_all_production_parsers(self):
+        self.assertEqual(set(ADAPTERS), self.expected_production_codes)
         self.assertIs(ADAPTERS["bauhaus"], BauhausAdapter)
         self.assertIs(ADAPTERS["bauhof"], BauhofAdapter)
         self.assertIs(ADAPTERS["depo"], DepoAdapter)
         self.assertIs(ADAPTERS["ehituseabc"], EhituseABCAdapter)
         self.assertIs(ADAPTERS["espak"], EspakAdapter)
         self.assertIs(ADAPTERS["fere"], FereAdapter)
+
+    def test_get_adapter_class_returns_each_production_adapter(self):
+        from parsers.adapters.registry import get_adapter_class
+
+        for code in self.expected_production_codes:
+            self.assertIs(get_adapter_class(code), ADAPTERS[code])
+
+    def test_setup_parsers_and_registry_are_consistent(self):
+        call_command("setup_parsers", verbosity=0)
+
+        configs = ParserConfig.objects.filter(code__in=self.expected_production_codes).order_by("run_order")
+
+        self.assertEqual(set(configs.values_list("code", flat=True)), self.expected_production_codes)
+        self.assertTrue(all(config.is_enabled for config in configs))
+        self.assertEqual(list(configs.values_list("run_order", flat=True)), [1, 2, 3, 4, 5, 6])
 
 
 class PathlessFile:

@@ -60,7 +60,12 @@ def run_all_parsers(trigger=ParserRun.TRIGGER_COMMAND, force=False):
 
 
 def start_batch(trigger, force=False):
-    recover_stale_parser_state()
+    try:
+        recover_stale_parser_state()
+    except OperationalError as exc:
+        if "locked" in str(exc).lower():
+            raise ParserBatchAlreadyRunning("Parser batch is already running.") from exc
+        raise
     now = timezone.now()
     try:
         with transaction.atomic():
