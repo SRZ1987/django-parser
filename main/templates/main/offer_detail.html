@@ -30,6 +30,12 @@
                 {% else %}
                     <strong>Цена не указана</strong>
                 {% endif %}
+                {% if offer.quantity_price and offer.quantity_price_min_quantity %}
+                    <span class="quantity-price detail-quantity-price">
+                        При покупке от {{ offer.quantity_price_min_quantity }} шт. —
+                        {{ offer.quantity_price }} {{ offer.currency }} за штуку
+                    </span>
+                {% endif %}
             </div>
 
             <dl class="detail-meta">

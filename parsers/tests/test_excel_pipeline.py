@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.files import File
@@ -126,6 +126,66 @@ class ExcelImportTests(TestCase):
         self.assertEqual(str(offer.price), "10.00")
         self.assertEqual(str(offer.sale_price), "8.00")
         self.assertEqual(offer.barcode, "4740000000001")
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_depo_quantity_price_is_imported_and_updated_without_duplicates(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            first_path = Path(tmp_dir) / "depo-first.xlsx"
+            create_xlsx(
+                first_path,
+                headers=depo_parser.COLUMNS,
+                rows=[
+                    [
+                        "DEPO construction screw",
+                        10,
+                        "",
+                        8.5,
+                        "4740000000001",
+                        "DEPO-1",
+                        "https://img.test/depo.jpg",
+                        "https://online.depo.ee/product/DEPO-1",
+                        6,
+                    ]
+                ],
+            )
+            first_export = self._create_export(first_path, rows_count=1)
+            first_result = ExcelCatalogImporter().import_file(first_export, column_map=DepoAdapter.column_map)
+
+            second_path = Path(tmp_dir) / "depo-second.xlsx"
+            create_xlsx(
+                second_path,
+                headers=depo_parser.COLUMNS,
+                rows=[
+                    [
+                        "DEPO construction screw",
+                        10,
+                        "",
+                        7.75,
+                        "4740000000001",
+                        "DEPO-1",
+                        "https://img.test/depo.jpg",
+                        "https://online.depo.ee/product/DEPO-1",
+                        10,
+                    ]
+                ],
+            )
+            self.run = ParserRun.objects.create(parser=self.config, trigger=ParserRun.TRIGGER_COMMAND)
+            second_export = self._create_export(second_path, rows_count=1)
+            second_result = ExcelCatalogImporter().import_file(second_export, column_map=DepoAdapter.column_map)
+
+        offer = ProductOffer.objects.get(shop=self.shop, external_id="DEPO-1")
+        self.assertEqual(first_result.products_created, 1)
+        self.assertEqual(second_result.products_updated, 1)
+        self.assertEqual(ProductOffer.objects.filter(shop=self.shop, external_id="DEPO-1").count(), 1)
+        self.assertIsNone(offer.sale_price)
+        self.assertEqual(str(offer.quantity_price), "7.75")
+        self.assertEqual(offer.quantity_price_min_quantity, 10)
+        self.assertEqual(offer.price_for_quantity(9), offer.price)
+        self.assertEqual(offer.price_for_quantity(10), offer.quantity_price)
+        self.assertEqual(offer.price_history.count(), 2)
+        latest_history = offer.price_history.first()
+        self.assertEqual(str(latest_history.quantity_price), "7.75")
+        self.assertEqual(latest_history.quantity_price_min_quantity, 10)
 
     @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
     def test_overlong_field_reports_row_field_length_and_preview(self):
@@ -885,6 +945,74 @@ class BauhofAdapterTests(TestCase):
 
 
 class DepoAdapterTests(TestCase):
+    def test_product_page_keeps_quantity_price_and_threshold(self):
+        parser = depo_parser.DepoParser()
+        parser.post_graphql = AsyncMock(
+            return_value={
+                "data": {
+                    "products": {
+                        "pageInfo": {"totalCount": 1},
+                        "edges": [
+                            {
+                                "node": {
+                                    "id": "DEPO-1",
+                                    "name": "DEPO construction screw",
+                                    "primaryBarcode": "4740000000001",
+                                    "prices": {
+                                        "yellow": {"priceWithVat": 10},
+                                        "orange": {"priceWithVat": 8.5, "priceQuantity": 6},
+                                    },
+                                }
+                            }
+                        ],
+                    }
+                }
+            }
+        )
+
+        total, rows = asyncio.run(parser.get_products_page(None, 8570, 0))
+
+        self.assertEqual(total, 1)
+        self.assertEqual(rows[0][depo_parser.COLUMNS[3]], 8.5)
+        self.assertEqual(rows[0][depo_parser.COLUMNS[8]], 6)
+
+    def test_first_category_pages_are_processed_by_the_worker_queue(self):
+        async def scenario():
+            parser = depo_parser.DepoParser()
+            queue = asyncio.Queue()
+
+            async def fake_page(session, category_id, start):
+                total = 40 if category_id == 1 else 20
+                return total, [
+                    {
+                        depo_parser.COLUMNS[0]: f"Product {category_id}-{start}",
+                        depo_parser.COLUMNS[1]: 10,
+                        depo_parser.COLUMNS[2]: "",
+                        depo_parser.COLUMNS[3]: "",
+                        depo_parser.COLUMNS[4]: "",
+                        depo_parser.COLUMNS[5]: f"{category_id}-{start}",
+                        depo_parser.COLUMNS[6]: "",
+                        depo_parser.COLUMNS[7]: "",
+                        depo_parser.COLUMNS[8]: "",
+                    }
+                ]
+
+            parser.get_products_page = AsyncMock(side_effect=fake_page)
+            await parser.prepare_queue(None, [1, 2], queue)
+            workers = [asyncio.create_task(parser.worker(number, None, queue)) for number in (1, 2)]
+            await asyncio.wait_for(queue.join(), timeout=1)
+            for worker in workers:
+                worker.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+            return parser
+
+        parser = asyncio.run(scenario())
+
+        self.assertEqual(parser.categories_done, 2)
+        self.assertEqual(parser.pages_done, 3)
+        self.assertEqual(len(parser.products), 3)
+        self.assertFalse(parser.errors)
+
     def test_standalone_wrapper_creates_excel(self):
         class FakeDepoParser(depo_parser.DepoParser):
             async def get_categories(self, session):

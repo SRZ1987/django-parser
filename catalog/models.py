@@ -101,6 +101,8 @@ class ProductOffer(models.Model):
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     sale_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    quantity_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    quantity_price_min_quantity = models.PositiveIntegerField(null=True, blank=True)
     currency = models.CharField(max_length=3, default="EUR")
     product_url = models.URLField(max_length=1000, blank=True)
     image_url = models.URLField(max_length=1000, blank=True)
@@ -130,6 +132,15 @@ class ProductOffer(models.Model):
     def current_price(self):
         return self.sale_price if self.sale_price is not None else self.price
 
+    def price_for_quantity(self, quantity):
+        if (
+            self.quantity_price is not None
+            and self.quantity_price_min_quantity is not None
+            and quantity >= self.quantity_price_min_quantity
+        ):
+            return self.quantity_price
+        return self.current_price
+
     def save(self, *args, **kwargs):
         self.normalized_name = normalize_product_name(self.original_name)
         category_name = self.category.name if self.category_id and self.category else ""
@@ -157,6 +168,8 @@ class PriceHistory(models.Model):
     )
     price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     sale_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    quantity_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    quantity_price_min_quantity = models.PositiveIntegerField(null=True, blank=True)
     recorded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

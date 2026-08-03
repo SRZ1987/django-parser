@@ -45,6 +45,8 @@ class ProductOfferAdmin(admin.ModelAdmin):
         "barcode",
         "price",
         "sale_price",
+        "quantity_price",
+        "quantity_price_min_quantity",
         "currency",
         "is_available",
         "is_active",
@@ -114,7 +116,14 @@ class ProductOfferAdmin(admin.ModelAdmin):
 
 @admin.register(PriceHistory)
 class PriceHistoryAdmin(admin.ModelAdmin):
-    list_display = ("offer", "price", "sale_price", "recorded_at")
+    list_display = (
+        "offer",
+        "price",
+        "sale_price",
+        "quantity_price",
+        "quantity_price_min_quantity",
+        "recorded_at",
+    )
     search_fields = ("offer__original_name", "offer__sku", "offer__barcode")
     list_filter = ("offer__shop",)
     autocomplete_fields = ("offer",)

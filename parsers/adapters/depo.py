@@ -14,10 +14,12 @@ class DepoAdapter(ParserAdapter):
         depo_parser.COLUMNS[0]: "original_name",
         depo_parser.COLUMNS[1]: "price",
         depo_parser.COLUMNS[2]: "sale_price",
+        depo_parser.COLUMNS[3]: "quantity_price",
         depo_parser.COLUMNS[4]: "barcode",
         depo_parser.COLUMNS[5]: "external_id",
         depo_parser.COLUMNS[6]: "image_url",
         depo_parser.COLUMNS[7]: "product_url",
+        depo_parser.COLUMNS[8]: "quantity_price_min_quantity",
     }
 
     async def run(self, output_path, log_callback=None):

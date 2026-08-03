@@ -47,6 +47,8 @@ class MainCatalogTests(TestCase):
         model="GSR 18V-50",
         price=Decimal("12.99"),
         sale_price=None,
+        quantity_price=None,
+        quantity_price_min_quantity=None,
         description="Compact drill for home projects.",
         is_active=True,
         is_available=True,
@@ -70,6 +72,8 @@ class MainCatalogTests(TestCase):
             description=description,
             price=price,
             sale_price=sale_price,
+            quantity_price=quantity_price,
+            quantity_price_min_quantity=quantity_price_min_quantity,
             currency="EUR",
             image_url="https://example.com/image.jpg",
             product_url="https://example.com/product",
@@ -587,7 +591,14 @@ class MainCatalogTests(TestCase):
         self.assertEqual(len(response.json()["results"]), 8)
 
     def test_suggestions_json_contains_expected_fields(self):
-        offer = self.create_offer(name="Bosch drill", sku="SKU-1", barcode="EAN-1", sale_price=Decimal("9.99"))
+        offer = self.create_offer(
+            name="Bosch drill",
+            sku="SKU-1",
+            barcode="EAN-1",
+            sale_price=Decimal("9.99"),
+            quantity_price=Decimal("7.49"),
+            quantity_price_min_quantity=6,
+        )
 
         response = self.client.get(reverse("search_suggestions"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
 
@@ -603,6 +614,8 @@ class MainCatalogTests(TestCase):
                 "barcode",
                 "price",
                 "sale_price",
+                "quantity_price",
+                "quantity_price_min_quantity",
                 "currency",
                 "image_url",
                 "product_url",
@@ -611,6 +624,8 @@ class MainCatalogTests(TestCase):
         )
         self.assertEqual(result["price"], "12.99")
         self.assertEqual(result["sale_price"], "9.99")
+        self.assertEqual(result["quantity_price"], "7.49")
+        self.assertEqual(result["quantity_price_min_quantity"], 6)
         self.assertEqual(result["detail_url"], reverse("offer_detail", args=[offer.pk]))
 
     def test_suggestion_detail_url_matches_offer(self):

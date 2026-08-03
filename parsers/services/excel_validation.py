@@ -36,7 +36,16 @@ class ExcelCatalogValidator:
 
             rows_count = 0
             header_index = {header: index for index, header in enumerate(headers)}
-            price_columns = [column for column, target in column_map.items() if target in {"price", "sale_price"}]
+            price_columns = [
+                column
+                for column, target in column_map.items()
+                if target in {"price", "sale_price", "quantity_price"}
+            ]
+            quantity_columns = [
+                column
+                for column, target in column_map.items()
+                if target == "quantity_price_min_quantity"
+            ]
             for row in worksheet.iter_rows(min_row=2, values_only=True):
                 if not any(value not in (None, "") for value in row):
                     continue
@@ -47,6 +56,12 @@ class ExcelCatalogValidator:
                         continue
                     if parse_decimal(value) is None:
                         return ExcelValidationResult(False, error_message=f"Invalid price in column {column}.")
+                for column in quantity_columns:
+                    value = row[header_index[column]]
+                    if value in (None, ""):
+                        continue
+                    if parse_positive_integer(value) is None:
+                        return ExcelValidationResult(False, error_message=f"Invalid quantity in column {column}.")
 
             if rows_count <= 0:
                 return ExcelValidationResult(False, error_message="Excel catalog is empty.")
@@ -65,3 +80,15 @@ def parse_decimal(value):
     except (InvalidOperation, ValueError):
         return None
     return parsed if parsed >= 0 else None
+
+
+def parse_positive_integer(value):
+    if value in (None, "") or isinstance(value, bool):
+        return None
+    try:
+        parsed = Decimal(str(value).replace(",", ".").replace(" ", ""))
+    except (InvalidOperation, ValueError):
+        return None
+    if parsed < 1 or parsed != parsed.to_integral_value():
+        return None
+    return int(parsed)

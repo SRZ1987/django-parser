@@ -13,7 +13,7 @@ GRAPHQL_URL = "https://online.depo.ee/graphql"
 SITE_URL = "https://online.depo.ee"
 
 ROWS = 20
-WORKERS = 3
+WORKERS = 5
 REQUEST_DELAY = 0.1
 RETRY_WAIT = 20
 MAX_RETRIES = 12
@@ -28,6 +28,7 @@ COLUMNS = [
     "Код магазина",
     "Фото",
     "Ссылка",
+    "Минимальное количество для скидки",
 ]
 
 
@@ -109,6 +110,9 @@ class DepoParser:
         self.blocked_until = 0.0
         self.pages_total = 0
         self.pages_done = 0
+        self.categories_total = 0
+        self.categories_done = 0
+        self.errors: list[Exception] = []
 
     @staticmethod
     def normalize_text(value: Any) -> str:
@@ -129,6 +133,16 @@ class DepoParser:
             return round(float(str(value).replace(",", ".")), 2)
         except (TypeError, ValueError):
             return ""
+
+    @staticmethod
+    def normalize_quantity(value: Any) -> int | str:
+        if value in (None, "") or isinstance(value, bool):
+            return ""
+        try:
+            quantity = int(value)
+        except (TypeError, ValueError):
+            return ""
+        return quantity if quantity > 0 else ""
 
     async def wait_if_blocked(self) -> None:
         loop = asyncio.get_running_loop()
@@ -167,7 +181,11 @@ class DepoParser:
                     headers=headers,
                 ) as response:
                     if response.status == 429:
-                        wait = RETRY_WAIT + random.uniform(0, 5)
+                        retry_after = response.headers.get("Retry-After", "")
+                        try:
+                            wait = max(float(retry_after), 0.0)
+                        except ValueError:
+                            wait = RETRY_WAIT + random.uniform(0, 5)
                         print(f"429: пауза {wait:.1f} сек.")
                         await self.set_global_pause(wait)
                         continue
@@ -183,8 +201,7 @@ class DepoParser:
 
                     if response.status != 200:
                         text = await response.text()
-                        print(f"HTTP {response.status}: {text[:300]}")
-                        return None
+                        raise RuntimeError(f"DEPO HTTP {response.status}: {text[:300]}")
 
                     data = await response.json(content_type=None)
                     if data.get("errors"):
@@ -203,7 +220,7 @@ class DepoParser:
                 )
                 await asyncio.sleep(wait)
 
-        return None
+        raise RuntimeError(f"DEPO request failed after {MAX_RETRIES} attempts.")
 
     async def get_categories(self, session: aiohttp.ClientSession) -> list[int]:
         data = await self.post_graphql(
@@ -257,6 +274,7 @@ class DepoParser:
                     or product.get("thumbnailPictureUrl")
                 ),
                 "Ссылка": f"{SITE_URL}/product/{product_id}" if product_id else "",
+                "Минимальное количество для скидки": self.normalize_quantity(orange.get("priceQuantity")),
             })
 
         return total, rows
@@ -283,14 +301,10 @@ class DepoParser:
         categories: list[int],
         queue: asyncio.Queue,
     ) -> None:
-        for index, category_id in enumerate(categories, start=1):
-            print(f"[{index}/{len(categories)}] Категория {category_id}")
-            total, first_rows = await self.get_products_page(session, category_id, 0)
-            await self.add_products(first_rows)
-
-            for start in range(ROWS, total, ROWS):
-                await queue.put((category_id, start))
-                self.pages_total += 1
+        self.categories_total = len(categories)
+        self.pages_total = len(categories)
+        for category_id in categories:
+            await queue.put((category_id, 0))
 
     async def worker(
         self,
@@ -300,13 +314,19 @@ class DepoParser:
     ) -> None:
         while True:
             task = await queue.get()
-            if task is None:
-                queue.task_done()
-                return
-
             category_id, start = task
             try:
-                _, rows = await self.get_products_page(session, category_id, start)
+                total, rows = await self.get_products_page(session, category_id, start)
+                if start == 0:
+                    self.categories_done += 1
+                    page_starts = list(range(ROWS, total, ROWS))
+                    self.pages_total += len(page_starts)
+                    for next_start in page_starts:
+                        await queue.put((category_id, next_start))
+                    print(
+                        f"Категории {self.categories_done}/{self.categories_total} | "
+                        f"категория {category_id}: {total} товаров"
+                    )
                 await self.add_products(rows)
                 self.pages_done += 1
 
@@ -315,7 +335,10 @@ class DepoParser:
                         f"Воркер {number} | страниц {self.pages_done}/{self.pages_total} "
                         f"| товаров {len(self.products)}"
                     )
+            except asyncio.CancelledError:
+                raise
             except Exception as error:
+                self.errors.append(error)
                 print(f"Воркер {number}: {error}")
             finally:
                 queue.task_done()
@@ -346,6 +369,7 @@ class DepoParser:
                 "F": 20,
                 "G": 70,
                 "H": 60,
+                "I": 24,
             }
             for column, width in widths.items():
                 worksheet.column_dimensions[column].width = width
@@ -355,6 +379,7 @@ class DepoParser:
                 worksheet[f"F{row}"].number_format = "@"
                 for column in ("B", "C", "D"):
                     worksheet[f"{column}{row}"].number_format = "0.00"
+                worksheet[f"I{row}"].number_format = "0"
 
         print(f"Готово: {OUTPUT_FILE}")
         print(f"Товаров: {len(dataframe)}")
@@ -383,12 +408,17 @@ async def main_async() -> None:
             asyncio.create_task(parser.worker(number, session, queue))
             for number in range(1, WORKERS + 1)
         ]
+        try:
+            await queue.join()
+        finally:
+            for worker_task in workers:
+                worker_task.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
 
-        for _ in workers:
-            await queue.put(None)
-
-        await queue.join()
-        await asyncio.gather(*workers)
+        if parser.errors:
+            raise RuntimeError(f"DEPO catalog download is incomplete: {parser.errors[0]}")
+        if not parser.products:
+            raise RuntimeError("DEPO returned an empty product catalog.")
 
     await asyncio.to_thread(parser.save_excel)
 

@@ -274,6 +274,8 @@ def search_suggestions(request):
                     "barcode": offer.barcode,
                     "price": str(offer.price) if offer.price is not None else None,
                     "sale_price": str(offer.sale_price) if offer.sale_price is not None else None,
+                    "quantity_price": str(offer.quantity_price) if offer.quantity_price is not None else None,
+                    "quantity_price_min_quantity": offer.quantity_price_min_quantity,
                     "currency": offer.currency,
                     "image_url": offer.image_url,
                     "product_url": offer.product_url,

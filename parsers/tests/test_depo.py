@@ -10,12 +10,22 @@ from parsers.services.depo_client import DepoClient, ROWS
 from parsers.services.runner import run_parser
 
 
-def depo_product(product_id="101", name="DEPO drill", price=Decimal("12.99"), sale_price=None, barcode="EAN-101"):
+def depo_product(
+    product_id="101",
+    name="DEPO drill",
+    price=Decimal("12.99"),
+    sale_price=None,
+    barcode="EAN-101",
+    quantity_price=None,
+    quantity_price_min_quantity=None,
+):
     return {
         "id": product_id,
         "name": name,
         "price": price,
         "sale_price": sale_price,
+        "quantity_price": quantity_price,
+        "quantity_price_min_quantity": quantity_price_min_quantity,
         "barcode": barcode,
         "sku": product_id,
         "image_url": f"https://online.depo.ee/images/{product_id}.jpg",
@@ -79,6 +89,25 @@ class DepoParserTests(TestCase):
 
         self.assertEqual(parser_run.prices_changed, 1)
         self.assertEqual(PriceHistory.objects.count(), 2)
+
+    def test_quantity_price_is_saved_separately_from_sale_price(self):
+        parser_run = self.run_with_products(
+            [
+                depo_product(
+                    quantity_price=Decimal("9.99"),
+                    quantity_price_min_quantity=6,
+                )
+            ]
+        )
+
+        offer = ProductOffer.objects.get(shop=self.depo_shop, external_id="101")
+        self.assertEqual(parser_run.status, ParserRun.STATUS_SUCCESS)
+        self.assertIsNone(offer.sale_price)
+        self.assertEqual(offer.quantity_price, Decimal("9.99"))
+        self.assertEqual(offer.quantity_price_min_quantity, 6)
+        history = PriceHistory.objects.get(offer=offer)
+        self.assertEqual(history.quantity_price, Decimal("9.99"))
+        self.assertEqual(history.quantity_price_min_quantity, 6)
 
     def test_same_price_does_not_create_price_history(self):
         self.run_with_products([depo_product(price=Decimal("12.99"))])

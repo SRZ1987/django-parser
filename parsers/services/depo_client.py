@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import math
 import random
 import re
 from decimal import Decimal, InvalidOperation
@@ -15,7 +14,7 @@ GRAPHQL_URL = "https://online.depo.ee/graphql"
 DEPO_WEBSITE_URL = "https://online.depo.ee"
 
 ROWS = 20
-WORKERS = 3
+WORKERS = 5
 REQUEST_DELAY = 0.1
 RETRY_WAIT = 20
 MAX_RETRIES = 12
@@ -84,11 +83,20 @@ def normalize_barcode(value: Any) -> str:
 def parse_price(value: Any) -> Decimal | None:
     if value in (None, ""):
         return None
-
     try:
         return Decimal(str(value).replace(",", ".")).quantize(Decimal("0.01"))
     except (InvalidOperation, TypeError, ValueError):
         return None
+
+
+def parse_quantity(value: Any) -> int | None:
+    if value in (None, "") or isinstance(value, bool):
+        return None
+    try:
+        quantity = int(value)
+    except (TypeError, ValueError):
+        return None
+    return quantity if quantity > 0 else None
 
 
 class DepoClient:
@@ -166,9 +174,12 @@ class DepoClient:
         self._started_at = asyncio.get_running_loop().time()
         self.categories_total = len(categories)
         self.categories_done = 0
-        self.pages_total = 0
+        self.pages_total = len(categories)
         self.pages_done = 0
         self.retry_count = 0
+
+        for category in categories:
+            await queue.put((int(category["id"]), 0))
 
         workers = [
             asyncio.create_task(self._worker(number, session, queue, products_by_key, errors))
@@ -177,18 +188,6 @@ class DepoClient:
         progress_task = asyncio.create_task(self._progress_watchdog(queue, products_by_key, stop_progress))
 
         try:
-            for index, category in enumerate(categories, start=1):
-                category_id = int(category["id"])
-                await self._log(f"DEPO category {index}/{len(categories)}: {category_id}")
-                total, rows = await self._get_products_page(session, category_id, 0)
-                self._merge_products(products_by_key, rows)
-                self.categories_done += 1
-                self.pages_done += 1
-                self.pages_total += max(1, math.ceil(total / ROWS)) if total else 1
-
-                for start in range(ROWS, total, ROWS):
-                    await queue.put((category_id, start))
-
             join_task = asyncio.create_task(queue.join())
             done, pending = await asyncio.wait(
                 {join_task, progress_task},
@@ -225,7 +224,17 @@ class DepoClient:
             try:
                 self.active_workers += 1
                 category_id, start = task
-                _, rows = await self._get_products_page(session, category_id, start)
+                total, rows = await self._get_products_page(session, category_id, start)
+                if start == 0:
+                    self.categories_done += 1
+                    page_starts = list(range(ROWS, total, ROWS))
+                    self.pages_total += len(page_starts)
+                    for next_start in page_starts:
+                        await queue.put((category_id, next_start))
+                    await self._log(
+                        f"DEPO category {self.categories_done}/{self.categories_total}: "
+                        f"{category_id}, products={total}"
+                    )
                 self._merge_products(products_by_key, rows)
                 self.pages_done += 1
 
@@ -267,7 +276,9 @@ class DepoClient:
                     "id": product_id,
                     "name": clean_text(product.get("name")),
                     "price": parse_price(yellow.get("priceWithVat")),
-                    "sale_price": parse_price(orange.get("priceWithVat")),
+                    "sale_price": None,
+                    "quantity_price": parse_price(orange.get("priceWithVat")),
+                    "quantity_price_min_quantity": parse_quantity(orange.get("priceQuantity")),
                     "barcode": normalize_barcode(product.get("primaryBarcode")),
                     "sku": product_id,
                     "image_url": clean_text(

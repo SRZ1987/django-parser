@@ -688,6 +688,15 @@ select {
     text-decoration: line-through;
 }
 
+.quantity-price {
+    display: block;
+    margin-top: 8px;
+    color: #0d7669;
+    font-size: 0.85rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
 .store-link {
     display: inline-flex;
     min-height: 44px;
@@ -782,6 +791,12 @@ select {
     color: var(--accent);
     font-size: clamp(1.8rem, 4vw, 3rem);
     line-height: 1.1;
+}
+
+.detail-quantity-price {
+    margin-top: 14px;
+    color: var(--accent);
+    font-size: 1rem;
 }
 
 .detail-meta {

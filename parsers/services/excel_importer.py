@@ -10,7 +10,7 @@ from openpyxl import load_workbook
 from catalog.models import Category, PriceHistory, Product, ProductOffer
 from catalog.services.normalization import normalize_product_name
 
-from .excel_validation import parse_decimal
+from .excel_validation import parse_decimal, parse_positive_integer
 
 
 class ExcelImportError(ValueError):
@@ -213,11 +213,20 @@ class ExcelCatalogImporter:
         external_id = data.get("external_id") or stable_external_id(data.get("product_url"), data.get("original_name"))
         price = parse_decimal(data.get("price"))
         sale_price = parse_decimal(data.get("sale_price"))
+        has_quantity_pricing = any(
+            field in data
+            for field in ("quantity_price", "quantity_price_min_quantity")
+        )
+        quantity_price = parse_decimal(data.get("quantity_price"))
+        quantity_price_min_quantity = parse_positive_integer(data.get("quantity_price_min_quantity"))
         if price is None and sale_price is not None:
             price = sale_price
             sale_price = None
         if price is not None and sale_price is not None and sale_price >= price:
             sale_price = None
+        if quantity_price is None or quantity_price_min_quantity is None:
+            quantity_price = None
+            quantity_price_min_quantity = None
 
         return {
             "external_id": external_id,
@@ -226,6 +235,9 @@ class ExcelCatalogImporter:
             "original_name": data.get("original_name", ""),
             "price": price,
             "sale_price": sale_price,
+            "quantity_price": quantity_price,
+            "quantity_price_min_quantity": quantity_price_min_quantity,
+            "has_quantity_pricing": has_quantity_pricing,
             "product_url": data.get("product_url", ""),
             "image_url": data.get("image_url", ""),
             "category_name": data.get("category_name", ""),
@@ -285,6 +297,8 @@ class ExcelCatalogImporter:
 
         previous_price = offer.price
         previous_sale_price = offer.sale_price
+        previous_quantity_price = offer.quantity_price
+        previous_quantity_price_min_quantity = offer.quantity_price_min_quantity
         offer.original_name = parsed["original_name"]
         offer.normalized_name = normalize_product_name(parsed["original_name"])
         offer.sku = parsed["sku"]
@@ -292,6 +306,9 @@ class ExcelCatalogImporter:
             offer.barcode = parsed["barcode"]
         offer.price = parsed["price"] if parsed["price"] is not None else offer.price
         offer.sale_price = parsed["sale_price"]
+        if parsed["has_quantity_pricing"]:
+            offer.quantity_price = parsed["quantity_price"]
+            offer.quantity_price_min_quantity = parsed["quantity_price_min_quantity"]
         offer.currency = "EUR"
         if parsed["product_url"]:
             offer.product_url = parsed["product_url"]
@@ -306,9 +323,20 @@ class ExcelCatalogImporter:
         offer.last_seen_at = seen_at
         offer.save()
 
-        price_changed = previous_price != offer.price or previous_sale_price != offer.sale_price
+        price_changed = (
+            previous_price != offer.price
+            or previous_sale_price != offer.sale_price
+            or previous_quantity_price != offer.quantity_price
+            or previous_quantity_price_min_quantity != offer.quantity_price_min_quantity
+        )
         if (created and (offer.price is not None or offer.sale_price is not None)) or price_changed:
-            PriceHistory.objects.create(offer=offer, price=offer.price, sale_price=offer.sale_price)
+            PriceHistory.objects.create(
+                offer=offer,
+                price=offer.price,
+                sale_price=offer.sale_price,
+                quantity_price=offer.quantity_price,
+                quantity_price_min_quantity=offer.quantity_price_min_quantity,
+            )
             return created, True, offer.pk
         return created, False, offer.pk
 

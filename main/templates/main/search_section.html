@@ -57,6 +57,11 @@
                             {% else %}
                                 <strong>Цена не указана</strong>
                             {% endif %}
+                            {% if offer.quantity_price and offer.quantity_price_min_quantity %}
+                                <span class="quantity-price">
+                                    От {{ offer.quantity_price_min_quantity }} шт. — {{ offer.quantity_price }} {{ offer.currency }}/шт.
+                                </span>
+                            {% endif %}
                         </div>
                         {% if user.is_authenticated %}
                             {% if offer.pk in list_offer_ids %}

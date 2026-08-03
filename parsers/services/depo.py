@@ -28,6 +28,8 @@ class ParsedDepoProduct:
     description: str
     price: object
     sale_price: object
+    quantity_price: object
+    quantity_price_min_quantity: int | None
     product_url: str
     image_url: str
     is_available: bool
@@ -157,6 +159,8 @@ class DepoParser(BaseStoreParser):
             description=clean_text(product.get("description")),
             price=price,
             sale_price=sale_price,
+            quantity_price=product.get("quantity_price"),
+            quantity_price_min_quantity=product.get("quantity_price_min_quantity"),
             product_url=clean_text(product.get("product_url")),
             image_url=clean_text(product.get("image_url")),
             is_available=True,
@@ -204,6 +208,8 @@ class DepoParser(BaseStoreParser):
 
         previous_price = offer.price
         previous_sale_price = offer.sale_price
+        previous_quantity_price = offer.quantity_price
+        previous_quantity_price_min_quantity = offer.quantity_price_min_quantity
 
         offer.category = category
         offer.sku = parsed.sku
@@ -212,6 +218,8 @@ class DepoParser(BaseStoreParser):
         offer.description = parsed.description
         offer.price = parsed.price
         offer.sale_price = parsed.sale_price
+        offer.quantity_price = parsed.quantity_price
+        offer.quantity_price_min_quantity = parsed.quantity_price_min_quantity
         offer.currency = "EUR"
         offer.product_url = parsed.product_url
         offer.image_url = parsed.image_url
@@ -226,6 +234,8 @@ class DepoParser(BaseStoreParser):
             and price_known
             or previous_price != parsed.price
             or previous_sale_price != parsed.sale_price
+            or previous_quantity_price != parsed.quantity_price
+            or previous_quantity_price_min_quantity != parsed.quantity_price_min_quantity
         )
 
         if price_changed:
@@ -233,6 +243,8 @@ class DepoParser(BaseStoreParser):
                 offer=offer,
                 price=parsed.price,
                 sale_price=parsed.sale_price,
+                quantity_price=parsed.quantity_price,
+                quantity_price_min_quantity=parsed.quantity_price_min_quantity,
             )
 
         return created, price_changed
