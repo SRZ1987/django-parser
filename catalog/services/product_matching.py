@@ -8,9 +8,11 @@ from catalog.models import ProductOffer
 from .attribute_extraction import ProductAttributes, extract_product_attributes
 from .normalization import (
     is_number_token,
+    is_meaningful_query_token,
     normalize_product_name,
     normalize_text,
     parse_dimension_token,
+    text_token_matches,
     tokenize,
 )
 
@@ -33,7 +35,7 @@ RANK_EXACT_PHRASE = 5
 RANK_EXACT_IDENTIFIER_OR_MODEL = 6
 
 TEXT_MATCH_NONE = 0
-TEXT_MATCH_COMPOUND_SUFFIX = 1
+TEXT_MATCH_COMPOUND = 1
 TEXT_MATCH_EXACT_WORD = 2
 
 
@@ -69,6 +71,7 @@ def score_offer_against_query(
     query: str,
     *,
     source_attributes: ProductAttributes | None = None,
+    require_all_query_tokens: bool = True,
 ) -> MatchResult:
     normalized_query = normalize_product_name(query)
     query_tokens = set(tokenize(normalized_query))
@@ -77,7 +80,11 @@ def score_offer_against_query(
     offer_tokens.update(tokenize(offer_attributes.brand))
     offer_tokens.update(tokenize(offer_attributes.model))
     target_attributes = source_attributes or extract_product_attributes(query)
-    effective_query_tokens = query_tokens or target_attributes.tokens
+    effective_query_tokens = {
+        token
+        for token in (query_tokens or target_attributes.tokens)
+        if is_meaningful_query_token(token)
+    }
     structured_tokens = {
         token
         for token in effective_query_tokens
@@ -143,17 +150,17 @@ def score_offer_against_query(
         if text_match_kinds
         else 0.0
     )
-    compound_suffix_ratio = (
-        sum(kind == TEXT_MATCH_COMPOUND_SUFFIX for kind in text_match_kinds.values()) / len(text_match_kinds)
+    compound_ratio = (
+        sum(kind == TEXT_MATCH_COMPOUND for kind in text_match_kinds.values()) / len(text_match_kinds)
         if text_match_kinds
         else 0.0
     )
     if exact_word_ratio:
         score += exact_word_ratio * 0.12
         reasons.append("exact words")
-    if compound_suffix_ratio:
-        score += compound_suffix_ratio * 0.05
-        reasons.append("compound word suffix")
+    if compound_ratio:
+        score += compound_ratio * 0.05
+        reasons.append("compound word")
 
     sequence_score = SequenceMatcher(None, normalized_query, offer_attributes.normalized_name).ratio() if normalized_query else 0
     if sequence_score >= 0.55:
@@ -248,6 +255,17 @@ def score_offer_against_query(
         else:
             match_type = MATCH_SIMILAR_PRODUCT
 
+    if (
+        require_all_query_tokens
+        and len(effective_query_tokens) >= 2
+        and not exact_identifier
+        and not (all_text_matched and all_structured_matched)
+    ):
+        score = 0.0
+        ranking_tier = RANK_WEAK
+        match_type = MATCH_SIMILAR_PRODUCT
+        reasons.append("not all query tokens matched")
+
     score = max(0.0, min(score, 1.0))
     if match_type == MATCH_SIMILAR_PRODUCT and score < SIMILAR_SCORE:
         reasons.append("weak similarity")
@@ -264,7 +282,12 @@ def score_offer_against_query(
 
 def score_offer_against_offer(candidate: ProductOffer, source: ProductOffer) -> MatchResult:
     source_attributes = build_offer_attributes(source)
-    result = score_offer_against_query(candidate, source.original_name, source_attributes=source_attributes)
+    result = score_offer_against_query(
+        candidate,
+        source.original_name,
+        source_attributes=source_attributes,
+        require_all_query_tokens=False,
+    )
 
     reasons = list(result.reasons)
     score = result.score
@@ -350,14 +373,14 @@ def _token_matches(query_token: str, offer_tokens: set[str]) -> bool:
     if is_number_token(query_token):
         number_pattern = re.compile(rf"(?<![\d.]){re.escape(query_token)}(?![\d.])")
         return any(number_pattern.search(offer_token) for offer_token in offer_tokens)
-    return any(offer_token.endswith(query_token) for offer_token in offer_tokens)
+    return any(text_token_matches(query_token, offer_token) for offer_token in offer_tokens)
 
 
 def _text_token_match_kind(query_token: str, offer_tokens: set[str]) -> int:
     if query_token in offer_tokens:
         return TEXT_MATCH_EXACT_WORD
-    if any(offer_token.endswith(query_token) for offer_token in offer_tokens):
-        return TEXT_MATCH_COMPOUND_SUFFIX
+    if any(text_token_matches(query_token, offer_token) for offer_token in offer_tokens):
+        return TEXT_MATCH_COMPOUND
     return TEXT_MATCH_NONE
 
 

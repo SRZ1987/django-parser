@@ -9,7 +9,9 @@ from catalog.models import ProductOffer
 
 from .attribute_extraction import extract_product_attributes
 from .normalization import (
+    allows_token_prefix,
     is_number_token,
+    is_meaningful_query_token,
     normalize_product_name,
     normalize_text,
     parse_dimension_token,
@@ -136,7 +138,7 @@ def _retrieve_candidates(normalized_query, source_offer, source_attributes, cand
     queryset = available_offer_queryset()
     broad_query = Q()
     tokens = tokenize(normalized_query)
-    meaningful_tokens = [token for token in tokens if len(token) >= 2][:6]
+    meaningful_tokens = [token for token in tokens if is_meaningful_query_token(token)]
     candidates = []
     seen_ids = set()
 
@@ -156,6 +158,9 @@ def _retrieve_candidates(normalized_query, source_offer, source_attributes, cand
         for token in meaningful_tokens:
             all_tokens_query &= _token_candidate_query(token)
         _extend_candidates(candidates, seen_ids, queryset.filter(all_tokens_query), candidate_limit)
+
+    if len(meaningful_tokens) >= 2 and source_offer is None:
+        return candidates
 
     if source_offer:
         if source_offer.barcode:
@@ -193,7 +198,11 @@ def _token_candidate_query(token: str) -> Q:
         pattern = rf"(^|[^0-9.]){re.escape(token)}([^0-9.]|$)"
         return Q(search_text__regex=pattern) | Q(normalized_name__regex=pattern)
 
-    pattern = rf"(^|[^\w])\w*{re.escape(token)}([^\w]|$)"
+    escaped_token = re.escape(token)
+    if allows_token_prefix(token):
+        pattern = rf"(^|[^\w])(?:\w*{escaped_token}|{escaped_token}\w*)([^\w]|$)"
+    else:
+        pattern = rf"(^|[^\w])\w*{escaped_token}([^\w]|$)"
     return Q(search_text__iregex=pattern) | Q(normalized_name__iregex=pattern)
 
 

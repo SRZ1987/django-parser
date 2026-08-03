@@ -10,6 +10,7 @@ from catalog.services.product_matching import (
     MATCH_EXACT,
     MATCH_SAME_PRODUCT,
     MATCH_SIMILAR_PRODUCT,
+    score_offer_against_query,
 )
 from catalog.services.product_search import search_products
 
@@ -114,7 +115,8 @@ class ProductSearchTests(TestCase):
         results = search_products("screw 5x70")
         ranked_ids = self.result_ids(results)
 
-        self.assertLess(ranked_ids.index(same_size.pk), ranked_ids.index(other_size.pk))
+        self.assertIn(same_size.pk, ranked_ids)
+        self.assertNotIn(other_size.pk, ranked_ids)
 
     def test_package_quantity_influences_ranking(self):
         pack_100 = self.offer("Screw 5x70mm 100 pcs", category=self.fasteners, sku="PACK100")
@@ -123,7 +125,8 @@ class ProductSearchTests(TestCase):
         results = search_products("screw 5x70 100 pcs")
         ranked_ids = self.result_ids(results)
 
-        self.assertLess(ranked_ids.index(pack_100.pk), ranked_ids.index(pack_1000.pk))
+        self.assertIn(pack_100.pk, ranked_ids)
+        self.assertNotIn(pack_1000.pk, ranked_ids)
 
     def test_bundle_is_not_exact_bare_tool_but_is_shown_nearby(self):
         bare = self.offer("Makita DDF482Z bare tool", brand="Makita", model="DDF482Z")
@@ -158,7 +161,7 @@ class ProductSearchTests(TestCase):
         self.assertIn(target.pk, reversed_ids)
         self.assertEqual(direct_ids[:1], [target.pk])
         self.assertEqual(reversed_ids[:1], [target.pk])
-        self.assertLess(reversed_ids.index(target.pk), reversed_ids.index(makita_partial.pk))
+        self.assertNotIn(makita_partial.pk, reversed_ids)
 
     def test_text_search_is_order_independent_for_model_and_brand(self):
         target = self.offer("Akutrell Makita DDF482Z", shop=self.depo, brand="Makita", model="DDF482Z")
@@ -181,8 +184,32 @@ class ProductSearchTests(TestCase):
 
         self.assertIn(target.pk, direct_ids)
         self.assertIn(target.pk, reversed_ids)
-        self.assertLess(direct_ids.index(target.pk), direct_ids.index(other_size.pk))
-        self.assertLess(reversed_ids.index(target.pk), reversed_ids.index(other_size.pk))
+        self.assertNotIn(other_size.pk, direct_ids)
+        self.assertNotIn(other_size.pk, reversed_ids)
+
+    def test_multitoken_text_query_requires_every_token(self):
+        compound = self.offer(
+            "Bensiinimootoriga murutrimmer Jasper 32.5cm3 0.7kW 44cm",
+            sku="BENSIINI-COMPOUND",
+        )
+        separate = self.offer("Bensiini murutrimmer 43cm", sku="BENSIINI-SEPARATE")
+        generator = self.offer("Generaator, bensiini, 2kW", sku="BENSIINI-GENERATOR")
+        spool = self.offer("SPOONI SERVATRIMMER", sku="TRIMMER-SPOOL")
+        hair_trimmer = self.offer("Juukselõikur-trimmer", sku="HAIR-TRIMMER")
+
+        results = search_products("bensiini trimmer")
+        result_ids = self.result_ids(results)
+
+        self.assertIn(compound.pk, result_ids)
+        self.assertIn(separate.pk, result_ids)
+        self.assertNotIn(generator.pk, result_ids)
+        self.assertNotIn(spool.pk, result_ids)
+        self.assertNotIn(hair_trimmer.pk, result_ids)
+        self.assertEqual(results.candidates_count, 2)
+
+        partial_match = score_offer_against_query(generator, "bensiini trimmer")
+        self.assertEqual(partial_match.score, 0.0)
+        self.assertIn("not all query tokens matched", partial_match.reasons)
 
     def test_absent_barcode_and_brand_still_search_by_name(self):
         offer = self.offer("Generic screw 5x70mm", barcode="", brand="", model="", category=self.fasteners)
@@ -194,12 +221,14 @@ class ProductSearchTests(TestCase):
     def test_compound_word_and_number_match_ehitusnael(self):
         target = self.offer("Ehitusnael 3,1x100 mm", category=self.fasteners, sku="NAEL-100")
         wrong_length = self.offer("Ehitusnael 3,1x1000 mm", category=self.fasteners, sku="NAEL-1000")
+        number_only = self.offer("Kruvi 4x100 mm", category=self.fasteners, sku="NO-NAEL-100")
 
         results = search_products("nael 100")
         result_ids = self.result_ids(results)
 
         self.assertIn(target.pk, result_ids)
-        self.assertLess(result_ids.index(target.pk), result_ids.index(wrong_length.pk))
+        self.assertNotIn(wrong_length.pk, result_ids)
+        self.assertNotIn(number_only.pk, result_ids)
 
     def test_compound_word_fragment_matches_ehitusnael(self):
         target = self.offer("Ehitusnael 3,1x100 mm", category=self.fasteners, sku="NAEL-WORD")
@@ -226,10 +255,13 @@ class ProductSearchTests(TestCase):
     def test_exact_pruss_dimensions_rank_above_other_dimensions(self):
         exact_size = self.offer("Pruss 50x50x3000 mm", sku="RANK-PRUSS-50", price="20.00")
         other_size = self.offer("Pruss 47x50x4800 mm", sku="RANK-PRUSS-47", price="1.00")
+        dimensions_only = self.offer("Liimpuit 50x50x3000 mm", sku="RANK-NO-PRUSS", price="1.00")
 
         result_ids = self.result_ids(search_products("pruss 50x50"))
 
-        self.assertLess(result_ids.index(exact_size.pk), result_ids.index(other_size.pk))
+        self.assertIn(exact_size.pk, result_ids)
+        self.assertNotIn(other_size.pk, result_ids)
+        self.assertNotIn(dimensions_only.pk, result_ids)
 
     def test_exact_word_ranks_above_compound_suffix_for_same_dimensions(self):
         exact_word = self.offer("Pruss 50x50x3000 mm", sku="RANK-WORD", price="20.00")
@@ -338,7 +370,7 @@ class ProductSearchTests(TestCase):
         result_ids = self.result_ids(results)
 
         self.assertIn(target.pk, result_ids)
-        self.assertLess(result_ids.index(target.pk), result_ids.index(wrong_size.pk))
+        self.assertNotIn(wrong_size.pk, result_ids)
 
     def test_spaced_and_multiplication_sign_dimensions_are_equivalent(self):
         target = self.offer("Höövelpruss 50x50x3000 mm", sku="PRUSS-VARIANTS")

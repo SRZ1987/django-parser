@@ -20,6 +20,7 @@ _DIMENSION_TOKEN_RE = re.compile(
     r"^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:x(\d+(?:\.\d+)?))?(?:mm|cm|m)?$"
 )
 _MODEL_PREFIX_VOWELS = frozenset("aeiouyõäöü")
+COMPOUND_PREFIX_MIN_LENGTH = 7
 _UNIT_ALIASES = {
     "мм": "mm",
     "см": "cm",
@@ -100,6 +101,36 @@ def parse_dimension_token(value: str) -> tuple[str, ...]:
     if not match:
         return ()
     return tuple(part for part in match.groups() if part)
+
+
+def is_meaningful_query_token(value: str) -> bool:
+    return bool(value) and (
+        len(value) >= 2
+        or is_number_token(value)
+        or bool(parse_dimension_token(value))
+    )
+
+
+def allows_token_prefix(value: str) -> bool:
+    is_long_text_token = len(value) >= COMPOUND_PREFIX_MIN_LENGTH and value.isalpha()
+    is_model_token = (
+        len(value) >= 4
+        and value.isalnum()
+        and any(character.isdigit() for character in value)
+    )
+    return is_long_text_token or is_model_token
+
+
+def text_token_matches(query_token: str, offer_token: str) -> bool:
+    return bool(
+        query_token
+        and offer_token
+        and (
+            offer_token == query_token
+            or offer_token.endswith(query_token)
+            or (allows_token_prefix(query_token) and offer_token.startswith(query_token))
+        )
+    )
 
 
 def build_search_text(*values: str) -> str:
