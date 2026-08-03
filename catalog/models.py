@@ -107,6 +107,7 @@ class ProductOffer(models.Model):
     is_available = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
     last_seen_at = models.DateTimeField(null=True, blank=True)
+    barcode_checked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

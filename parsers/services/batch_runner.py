@@ -165,6 +165,18 @@ def run_excel_parser(parser_config, trigger=ParserRun.TRIGGER_COMMAND):
                 worksheet_name=adapter.worksheet_name,
                 parser_run=parser_run,
             )
+            if parser_config.code == "bauhaus" and import_result.created_offer_ids:
+                try:
+                    from .bauhaus_barcode_enricher import enrich_bauhaus_offer_barcodes
+
+                    enrich_bauhaus_offer_barcodes(
+                        import_result.created_offer_ids,
+                        log_callback=log,
+                    )
+                except Exception as exc:
+                    log(f"WARNING: BAUHAUS barcode enrichment did not complete: {type(exc).__name__}: {exc}")
+                finally:
+                    flush_logs(force=True)
             parser_run.products_found = import_result.products_found
             parser_run.products_created = import_result.products_created
             parser_run.products_updated = import_result.products_updated

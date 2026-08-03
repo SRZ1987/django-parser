@@ -42,6 +42,7 @@ class ExcelImportResult:
     skipped_rows: int = 0
     errors_count: int = 0
     row_errors: list[ExcelRowError] = field(default_factory=list)
+    created_offer_ids: list[int] = field(default_factory=list)
 
 
 class ExcelCatalogImporter:
@@ -65,7 +66,7 @@ class ExcelCatalogImporter:
             with transaction.atomic():
                 for parsed in parsed_rows:
                     try:
-                        created, price_changed = self._save_offer(parser_export.shop, parsed, seen_at)
+                        created, price_changed, offer_id = self._save_offer(parser_export.shop, parsed, seen_at)
                     except (DataError, IntegrityError, ValidationError, ValueError) as exc:
                         row_error = self._add_row_issue(
                             result,
@@ -81,6 +82,8 @@ class ExcelCatalogImporter:
                         result.products_created += int(created)
                         result.products_updated += int(not created)
                         result.prices_changed += int(price_changed)
+                        if created:
+                            result.created_offer_ids.append(offer_id)
                     last_heartbeat = self._heartbeat(
                         parser_run,
                         last_heartbeat,
@@ -295,8 +298,8 @@ class ExcelCatalogImporter:
         price_changed = previous_price != offer.price or previous_sale_price != offer.sale_price
         if (created and (offer.price is not None or offer.sale_price is not None)) or price_changed:
             PriceHistory.objects.create(offer=offer, price=offer.price, sale_price=offer.sale_price)
-            return created, True
-        return created, False
+            return created, True, offer.pk
+        return created, False, offer.pk
 
     def _validate_catalog_size(self, shop, remote_external_ids):
         active_count = ProductOffer.objects.filter(shop=shop, is_active=True).count()

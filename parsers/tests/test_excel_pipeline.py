@@ -601,11 +601,12 @@ class BauhausAdapterTests(TestCase):
                 with patch("parsers.standalone.bauhaus_parser.request_text", fake_request_text):
                     with patch("parsers.standalone.bauhaus_parser.discover_top_level_categories", fake_discover_categories):
                         with patch("parsers.standalone.bauhaus_parser.collect_full_catalog", fake_collect_catalog):
-                            with patch(
-                                "parsers.standalone.bauhaus_parser.enrich_all_products_with_ean",
-                                side_effect=RuntimeError("EAN endpoint unavailable"),
-                            ) as enrich_ean:
-                                parser_run = run_excel_parser(self.config)
+                            with patch("parsers.standalone.bauhaus_parser.enrich_all_products_with_ean") as enrich_ean:
+                                with patch(
+                                    "parsers.services.bauhaus_barcode_enricher.enrich_bauhaus_offer_barcodes",
+                                    side_effect=RuntimeError("EAN endpoint unavailable"),
+                                ) as incremental_enrichment:
+                                    parser_run = run_excel_parser(self.config)
 
                 parser_export = parser_run.export
                 self.assertTrue(parser_export.file.storage.exists(parser_export.file.name))
@@ -619,7 +620,11 @@ class BauhausAdapterTests(TestCase):
                 external_id="SKU-BAUHAUS-2",
             ).exists()
         )
+        created_offer = ProductOffer.objects.get(shop=self.shop, external_id="SKU-BAUHAUS-2")
         enrich_ean.assert_not_called()
+        incremental_enrichment.assert_called_once()
+        self.assertEqual(incremental_enrichment.call_args.args[0], [created_offer.pk])
+        self.assertIn("WARNING: BAUHAUS barcode enrichment did not complete", parser_run.log)
 
     def test_bauhaus_excel_without_barcodes_passes_validation(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -664,6 +669,7 @@ class BauhausAdapterTests(TestCase):
 
         offer = ProductOffer.objects.get(shop=self.shop, external_id="SKU-BAUHAUS-1")
         self.assertEqual(result.products_created, 1)
+        self.assertEqual(result.created_offer_ids, [offer.pk])
         self.assertEqual(offer.original_name, "BAUHAUS hammer")
         self.assertEqual(offer.sku, "SKU-BAUHAUS-1")
         self.assertEqual(offer.barcode, "")
@@ -673,11 +679,16 @@ class BauhausAdapterTests(TestCase):
             output_path = Path(tmp_dir) / "bauhaus.xlsx"
             self._create_bauhaus_excel(output_path, name="BAUHAUS hammer")
             parser_export = PathlessExport(self.shop, output_path)
-            ExcelCatalogImporter().import_file(
+            first_result = ExcelCatalogImporter().import_file(
                 parser_export,
                 column_map=BauhausAdapter.column_map,
                 worksheet_name=BauhausAdapter.worksheet_name,
             )
+            offer = ProductOffer.objects.get(shop=self.shop, external_id="SKU-BAUHAUS-1")
+            offer.barcode = "4006381333931"
+            offer.product.barcode = "4006381333931"
+            offer.product.save(update_fields=["barcode"])
+            offer.save(update_fields=["barcode"])
 
             self._create_bauhaus_excel(output_path, name="BAUHAUS hammer updated", price=15.95)
             result = ExcelCatalogImporter().import_file(
@@ -688,9 +699,60 @@ class BauhausAdapterTests(TestCase):
 
         offers = ProductOffer.objects.filter(shop=self.shop, external_id="SKU-BAUHAUS-1")
         self.assertEqual(offers.count(), 1)
+        self.assertEqual(first_result.created_offer_ids, [offers.get().pk])
+        self.assertEqual(result.created_offer_ids, [])
         self.assertEqual(result.products_created, 0)
         self.assertEqual(result.products_updated, 1)
         self.assertEqual(offers.get().original_name, "BAUHAUS hammer updated")
+        self.assertEqual(offers.get().barcode, "4006381333931")
+        self.assertEqual(offers.get().product.barcode, "4006381333931")
+
+    def test_existing_bauhaus_offer_is_not_sent_to_incremental_enrichment(self):
+        product = Product.objects.create(name="BAUHAUS drill")
+        ProductOffer.objects.create(
+            shop=self.shop,
+            product=product,
+            external_id="SKU-BAUHAUS-1",
+            sku="SKU-BAUHAUS-1",
+            original_name="BAUHAUS drill",
+            price="10.00",
+            product_url="https://www.bauhaus.ee/item",
+        )
+        products = [
+            {
+                "sku": "SKU-BAUHAUS-1",
+                "name": "BAUHAUS drill updated",
+                "price": 12.95,
+                "product_url": "https://www.bauhaus.ee/item",
+            }
+        ]
+
+        async def fake_request_text(session, url, semaphore):
+            return "<html></html>"
+
+        async def fake_discover_categories(session, semaphore, home):
+            return ["https://www.bauhaus.ee/category"]
+
+        async def fake_collect_catalog(session, semaphore, categories):
+            return products, {}
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with override_settings(
+                MEDIA_ROOT=Path(tmp_dir) / "media",
+                PARSER_EXPORT_WORK_DIR=Path(tmp_dir) / "work",
+            ):
+                with patch("parsers.standalone.bauhaus_parser.request_text", fake_request_text):
+                    with patch("parsers.standalone.bauhaus_parser.discover_top_level_categories", fake_discover_categories):
+                        with patch("parsers.standalone.bauhaus_parser.collect_full_catalog", fake_collect_catalog):
+                            with patch(
+                                "parsers.services.bauhaus_barcode_enricher.enrich_bauhaus_offer_barcodes"
+                            ) as incremental_enrichment:
+                                parser_run = run_excel_parser(self.config)
+
+        self.assertEqual(parser_run.status, ParserRun.STATUS_SUCCESS)
+        incremental_enrichment.assert_not_called()
+        offer = ProductOffer.objects.get(shop=self.shop, external_id="SKU-BAUHAUS-1")
+        self.assertEqual(str(offer.price), "12.95")
 
     @staticmethod
     def _create_bauhaus_excel(path, *, name, price=14.95):
