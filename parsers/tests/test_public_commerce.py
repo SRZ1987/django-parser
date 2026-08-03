@@ -9,7 +9,12 @@ from django.utils import timezone
 from openpyxl import load_workbook
 
 from catalog.models import ProductOffer, Shop
-from parsers.adapters.public_commerce import EmartAdapter, HordenAdapter, PUBLIC_COMMERCE_ADAPTERS
+from parsers.adapters.public_commerce import (
+    DecoraAdapter,
+    EmartAdapter,
+    HordenAdapter,
+    PUBLIC_COMMERCE_ADAPTERS,
+)
 from parsers.models import ParserConfig, ParserExport, ParserRun
 from parsers.services.excel_importer import ExcelCatalogImporter
 from parsers.services.excel_validation import ExcelCatalogValidator
@@ -67,6 +72,34 @@ def shopify_product(product_id=201, variant_id=301, *, available=True):
     }
 
 
+def klevu_product(product_id=401, *, in_stock="yes"):
+    return {
+        "id": str(product_id),
+        "sku": "DEC-401",
+        "name": "Construction board",
+        "price": "19.99",
+        "salePrice": "14.99",
+        "inStock": in_stock,
+        "url": "https://www.decora.ee/construction-board",
+        "imageUrl": "https://www.decora.ee/media/board.jpg",
+        "category": "Boards",
+        "klevu_category": "KLEVU_PRODUCT;;Building materials;Boards",
+        "shortDesc": "Durable construction board",
+        "ean": "4740000000003",
+    }
+
+
+def klevu_payload(records, total=None):
+    return {
+        "queryResults": [
+            {
+                "meta": {"totalResultsFound": len(records) if total is None else total},
+                "records": records,
+            }
+        ]
+    }
+
+
 class PublicCommerceNormalizationTests(SimpleTestCase):
     def test_woocommerce_uses_product_id_for_external_id_and_preserves_sku(self):
         row = public_commerce_parser.normalize_woocommerce_product(woo_product())
@@ -107,6 +140,23 @@ class PublicCommerceNormalizationTests(SimpleTestCase):
         self.assertEqual(rows[0][8], "HOR-301")
         self.assertEqual(rows[0][9], "Roofing")
         self.assertEqual(rows[0][11], "Roof product")
+
+    def test_klevu_product_uses_record_id_and_preserves_sku(self):
+        row = public_commerce_parser.normalize_klevu_product(klevu_product())
+
+        self.assertEqual(row[0], "Construction board")
+        self.assertEqual(row[1], 19.99)
+        self.assertEqual(row[2], 14.99)
+        self.assertEqual(row[4], "4740000000003")
+        self.assertEqual(row[5], "klevu-401")
+        self.assertEqual(row[8], "DEC-401")
+        self.assertEqual(row[9], "Boards")
+        self.assertTrue(row[10].startswith("klevu-category-"))
+
+    def test_klevu_out_of_stock_product_is_skipped(self):
+        self.assertIsNone(
+            public_commerce_parser.normalize_klevu_product(klevu_product(in_stock="no"))
+        )
 
 
 class PublicCommerceDownloadTests(SimpleTestCase):
@@ -156,6 +206,34 @@ class PublicCommerceDownloadTests(SimpleTestCase):
         self.assertEqual(len(products), 1)
         self.assertEqual(calls, [1])
 
+    def test_klevu_fetches_all_offsets_and_checks_completeness(self):
+        store = public_commerce_parser.PUBLIC_COMMERCE_STORES["decora"]
+        calls = []
+
+        async def fake_request_json(
+            _session,
+            _store,
+            *,
+            params=None,
+            json_payload=None,
+            label,
+            log_callback=None,
+        ):
+            settings = json_payload["recordQueries"][0]["settings"]
+            offset = settings["offset"]
+            limit = settings["limit"]
+            calls.append(offset)
+            return klevu_payload(
+                [klevu_product(product_id=offset + index) for index in range(limit)],
+                total=250,
+            ), {}
+
+        with patch("parsers.standalone.public_commerce_parser.request_json", fake_request_json):
+            products = asyncio.run(public_commerce_parser.fetch_klevu_catalog(None, store))
+
+        self.assertEqual(len(products), 250)
+        self.assertEqual(sorted(calls), [0, 100, 200])
+
 
 class PublicCommerceAdapterTests(SimpleTestCase):
     def test_all_store_definitions_have_matching_adapters(self):
@@ -185,6 +263,29 @@ class PublicCommerceAdapterTests(SimpleTestCase):
 
     def test_shopify_adapter_uses_shared_excel_contract(self):
         self.assertEqual(HordenAdapter.column_map[public_commerce_parser.COLUMNS[8]], "sku")
+
+    def test_decora_adapter_uses_shared_excel_contract(self):
+        self.assertEqual(DecoraAdapter.code, "decora")
+        self.assertEqual(DecoraAdapter.column_map[public_commerce_parser.COLUMNS[8]], "sku")
+
+    def test_decora_adapter_creates_excel_and_counts_rows(self):
+        async def fake_main(store_code, output_path, log_callback=None):
+            self.assertEqual(store_code, "decora")
+            public_commerce_parser.save_excel(
+                [public_commerce_parser.normalize_klevu_product(klevu_product())],
+                Path(output_path),
+            )
+            log_callback("Decora progress")
+
+        logs = []
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "decora.xlsx"
+            with patch("parsers.adapters.public_commerce.public_commerce_parser.main", fake_main):
+                result = asyncio.run(DecoraAdapter().run(output_path, log_callback=logs.append))
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.products_count, 1)
+        self.assertEqual(logs, ["Decora progress"])
 
 
 class PublicCommerceExcelPipelineTests(TestCase):
@@ -281,3 +382,55 @@ class PublicCommerceExcelPipelineTests(TestCase):
         offer = ProductOffer.objects.get(shop=self.shop, external_id="wc-101")
         self.assertEqual(str(offer.price), "10.99")
         self.assertIsNone(offer.sale_price)
+
+    def test_decora_excel_validates_and_imports_product(self):
+        shop = Shop.objects.create(
+            name="Decora",
+            code="decora",
+            website_url="https://www.decora.ee/",
+        )
+        config = ParserConfig.objects.create(
+            shop=shop,
+            name="Decora parser",
+            code="decora",
+            run_order=27,
+        )
+        parser_run = ParserRun.objects.create(
+            parser=config,
+            status=ParserRun.STATUS_RUNNING,
+            started_at=timezone.now(),
+        )
+        row = public_commerce_parser.normalize_klevu_product(klevu_product())
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "decora.xlsx"
+            public_commerce_parser.save_excel([row], path)
+            validation = ExcelCatalogValidator().validate(
+                path,
+                column_map=DecoraAdapter.column_map,
+                worksheet_name=DecoraAdapter.worksheet_name,
+            )
+            self.assertTrue(validation.is_valid, validation.error_message)
+
+            parser_export = ParserExport(
+                parser_run=parser_run,
+                shop=shop,
+                original_filename=path.name,
+                rows_count=validation.rows_count,
+                file_size=path.stat().st_size,
+            )
+            with path.open("rb") as handle:
+                parser_export.file.save(path.name, File(handle), save=True)
+
+            result = ExcelCatalogImporter().import_file(
+                parser_export,
+                column_map=DecoraAdapter.column_map,
+                worksheet_name=DecoraAdapter.worksheet_name,
+            )
+
+        offer = ProductOffer.objects.get(shop=shop, external_id="klevu-401")
+        self.assertEqual(result.products_created, 1)
+        self.assertEqual(offer.sku, "DEC-401")
+        self.assertEqual(offer.category.name, "Boards")
+        self.assertEqual(str(offer.price), "19.99")
+        self.assertEqual(str(offer.sale_price), "14.99")

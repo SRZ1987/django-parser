@@ -139,6 +139,11 @@ class HordenAdapter(PublicCommerceAdapter):
     name = "Horden"
 
 
+class DecoraAdapter(PublicCommerceAdapter):
+    code = "decora"
+    name = "Decora"
+
+
 PUBLIC_COMMERCE_ADAPTERS = (
     EmartAdapter,
     NordhauserAdapter,
@@ -159,4 +164,5 @@ PUBLIC_COMMERCE_ADAPTERS = (
     Plaat24Adapter,
     KatusematerjalAdapter,
     HordenAdapter,
+    DecoraAdapter,
 )

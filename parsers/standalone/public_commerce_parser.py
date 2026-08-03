@@ -33,6 +33,7 @@ COLUMNS = [
 
 PAGE_SIZE = 100
 SHOPIFY_PAGE_SIZE = 250
+KLEVU_PAGE_SIZE = 100
 CONCURRENCY = 4
 REQUEST_TIMEOUT = 45
 MAX_RETRIES = 5
@@ -57,9 +58,13 @@ class CommerceStore:
     base_url: str
     platform: str = "woocommerce"
     enabled_by_default: bool = True
+    api_url: str = ""
+    api_key: str = ""
 
     @property
     def products_url(self) -> str:
+        if self.platform == "klevu":
+            return self.api_url
         if self.platform == "shopify":
             return f"{self.base_url}products.json"
         return f"{self.base_url}wp-json/wc/store/v1/products"
@@ -92,6 +97,14 @@ PUBLIC_COMMERCE_STORES = {
             "https://horden.ee/",
             platform="shopify",
             enabled_by_default=False,
+        ),
+        CommerceStore(
+            "decora",
+            "Decora",
+            "https://www.decora.ee/",
+            platform="klevu",
+            api_url="https://decoracsv2.ksearchnet.com/cs/v2/search",
+            api_key="klevu-159479682665411675",
         ),
     )
 }
@@ -169,6 +182,16 @@ def parse_shopify_money(value: Any) -> float | str:
         return round(float(str(value)), 2)
     except (TypeError, ValueError, OverflowError):
         return ""
+
+
+def parse_decimal_money(value: Any) -> float | str:
+    if value in (None, "") or isinstance(value, bool):
+        return ""
+    try:
+        price = round(float(str(value).replace(",", ".")), 2)
+    except (TypeError, ValueError, OverflowError):
+        return ""
+    return price if price >= 0 else ""
 
 
 def normalize_woocommerce_product(product: dict[str, Any]) -> list[Any] | None:
@@ -264,6 +287,47 @@ def normalize_shopify_product(product: dict[str, Any], base_url: str) -> list[li
     return rows
 
 
+def normalize_klevu_product(product: dict[str, Any]) -> list[Any] | None:
+    if clean_text(product.get("inStock")).casefold() in {"no", "false", "0"}:
+        return None
+
+    product_id = clean_text(product.get("id"))
+    name = clean_text(product.get("name"))
+    product_url = clean_text(product.get("url"))
+    if not product_id or not name or not product_url:
+        return None
+
+    regular_price = parse_decimal_money(product.get("price"))
+    sale_candidate = parse_decimal_money(product.get("salePrice"))
+    if regular_price != "" and sale_candidate != "" and sale_candidate < regular_price:
+        price, sale_price = regular_price, sale_candidate
+    else:
+        price = sale_candidate if sale_candidate != "" else regular_price
+        sale_price = ""
+
+    category_name = clean_text(product.get("category"))
+    category_path = clean_text(product.get("klevu_category")) or category_name
+    category_id = (
+        f"klevu-category-{hashlib.sha256(category_path.casefold().encode('utf-8')).hexdigest()[:16]}"
+        if category_path
+        else ""
+    )
+    return [
+        name,
+        price,
+        sale_price,
+        "",
+        extract_barcode(product),
+        f"klevu-{product_id}",
+        clean_text(product.get("imageUrl") or product.get("image")),
+        product_url,
+        clean_text(product.get("sku")),
+        category_name,
+        category_id,
+        clean_text(product.get("shortDesc")),
+    ]
+
+
 def retry_after_seconds(value: str | None) -> float | None:
     if not value:
         return None
@@ -283,13 +347,28 @@ async def request_json(
     session: aiohttp.ClientSession,
     store: CommerceStore,
     *,
-    params: dict[str, Any],
+    params: dict[str, Any] | None = None,
+    json_payload: dict[str, Any] | None = None,
     label: str,
     log_callback=None,
 ) -> tuple[Any, dict[str, str]]:
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            async with session.get(store.products_url, params=params) as response:
+            request_headers = None
+            if store.platform == "klevu":
+                request_headers = {
+                    "Origin": store.base_url.rstrip("/"),
+                    "Referer": store.base_url,
+                    "User-Agent": "Mozilla/5.0 (compatible; PriceCompareCatalogBot/1.0)",
+                }
+            method = "POST" if json_payload is not None else "GET"
+            async with session.request(
+                method,
+                store.products_url,
+                params=params,
+                json=json_payload,
+                headers=request_headers,
+            ) as response:
                 status = response.status
                 if status == 200:
                     try:
@@ -323,6 +402,50 @@ async def request_json(
             )
             await asyncio.sleep(delay)
     raise RuntimeError(f"{store.name} {label} exhausted retries.")
+
+
+def build_klevu_payload(store: CommerceStore, offset: int, limit: int) -> dict[str, Any]:
+    return {
+        "context": {"apiKeys": [store.api_key]},
+        "recordQueries": [
+            {
+                "id": "productSearch",
+                "typeOfRequest": "SEARCH",
+                "settings": {
+                    "query": {"term": "*"},
+                    "typeOfRecords": ["KLEVU_PRODUCT"],
+                    "limit": limit,
+                    "offset": offset,
+                },
+            }
+        ],
+    }
+
+
+def extract_klevu_result(payload: Any, store: CommerceStore) -> dict[str, Any]:
+    results = payload.get("queryResults") if isinstance(payload, dict) else None
+    if not isinstance(results, list) or not results or not isinstance(results[0], dict):
+        raise RuntimeError(f"{store.name} Klevu response does not contain queryResults.")
+    return results[0]
+
+
+def extract_klevu_records(payload: Any, store: CommerceStore) -> list[dict[str, Any]]:
+    records = extract_klevu_result(payload, store).get("records")
+    if not isinstance(records, list):
+        raise RuntimeError(f"{store.name} Klevu response contains invalid records.")
+    return [record for record in records if isinstance(record, dict)]
+
+
+def extract_klevu_total(payload: Any, store: CommerceStore) -> int:
+    result = extract_klevu_result(payload, store)
+    meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+    for value in (result.get("totalResultsFound"), meta.get("totalResultsFound")):
+        try:
+            if value is not None:
+                return int(value)
+        except (TypeError, ValueError):
+            continue
+    return len(extract_klevu_records(payload, store))
 
 
 async def fetch_woocommerce_catalog(
@@ -430,11 +553,86 @@ async def fetch_shopify_catalog(
     return products
 
 
+async def fetch_klevu_catalog(
+    session: aiohttp.ClientSession,
+    store: CommerceStore,
+    log_callback=None,
+) -> list[dict[str, Any]]:
+    first_payload, _headers = await request_json(
+        session,
+        store,
+        json_payload=build_klevu_payload(store, 0, KLEVU_PAGE_SIZE),
+        label="offset=0",
+        log_callback=log_callback,
+    )
+    first_records = extract_klevu_records(first_payload, store)
+    total = extract_klevu_total(first_payload, store)
+    if total <= 0 or not first_records:
+        raise RuntimeError(f"{store.name} Klevu API returned an empty catalog.")
+
+    log(
+        f"{store.name} API: endpoint={store.products_url}, status=200, products={total}",
+        log_callback,
+    )
+    pages: dict[int, list[dict[str, Any]]] = {0: first_records}
+    completed = 1
+    progress_lock = asyncio.Lock()
+    limiter = asyncio.Semaphore(CONCURRENCY)
+    offsets = list(range(KLEVU_PAGE_SIZE, total, KLEVU_PAGE_SIZE))
+
+    async def load_offset(offset: int) -> None:
+        nonlocal completed
+        limit = min(KLEVU_PAGE_SIZE, total - offset)
+        async with limiter:
+            payload, _page_headers = await request_json(
+                session,
+                store,
+                json_payload=build_klevu_payload(store, offset, limit),
+                label=f"offset={offset}",
+                log_callback=log_callback,
+            )
+        records = extract_klevu_records(payload, store)
+        if len(records) != limit:
+            raise RuntimeError(
+                f"{store.name} Klevu page is incomplete: offset={offset}, "
+                f"expected={limit}, received={len(records)}."
+            )
+        pages[offset] = records
+        async with progress_lock:
+            completed += 1
+            if completed == len(offsets) + 1 or completed % 20 == 0:
+                downloaded = sum(len(items) for items in pages.values())
+                log(
+                    f"{store.name} download progress: pages={completed}/{len(offsets) + 1}, "
+                    f"products={downloaded}/{total}",
+                    log_callback,
+                )
+
+    await asyncio.gather(*(load_offset(offset) for offset in offsets))
+    products = [product for offset in range(0, total, KLEVU_PAGE_SIZE) for product in pages[offset]]
+    product_ids = {
+        clean_text(product.get("id"))
+        for product in products
+        if clean_text(product.get("id"))
+    }
+    if len(products) != total or len(product_ids) != total:
+        raise RuntimeError(
+            f"{store.name} catalog is incomplete: expected={total}, "
+            f"products={len(products)}, unique_products={len(product_ids)}."
+        )
+    return products
+
+
 def build_rows(store: CommerceStore, products: list[dict[str, Any]]) -> tuple[list[list[Any]], int]:
     rows_by_external_id: dict[str, list[Any]] = {}
     skipped = 0
     for product in products:
-        if store.platform == "shopify":
+        if store.platform == "klevu":
+            row = normalize_klevu_product(product)
+            product_rows = [row] if row is not None else []
+            if row is None:
+                skipped += 1
+        elif store.platform == "shopify":
             product_rows = normalize_shopify_product(product, store.base_url)
             if not product_rows:
                 skipped += 1
@@ -511,7 +709,9 @@ async def main(store_code: str, output_path: str | Path, log_callback=None) -> N
         "User-Agent": "PriceCompareCatalogBot/1.0",
     }
     async with aiohttp.ClientSession(timeout=timeout, connector=connector, headers=headers) as session:
-        if store.platform == "shopify":
+        if store.platform == "klevu":
+            products = await fetch_klevu_catalog(session, store, log_callback)
+        elif store.platform == "shopify":
             products = await fetch_shopify_catalog(session, store, log_callback)
         else:
             products = await fetch_woocommerce_catalog(session, store, log_callback)
