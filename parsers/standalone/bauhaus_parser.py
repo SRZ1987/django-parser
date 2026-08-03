@@ -2393,17 +2393,12 @@ async def _main() -> None:
     )
 
     page_semaphore = AdjustableLimiter(PAGE_CONCURRENCY)
-    ean_semaphore = AdjustableLimiter(EAN_CONCURRENCY)
 
     async with aiohttp.ClientSession(
         headers=HEADERS,
         connector=catalog_connector,
         cookie_jar=aiohttp.CookieJar(),
-    ) as catalog_session, CurlAsyncSession(
-        headers=HEADERS,
-        impersonate="chrome",
-        max_clients=EAN_MAX_CLIENTS,
-    ) as ean_session:
+    ) as catalog_session:
         print("Открываем BAUHAUS и получаем дерево категорий...")
 
         home = await request_text(
@@ -2433,14 +2428,13 @@ async def _main() -> None:
         if not products:
             raise RuntimeError("Каталог BAUHAUS не вернул товары.")
 
-        products, _ = await enrich_all_products_with_ean(
-            ean_session,
-            page_semaphore,
-            ean_semaphore,
-            products,
-        )
-
+    # EAN enrichment is intentionally not part of the primary Excel Pipeline.
+    # Product pages can be slow or unavailable, while an empty barcode is valid.
     await asyncio.to_thread(export_final_excel, products)
+    print(
+        "Основной каталог BAUHAUS сохранён. "
+        "EAN пропущен и может быть получен отдельным необязательным этапом."
+    )
 
 
 async def main(output_path: str | Path | None = None, log_callback=None) -> None:

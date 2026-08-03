@@ -384,14 +384,22 @@ class EhituseABCAdapterTests(TestCase):
 
 
 class BauhausAdapterTests(TestCase):
-    def test_standalone_wrapper_creates_excel(self):
+    def setUp(self):
+        self.shop = Shop.objects.create(name="BAUHAUS", code="bauhaus")
+        self.config = ParserConfig.objects.create(
+            shop=self.shop,
+            name="BAUHAUS parser",
+            code="bauhaus",
+            run_order=6,
+        )
+
+    def test_standalone_wrapper_creates_excel_without_barcodes(self):
         products = [
             {
                 "sku": "SKU-BAUHAUS-1",
                 "name": "BAUHAUS hammer",
                 "price": 14.95,
                 "ordinary_price": 19.95,
-                "ean": "4740000000001",
                 "image_url": "https://img.test/bauhaus.jpg",
                 "product_url": "https://www.bauhaus.ee/item",
             }
@@ -407,26 +415,166 @@ class BauhausAdapterTests(TestCase):
         async def fake_collect_catalog(session, semaphore, categories):
             return products, {}
 
-        async def fake_enrich_ean(ean_session, page_semaphore, ean_semaphore, found_products):
-            return found_products, {}
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             output_path = Path(tmp_dir) / "bauhaus.xlsx"
             with patch("parsers.standalone.bauhaus_parser.request_text", fake_request_text):
                 with patch("parsers.standalone.bauhaus_parser.discover_top_level_categories", fake_discover_categories):
                     with patch("parsers.standalone.bauhaus_parser.collect_full_catalog", fake_collect_catalog):
-                        with patch("parsers.standalone.bauhaus_parser.enrich_all_products_with_ean", fake_enrich_ean):
+                        with patch("parsers.standalone.bauhaus_parser.enrich_all_products_with_ean") as enrich_ean:
                             asyncio.run(bauhaus_parser.main(output_path=output_path, log_callback=logs.append))
 
             workbook = load_workbook(output_path, read_only=True, data_only=True)
             try:
                 worksheet = workbook[BauhausAdapter.worksheet_name]
                 rows_count = max(worksheet.max_row - 1, 0)
+                barcode = worksheet["E2"].value
+                external_id = worksheet["F2"].value
             finally:
                 workbook.close()
 
         self.assertEqual(rows_count, 1)
+        self.assertIn(barcode, (None, ""))
+        self.assertEqual(external_id, "SKU-BAUHAUS-1")
+        enrich_ean.assert_not_called()
         self.assertTrue(logs)
+
+    def test_ean_error_does_not_prevent_excel_creation(self):
+        products = [
+            {
+                "sku": "SKU-BAUHAUS-2",
+                "name": "BAUHAUS drill",
+                "price": 99.95,
+                "product_url": "https://www.bauhaus.ee/drill",
+            }
+        ]
+
+        async def fake_request_text(session, url, semaphore):
+            return "<html></html>"
+
+        async def fake_discover_categories(session, semaphore, home):
+            return ["https://www.bauhaus.ee/category"]
+
+        async def fake_collect_catalog(session, semaphore, categories):
+            return products, {}
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with override_settings(
+                MEDIA_ROOT=Path(tmp_dir) / "media",
+                PARSER_EXPORT_WORK_DIR=Path(tmp_dir) / "work",
+            ):
+                with patch("parsers.standalone.bauhaus_parser.request_text", fake_request_text):
+                    with patch("parsers.standalone.bauhaus_parser.discover_top_level_categories", fake_discover_categories):
+                        with patch("parsers.standalone.bauhaus_parser.collect_full_catalog", fake_collect_catalog):
+                            with patch(
+                                "parsers.standalone.bauhaus_parser.enrich_all_products_with_ean",
+                                side_effect=RuntimeError("EAN endpoint unavailable"),
+                            ) as enrich_ean:
+                                parser_run = run_excel_parser(self.config)
+
+                parser_export = parser_run.export
+                self.assertTrue(parser_export.file.storage.exists(parser_export.file.name))
+
+        self.assertEqual(parser_run.status, ParserRun.STATUS_SUCCESS)
+        self.assertTrue(parser_export.import_success)
+        self.assertEqual(parser_run.excel_rows_count, 1)
+        self.assertTrue(
+            ProductOffer.objects.filter(
+                shop=self.shop,
+                external_id="SKU-BAUHAUS-2",
+            ).exists()
+        )
+        enrich_ean.assert_not_called()
+
+    def test_bauhaus_excel_without_barcodes_passes_validation(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "bauhaus.xlsx"
+            create_xlsx(
+                output_path,
+                headers=bauhaus_parser.COLUMNS,
+                sheet_name=BauhausAdapter.worksheet_name,
+                rows=[
+                    [
+                        "BAUHAUS hammer",
+                        14.95,
+                        "",
+                        "",
+                        "",
+                        "SKU-BAUHAUS-1",
+                        "https://img.test/bauhaus.jpg",
+                        "https://www.bauhaus.ee/item",
+                    ]
+                ],
+            )
+
+            result = ExcelCatalogValidator().validate(
+                output_path,
+                column_map=BauhausAdapter.column_map,
+                worksheet_name=BauhausAdapter.worksheet_name,
+            )
+
+        self.assertTrue(result.is_valid, result.error_message)
+        self.assertEqual(result.rows_count, 1)
+
+    def test_bauhaus_excel_import_creates_offer_without_barcode(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "bauhaus.xlsx"
+            self._create_bauhaus_excel(output_path, name="BAUHAUS hammer")
+
+            result = ExcelCatalogImporter().import_file(
+                PathlessExport(self.shop, output_path),
+                column_map=BauhausAdapter.column_map,
+                worksheet_name=BauhausAdapter.worksheet_name,
+            )
+
+        offer = ProductOffer.objects.get(shop=self.shop, external_id="SKU-BAUHAUS-1")
+        self.assertEqual(result.products_created, 1)
+        self.assertEqual(offer.original_name, "BAUHAUS hammer")
+        self.assertEqual(offer.sku, "SKU-BAUHAUS-1")
+        self.assertEqual(offer.barcode, "")
+
+    def test_repeated_bauhaus_import_updates_offer_without_duplicates(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "bauhaus.xlsx"
+            self._create_bauhaus_excel(output_path, name="BAUHAUS hammer")
+            parser_export = PathlessExport(self.shop, output_path)
+            ExcelCatalogImporter().import_file(
+                parser_export,
+                column_map=BauhausAdapter.column_map,
+                worksheet_name=BauhausAdapter.worksheet_name,
+            )
+
+            self._create_bauhaus_excel(output_path, name="BAUHAUS hammer updated", price=15.95)
+            result = ExcelCatalogImporter().import_file(
+                PathlessExport(self.shop, output_path),
+                column_map=BauhausAdapter.column_map,
+                worksheet_name=BauhausAdapter.worksheet_name,
+            )
+
+        offers = ProductOffer.objects.filter(shop=self.shop, external_id="SKU-BAUHAUS-1")
+        self.assertEqual(offers.count(), 1)
+        self.assertEqual(result.products_created, 0)
+        self.assertEqual(result.products_updated, 1)
+        self.assertEqual(offers.get().original_name, "BAUHAUS hammer updated")
+
+    @staticmethod
+    def _create_bauhaus_excel(path, *, name, price=14.95):
+        create_xlsx(
+            path,
+            headers=bauhaus_parser.COLUMNS,
+            sheet_name=BauhausAdapter.worksheet_name,
+            rows=[
+                [
+                    name,
+                    price,
+                    "",
+                    "",
+                    "",
+                    "SKU-BAUHAUS-1",
+                    "https://img.test/bauhaus.jpg",
+                    "https://www.bauhaus.ee/item",
+                ]
+            ],
+        )
 
     def test_adapter_runs_standalone_and_counts_products(self):
         calls = {}
