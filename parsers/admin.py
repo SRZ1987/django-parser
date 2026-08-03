@@ -45,6 +45,7 @@ class ParserConfigAdmin(admin.ModelAdmin):
         "last_success_at",
         "last_status",
         "last_error",
+        "runtime_settings",
         "created_at",
         "updated_at",
     )

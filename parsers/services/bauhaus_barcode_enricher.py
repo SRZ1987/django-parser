@@ -5,25 +5,32 @@ import threading
 import time
 from dataclasses import dataclass
 
-from curl_cffi.requests import AsyncSession as CurlAsyncSession
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from catalog.models import Product, ProductOffer
-from parsers.standalone.bauhaus_parser import (
-    EAN_CONCURRENCY,
-    HEADERS,
-    AdaptiveLoadController,
-    AdjustableLimiter,
-    fetch_product_ean,
-    normalize_barcode_candidate,
+from parsers.models import ParserConfig
+from parsers.services.bauhaus_barcode_client import (
+    BarcodeFetchMetrics,
+    BarcodeFetchResult,
+    BarcodeTarget,
+    FastAdaptiveController,
+    ProductPageResult,
+    extract_related_product_eans,
+    fetch_barcodes as _fetch_barcodes,
+    fetch_product_page as _fetch_product_page,
+    is_fetch_error,
+    normalize_product_url,
+    validate_ean,
 )
+from parsers.standalone.bauhaus_parser import clean_text
 
 
 logger = logging.getLogger(__name__)
 
 BAUHAUS_SHOP_CODE = "bauhaus"
-DEFAULT_CONCURRENCY = 8
+RUNTIME_SETTINGS_KEY = "bauhaus_barcode_enrichment"
 PROGRESS_EVERY_ITEMS = 100
 PROGRESS_INTERVAL_SECONDS = 15
 RESULT_QUEUE_SIZE_MULTIPLIER = 4
@@ -37,20 +44,22 @@ class BauhausBarcodeEnrichmentResult:
     found: int = 0
     not_found: int = 0
     errors: int = 0
+    pages: int = 0
+    http_requests: int = 0
+    related_found: int = 0
+    restrictions: int = 0
+    start_concurrency: int = 0
+    final_concurrency: int = 0
 
     def summary(self):
         return (
             "BAUHAUS barcode enrichment: "
             f"checked={self.checked}, found={self.found}, "
-            f"not_found={self.not_found}, errors={self.errors}"
+            f"not_found={self.not_found}, errors={self.errors}, "
+            f"pages={self.pages}, requests={self.http_requests}, "
+            f"related={self.related_found}, restrictions={self.restrictions}, "
+            f"concurrency={self.start_concurrency}->{self.final_concurrency}"
         )
-
-
-@dataclass(frozen=True)
-class BarcodeFetchResult:
-    offer_id: int
-    ean: str
-    source: str
 
 
 @dataclass(frozen=True)
@@ -63,13 +72,36 @@ def enrich_bauhaus_offer_barcodes(
     *,
     retry_missing=False,
     log_callback=None,
-    concurrency=DEFAULT_CONCURRENCY,
+    concurrency=None,
+    retune=False,
 ):
     unique_ids = list(dict.fromkeys(int(offer_id) for offer_id in offer_ids))
     result = BauhausBarcodeEnrichmentResult()
     if not unique_ids:
         _log(result.summary(), log_callback)
         return result
+
+    max_concurrency = max(
+        1,
+        int(getattr(settings, "BAUHAUS_BARCODE_MAX_CONCURRENCY", 200)),
+    )
+    minimum = max(
+        1,
+        min(
+            max_concurrency,
+            int(getattr(settings, "BAUHAUS_BARCODE_MIN_CONCURRENCY", 8)),
+        ),
+    )
+    saved_concurrency = None if retune else _load_saved_concurrency()
+    if concurrency is not None:
+        start_concurrency = int(concurrency)
+    elif saved_concurrency is not None:
+        start_concurrency = saved_concurrency
+    else:
+        start_concurrency = max_concurrency
+    start_concurrency = max(minimum, min(max_concurrency, start_concurrency))
+    result.start_concurrency = start_concurrency
+    result.final_concurrency = start_concurrency
 
     offers = ProductOffer.objects.filter(
         pk__in=unique_ids,
@@ -103,20 +135,30 @@ def enrich_bauhaus_offer_barcodes(
             if not enough_items and not enough_time:
                 return
 
+        elapsed = now - started_at
+        rate = result.checked / elapsed if elapsed > 0 else 0.0
+        remaining = max(total - result.checked, 0)
+        eta = remaining / rate if rate > 0 else 0
         _log(
             "BAUHAUS barcode progress: "
             f"checked={result.checked}/{total}, found={result.found}, "
             f"not_found={result.not_found}, errors={result.errors}, "
-            f"remaining={max(total - result.checked, 0)}, "
-            f"elapsed={_format_elapsed(now - started_at)}",
+            f"pages={result.pages}, requests={result.http_requests}, "
+            f"related={result.related_found}, concurrency={result.final_concurrency}, "
+            f"restrictions={result.restrictions}, remaining={remaining}, "
+            f"speed={rate:.1f}/s, elapsed={_format_elapsed(elapsed)}, "
+            f"eta={_format_elapsed(eta)}",
             log_callback,
         )
         last_progress_at = now
         last_progress_count = result.checked
 
+    source = "explicit"
+    if concurrency is None:
+        source = "saved" if saved_concurrency is not None else "maximum"
     _log(
         f"BAUHAUS barcode enrichment started: total={total}, "
-        f"concurrency={max(1, int(concurrency))}",
+        f"concurrency={start_concurrency} ({source}), range={minimum}-{max_concurrency}",
         log_callback,
     )
 
@@ -132,15 +174,43 @@ def enrich_bauhaus_offer_barcodes(
             log_progress()
             continue
         product_ids[offer.pk] = offer.product_id
-        targets.append((offer.pk, offer.sku or offer.external_id, offer.product_url))
+        sku = clean_text(offer.sku or offer.external_id)
+        targets.append(
+            BarcodeTarget(
+                offer_id=offer.pk,
+                sku=sku,
+                product_url=offer.product_url,
+                key=(sku, normalize_product_url(offer.product_url)),
+            )
+        )
 
     if targets:
         try:
             for item in _iter_fetch_results(
                 targets,
-                concurrency=max(1, int(concurrency)),
+                concurrency=start_concurrency,
+                minimum=minimum,
                 idle_callback=log_progress,
             ):
+                if isinstance(item, BarcodeFetchMetrics):
+                    result.pages += item.pages
+                    result.http_requests += item.http_requests
+                    result.related_found += item.related_found
+                    if item.restrictions is not None:
+                        result.restrictions = item.restrictions
+                    if item.concurrency is not None:
+                        result.final_concurrency = item.concurrency
+                    if item.persist_tuning:
+                        _save_tuning_settings(
+                            concurrency=result.final_concurrency,
+                            restrictions=result.restrictions,
+                            stable=item.stable,
+                        )
+                    if item.message:
+                        _log(item.message, log_callback, warning=True)
+                    log_progress()
+                    continue
+
                 outcome, warning = _persist_fetch_result(
                     item,
                     product_id=product_ids[item.offer_id],
@@ -165,7 +235,13 @@ def enrich_bauhaus_offer_barcodes(
     return result
 
 
-def _iter_fetch_results(targets, concurrency, *, idle_callback=None):
+def _iter_fetch_results(
+    targets,
+    concurrency,
+    *,
+    minimum=1,
+    idle_callback=None,
+):
     result_queue = queue.Queue(
         maxsize=max(concurrency * RESULT_QUEUE_SIZE_MULTIPLIER, concurrency),
     )
@@ -185,6 +261,7 @@ def _iter_fetch_results(targets, concurrency, *, idle_callback=None):
                 _fetch_barcodes(
                     targets,
                     concurrency,
+                    minimum=minimum,
                     result_callback=put_result,
                     stop_event=stop_event,
                 )
@@ -223,113 +300,8 @@ def _iter_fetch_results(targets, concurrency, *, idle_callback=None):
         fetch_thread.join(timeout=2)
 
 
-async def _fetch_barcodes(
-    targets,
-    concurrency,
-    *,
-    result_callback=None,
-    stop_event=None,
-):
-    queue = asyncio.Queue()
-    for target in targets:
-        queue.put_nowait(target)
-
-    page_limiter = AdjustableLimiter(1)
-    ean_limiter = AdjustableLimiter(EAN_CONCURRENCY)
-    controller = AdaptiveLoadController(queue, page_limiter, ean_limiter)
-    results = []
-
-    async with CurlAsyncSession(
-        headers=HEADERS,
-        impersonate="chrome",
-        max_clients=concurrency,
-    ) as session:
-
-        async def worker():
-            while True:
-                item = await queue.get()
-                try:
-                    try:
-                        offer_id, sku, product_url = item
-                        await controller.wait_ean_allowed()
-                        _, ean, source, _ = await fetch_product_ean(
-                            session,
-                            ean_limiter,
-                            controller,
-                            sku,
-                            product_url,
-                        )
-                        fetch_result = BarcodeFetchResult(
-                            offer_id=offer_id,
-                            ean=ean,
-                            source=source,
-                        )
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as exc:
-                        fetch_result = BarcodeFetchResult(
-                            offer_id=item[0],
-                            ean="",
-                            source=f"worker_error:{type(exc).__name__}",
-                        )
-
-                    if result_callback is None:
-                        results.append(fetch_result)
-                    else:
-                        result_callback(fetch_result)
-                finally:
-                    queue.task_done()
-
-        workers = [
-            asyncio.create_task(worker())
-            for _ in range(min(concurrency, len(targets)))
-        ]
-        join_task = asyncio.create_task(queue.join())
-        stop_task = None
-        if stop_event is not None:
-            stop_task = asyncio.create_task(_wait_for_stop(stop_event))
-        try:
-            if stop_task is None:
-                await join_task
-            else:
-                done, _ = await asyncio.wait(
-                    {join_task, stop_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                if stop_task in done:
-                    raise asyncio.CancelledError
-                await join_task
-        finally:
-            join_task.cancel()
-            if stop_task is not None:
-                stop_task.cancel()
-            await asyncio.gather(
-                *[task for task in (join_task, stop_task) if task is not None],
-                return_exceptions=True,
-            )
-            for worker_task in workers:
-                worker_task.cancel()
-            await asyncio.gather(*workers, return_exceptions=True)
-            background_tasks = [
-                task
-                for task in (controller._drain_task, controller._speed_pause_task)
-                if task is not None and not task.done()
-            ]
-            for task in background_tasks:
-                task.cancel()
-            if background_tasks:
-                await asyncio.gather(*background_tasks, return_exceptions=True)
-
-    return results
-
-
-async def _wait_for_stop(stop_event):
-    while not stop_event.is_set():
-        await asyncio.sleep(0.25)
-
-
 def _persist_fetch_result(item, *, product_id):
-    ean = _validate_ean(item.ean)
+    ean = validate_ean(item.ean)
     checked_at = timezone.now()
     try:
         with transaction.atomic():
@@ -359,7 +331,7 @@ def _persist_fetch_result(item, *, product_id):
             )
             if not updated:
                 return "skipped", ""
-            if _is_fetch_error(item.source) or (item.ean and not ean):
+            if is_fetch_error(item.source) or (item.ean and not ean):
                 return (
                     "error",
                     f"WARNING: BAUHAUS barcode lookup failed for offer "
@@ -387,15 +359,36 @@ def _persist_fetch_result(item, *, product_id):
         )
 
 
-def _is_fetch_error(source):
-    return source.startswith(("http_", "request_failed", "worker_error"))
+def _load_saved_concurrency():
+    runtime_settings = (
+        ParserConfig.objects.filter(code=BAUHAUS_SHOP_CODE)
+        .values_list("runtime_settings", flat=True)
+        .first()
+    )
+    if not isinstance(runtime_settings, dict):
+        return None
+    value = runtime_settings.get(RUNTIME_SETTINGS_KEY, {}).get("concurrency")
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
-def _validate_ean(value):
-    text = str(value).strip() if value is not None else ""
-    if not text.isdigit() or len(text) not in {8, 12, 13, 14}:
-        return ""
-    return normalize_barcode_candidate(text)
+def _save_tuning_settings(*, concurrency, restrictions, stable):
+    parser_config = ParserConfig.objects.filter(code=BAUHAUS_SHOP_CODE).first()
+    if parser_config is None:
+        return
+    runtime_settings = dict(parser_config.runtime_settings or {})
+    runtime_settings[RUNTIME_SETTINGS_KEY] = {
+        "concurrency": int(concurrency),
+        "restrictions": int(restrictions),
+        "stable": bool(stable),
+        "updated_at": timezone.now().isoformat(),
+    }
+    ParserConfig.objects.filter(pk=parser_config.pk).update(
+        runtime_settings=runtime_settings,
+        updated_at=timezone.now(),
+    )
 
 
 def _format_elapsed(seconds):

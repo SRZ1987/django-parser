@@ -38,6 +38,7 @@ class ParserConfig(models.Model):
         default=STATUS_NEVER,
     )
     last_error = models.TextField(blank=True)
+    runtime_settings = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -11,11 +11,19 @@ class Command(BaseCommand):
         parser.add_argument("--limit", type=int)
         parser.add_argument("--offer-id", type=int)
         parser.add_argument("--retry-missing", action="store_true")
+        parser.add_argument("--concurrency", type=int)
+        parser.add_argument(
+            "--retune",
+            action="store_true",
+            help="Ignore the saved limit and start from maximum concurrency.",
+        )
 
     def handle(self, *args, **options):
         limit = options["limit"]
         if limit is not None and limit <= 0:
             raise CommandError("--limit must be greater than zero.")
+        if options["concurrency"] is not None and options["concurrency"] <= 0:
+            raise CommandError("--concurrency must be greater than zero.")
 
         offers = ProductOffer.objects.filter(shop__code="bauhaus", barcode="")
         if options["offer_id"] is not None:
@@ -31,5 +39,7 @@ class Command(BaseCommand):
             list(offer_ids),
             retry_missing=options["retry_missing"],
             log_callback=self.stdout.write,
+            concurrency=options["concurrency"],
+            retune=options["retune"],
         )
         self.stdout.write(self.style.SUCCESS(result.summary()))
