@@ -28,6 +28,7 @@ from parsers.adapters.espak import EspakAdapter
 from parsers.adapters.fere import FereAdapter
 from parsers.adapters.handymann import HandymannAdapter
 from parsers.adapters.registry import ADAPTERS
+from parsers.standalone.public_commerce_parser import PUBLIC_COMMERCE_STORES
 from parsers.models import ParserBatch, ParserBatchLock, ParserConfig, ParserExport, ParserQueueJob, ParserRun
 from parsers.services.batch_runner import (
     ParserBatchAlreadyRunning,
@@ -962,7 +963,8 @@ class DepoAdapterTests(TestCase):
 
 
 class AdapterRegistryTests(TestCase):
-    expected_production_codes = {"espak", "depo", "bauhof", "ehituseabc", "fere", "bauhaus", "handymann"}
+    existing_production_codes = {"espak", "depo", "bauhof", "ehituseabc", "fere", "bauhaus", "handymann"}
+    expected_production_codes = existing_production_codes | set(PUBLIC_COMMERCE_STORES)
 
     def test_registry_contains_exactly_all_production_parsers(self):
         self.assertEqual(set(ADAPTERS), self.expected_production_codes)
@@ -984,10 +986,22 @@ class AdapterRegistryTests(TestCase):
         call_command("setup_parsers", verbosity=0)
 
         configs = ParserConfig.objects.filter(code__in=self.expected_production_codes).order_by("run_order")
+        enabled_public_codes = {
+            code
+            for code, store in PUBLIC_COMMERCE_STORES.items()
+            if store.enabled_by_default
+        }
 
         self.assertEqual(set(configs.values_list("code", flat=True)), self.expected_production_codes)
-        self.assertTrue(all(config.is_enabled for config in configs))
-        self.assertEqual(list(configs.values_list("run_order", flat=True)), [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(
+            set(configs.filter(is_enabled=True).values_list("code", flat=True)),
+            self.existing_production_codes | enabled_public_codes,
+        )
+        self.assertFalse(configs.get(code="horden").is_enabled)
+        self.assertEqual(
+            list(configs.values_list("run_order", flat=True)),
+            list(range(1, len(self.expected_production_codes) + 1)),
+        )
 
 
 class PathlessFile:

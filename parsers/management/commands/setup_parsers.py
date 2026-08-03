@@ -9,6 +9,7 @@ from parsers.services.ehituseabc import EHITUSEABC_WEBSITE_URL
 from parsers.services.espak_client import ESPAK_WEBSITE_URL
 from parsers.services.fere import FERE_WEBSITE_URL
 from parsers.standalone.handymann_parser import BASE_URL as HANDYMANN_WEBSITE_URL
+from parsers.standalone.public_commerce_parser import PUBLIC_COMMERCE_STORES
 
 
 class Command(BaseCommand):
@@ -64,8 +65,26 @@ class Command(BaseCommand):
             parser_name="Handymann parser",
             run_order=7,
         )
+        for run_order, store in enumerate(PUBLIC_COMMERCE_STORES.values(), start=8):
+            self._setup_parser(
+                shop_code=store.code,
+                shop_name=store.name,
+                website_url=store.base_url,
+                parser_name=f"{store.name} parser",
+                run_order=run_order,
+                is_enabled=store.enabled_by_default,
+            )
 
-    def _setup_parser(self, *, shop_code, shop_name, website_url, parser_name, run_order):
+    def _setup_parser(
+        self,
+        *,
+        shop_code,
+        shop_name,
+        website_url,
+        parser_name,
+        run_order,
+        is_enabled=True,
+    ):
         shop, shop_created = Shop.objects.update_or_create(
             code=shop_code,
             defaults={
@@ -79,7 +98,7 @@ class Command(BaseCommand):
             defaults={
                 "shop": shop,
                 "name": parser_name,
-                "is_enabled": True,
+                "is_enabled": is_enabled,
                 "run_order": run_order,
             },
         )

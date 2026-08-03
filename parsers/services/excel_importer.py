@@ -7,7 +7,7 @@ from django.db import DataError, IntegrityError, transaction
 from django.utils import timezone
 from openpyxl import load_workbook
 
-from catalog.models import PriceHistory, Product, ProductOffer
+from catalog.models import Category, PriceHistory, Product, ProductOffer
 from catalog.services.normalization import normalize_product_name
 
 from .excel_validation import parse_decimal
@@ -53,6 +53,7 @@ class ExcelCatalogImporter:
     HEARTBEAT_INTERVAL_SECONDS = 15
 
     def import_file(self, parser_export, *, column_map, worksheet_name=None, deactivate_missing=True, parser_run=None):
+        self._category_cache = {}
         result, parsed_rows, remote_external_ids = self._read_and_normalize(parser_export, column_map, worksheet_name, parser_run)
 
         try:
@@ -220,13 +221,16 @@ class ExcelCatalogImporter:
 
         return {
             "external_id": external_id,
-            "sku": data.get("external_id", ""),
+            "sku": data.get("sku") or data.get("external_id", "") or external_id,
             "barcode": data.get("barcode", ""),
             "original_name": data.get("original_name", ""),
             "price": price,
             "sale_price": sale_price,
             "product_url": data.get("product_url", ""),
             "image_url": data.get("image_url", ""),
+            "category_name": data.get("category_name", ""),
+            "category_external_id": data.get("category_external_id", ""),
+            "description": data.get("description", ""),
         }
 
     def _validate_model_field_lengths(self, parsed):
@@ -242,6 +246,8 @@ class ExcelCatalogImporter:
             ("normalized_name", normalized_name, Product, "normalized_name"),
             ("product_url", parsed["product_url"], ProductOffer, "product_url"),
             ("image_url", parsed["image_url"], ProductOffer, "image_url"),
+            ("category_external_id", parsed["category_external_id"], Category, "external_id"),
+            ("category_name", parsed["category_name"], Category, "name"),
         )
         for source_field, value, model, model_field_name in fields:
             model_field = model._meta.get_field(model_field_name)
@@ -259,6 +265,7 @@ class ExcelCatalogImporter:
 
     @transaction.atomic
     def _save_offer(self, shop, parsed, seen_at):
+        category = self._get_category(shop, parsed)
         offer = ProductOffer.objects.select_related("product").filter(shop=shop, external_id=parsed["external_id"]).first()
         created = offer is None
         if created:
@@ -290,6 +297,10 @@ class ExcelCatalogImporter:
             offer.product_url = parsed["product_url"]
         if parsed["image_url"]:
             offer.image_url = parsed["image_url"]
+        if category is not None:
+            offer.category = category
+        if parsed["description"]:
+            offer.description = parsed["description"]
         offer.is_active = True
         offer.is_available = True
         offer.last_seen_at = seen_at
@@ -300,6 +311,25 @@ class ExcelCatalogImporter:
             PriceHistory.objects.create(offer=offer, price=offer.price, sale_price=offer.sale_price)
             return created, True, offer.pk
         return created, False, offer.pk
+
+    def _get_category(self, shop, parsed):
+        category_name = parsed.get("category_name", "")
+        if not category_name:
+            return None
+        category_external_id = parsed.get("category_external_id") or stable_external_id(
+            "category",
+            category_name,
+        )
+        cache_key = (shop.pk, category_external_id)
+        category = self._category_cache.get(cache_key)
+        if category is None:
+            category, _created = Category.objects.update_or_create(
+                shop=shop,
+                external_id=category_external_id,
+                defaults={"name": category_name},
+            )
+            self._category_cache[cache_key] = category
+        return category
 
     def _validate_catalog_size(self, shop, remote_external_ids):
         active_count = ProductOffer.objects.filter(shop=shop, is_active=True).count()
