@@ -4,6 +4,7 @@ from .depo import DepoAdapter
 from .ehituseabc import EhituseABCAdapter
 from .espak import EspakAdapter
 from .fere import FereAdapter
+from .handymann import HandymannAdapter
 
 
 ADAPTERS = {
@@ -13,6 +14,7 @@ ADAPTERS = {
     EhituseABCAdapter.code: EhituseABCAdapter,
     EspakAdapter.code: EspakAdapter,
     FereAdapter.code: FereAdapter,
+    HandymannAdapter.code: HandymannAdapter,
 }
 
 

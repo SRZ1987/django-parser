@@ -26,6 +26,7 @@ from parsers.adapters.depo import DepoAdapter
 from parsers.adapters.ehituseabc import EhituseABCAdapter
 from parsers.adapters.espak import EspakAdapter
 from parsers.adapters.fere import FereAdapter
+from parsers.adapters.handymann import HandymannAdapter
 from parsers.adapters.registry import ADAPTERS
 from parsers.models import ParserBatch, ParserBatchLock, ParserConfig, ParserExport, ParserQueueJob, ParserRun
 from parsers.services.batch_runner import (
@@ -961,7 +962,7 @@ class DepoAdapterTests(TestCase):
 
 
 class AdapterRegistryTests(TestCase):
-    expected_production_codes = {"espak", "depo", "bauhof", "ehituseabc", "fere", "bauhaus"}
+    expected_production_codes = {"espak", "depo", "bauhof", "ehituseabc", "fere", "bauhaus", "handymann"}
 
     def test_registry_contains_exactly_all_production_parsers(self):
         self.assertEqual(set(ADAPTERS), self.expected_production_codes)
@@ -971,6 +972,7 @@ class AdapterRegistryTests(TestCase):
         self.assertIs(ADAPTERS["ehituseabc"], EhituseABCAdapter)
         self.assertIs(ADAPTERS["espak"], EspakAdapter)
         self.assertIs(ADAPTERS["fere"], FereAdapter)
+        self.assertIs(ADAPTERS["handymann"], HandymannAdapter)
 
     def test_get_adapter_class_returns_each_production_adapter(self):
         from parsers.adapters.registry import get_adapter_class
@@ -985,7 +987,7 @@ class AdapterRegistryTests(TestCase):
 
         self.assertEqual(set(configs.values_list("code", flat=True)), self.expected_production_codes)
         self.assertTrue(all(config.is_enabled for config in configs))
-        self.assertEqual(list(configs.values_list("run_order", flat=True)), [1, 2, 3, 4, 5, 6])
+        self.assertEqual(list(configs.values_list("run_order", flat=True)), [1, 2, 3, 4, 5, 6, 7])
 
 
 class PathlessFile:

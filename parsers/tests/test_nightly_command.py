@@ -11,7 +11,7 @@ from parsers.models import ParserBatch, ParserBatchLock, ParserConfig, ParserRun
 
 
 class NightlyParsersCommandTests(TestCase):
-    expected_order = ["espak", "depo", "bauhof", "ehituseabc", "fere", "bauhaus"]
+    expected_order = ["espak", "depo", "bauhof", "ehituseabc", "fere", "bauhaus", "handymann"]
 
     def setUp(self):
         ParserBatchLock.objects.get_or_create(name="nightly_parser_batch")
@@ -36,14 +36,14 @@ class NightlyParsersCommandTests(TestCase):
             call_command("run_nightly_parsers", stdout=output)
         return calls, output.getvalue()
 
-    def test_successful_run_executes_all_six_enabled_parsers(self):
+    def test_successful_run_executes_all_seven_enabled_parsers(self):
         calls, output = self.run_successful_command()
 
         batch = ParserBatch.objects.get()
         self.assertEqual(calls, self.expected_order)
         self.assertEqual(batch.status, ParserBatch.STATUS_SUCCESS)
         self.assertIsNone(batch.current_parser)
-        self.assertIn("Enabled parsers: 6", output)
+        self.assertIn("Enabled parsers: 7", output)
         self.assertIn("Nightly parser batch completed successfully.", output)
 
     def test_run_order_is_respected(self):
@@ -61,8 +61,8 @@ class NightlyParsersCommandTests(TestCase):
         calls, output = self.run_successful_command()
 
         self.assertNotIn("depo", calls)
-        self.assertEqual(len(calls), 5)
-        self.assertIn("Enabled parsers: 5", output)
+        self.assertEqual(len(calls), 6)
+        self.assertIn("Enabled parsers: 6", output)
 
     def test_real_active_batch_skips_second_start(self):
         running = ParserBatch.objects.create(

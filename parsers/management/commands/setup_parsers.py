@@ -8,6 +8,7 @@ from parsers.services.depo_client import DEPO_WEBSITE_URL
 from parsers.services.ehituseabc import EHITUSEABC_WEBSITE_URL
 from parsers.services.espak_client import ESPAK_WEBSITE_URL
 from parsers.services.fere import FERE_WEBSITE_URL
+from parsers.standalone.handymann_parser import BASE_URL as HANDYMANN_WEBSITE_URL
 
 
 class Command(BaseCommand):
@@ -55,6 +56,13 @@ class Command(BaseCommand):
             website_url=FERE_WEBSITE_URL,
             parser_name="FERE parser",
             run_order=5,
+        )
+        self._setup_parser(
+            shop_code="handymann",
+            shop_name="Handymann",
+            website_url=HANDYMANN_WEBSITE_URL,
+            parser_name="Handymann parser",
+            run_order=7,
         )
 
     def _setup_parser(self, *, shop_code, shop_name, website_url, parser_name, run_order):
