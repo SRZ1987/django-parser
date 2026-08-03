@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from difflib import SequenceMatcher
@@ -5,7 +6,13 @@ from difflib import SequenceMatcher
 from catalog.models import ProductOffer
 
 from .attribute_extraction import ProductAttributes, extract_product_attributes
-from .normalization import normalize_product_name, normalize_text, tokenize
+from .normalization import (
+    is_number_token,
+    normalize_product_name,
+    normalize_text,
+    parse_dimension_token,
+    tokenize,
+)
 
 
 MATCH_EXACT = "exact"
@@ -113,6 +120,20 @@ def score_offer_against_query(
         if match_type != MATCH_EXACT:
             match_type = MATCH_BUNDLE_OR_VARIANT
 
+    structured_tokens = {
+        token
+        for token in query_tokens
+        if is_number_token(token) or parse_dimension_token(token)
+    }
+    if (
+        match_type != MATCH_EXACT
+        and structured_tokens
+        and structured_tokens == query_tokens
+        and not all(_token_matches(token, offer_attributes.tokens) for token in structured_tokens)
+    ):
+        score = 0.0
+        reasons.append("different number or dimensions")
+
     if match_type != MATCH_EXACT:
         if _bundle_relation(target_attributes, offer_attributes):
             match_type = MATCH_BUNDLE_OR_VARIANT
@@ -207,13 +228,31 @@ def _token_coverage(query_tokens: set[str], offer_tokens: set[str]) -> float:
 def _token_matches(query_token: str, offer_tokens: set[str]) -> bool:
     if query_token in offer_tokens:
         return True
+    query_dimensions = parse_dimension_token(query_token)
+    if query_dimensions:
+        return any(
+            candidate_dimensions[:len(query_dimensions)] == query_dimensions
+            for offer_token in offer_tokens
+            if (candidate_dimensions := parse_dimension_token(offer_token))
+        )
+    if is_number_token(query_token):
+        number_pattern = re.compile(rf"(?<![\d.]){re.escape(query_token)}(?![\d.])")
+        return any(number_pattern.search(offer_token) for offer_token in offer_tokens)
     if len(query_token) < 4:
-        return False
+        return any(
+            offer_token.startswith(query_token)
+            and any(character.isdigit() for character in offer_token)
+            for offer_token in offer_tokens
+        )
     return any(query_token in offer_token for offer_token in offer_tokens)
 
 
 def _dimensions_match(source: ProductAttributes, candidate: ProductAttributes) -> bool:
-    return bool(source.dimensions and candidate.dimensions and source.dimensions == candidate.dimensions)
+    return bool(
+        source.dimensions
+        and candidate.dimensions
+        and candidate.dimensions[:len(source.dimensions)] == source.dimensions
+    )
 
 
 def _quantity_matches(source: ProductAttributes, candidate: ProductAttributes) -> bool:

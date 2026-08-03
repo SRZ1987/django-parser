@@ -189,6 +189,67 @@ class ProductSearchTests(TestCase):
 
         self.assertIn(offer.pk, self.ids(results.similar_products + results.same_product))
 
+    def test_compound_word_and_number_match_ehitusnael(self):
+        target = self.offer("Ehitusnael 3,1x100 mm", category=self.fasteners, sku="NAEL-100")
+        wrong_length = self.offer("Ehitusnael 3,1x1000 mm", category=self.fasteners, sku="NAEL-1000")
+
+        results = search_products("nael 100")
+        result_ids = self.result_ids(results)
+
+        self.assertIn(target.pk, result_ids)
+        self.assertLess(result_ids.index(target.pk), result_ids.index(wrong_length.pk))
+
+    def test_compound_word_fragment_matches_ehitusnael(self):
+        target = self.offer("Ehitusnael 3,1x100 mm", category=self.fasteners, sku="NAEL-WORD")
+
+        results = search_products("nael")
+
+        self.assertIn(target.pk, self.result_ids(results))
+
+    def test_partial_dimensions_match_full_hoovelpruss_dimensions(self):
+        target = self.offer("Höövelpruss 50x50x3000 mm", sku="PRUSS-50")
+        wrong_size = self.offer("Höövelpruss 150x50x3000 mm", sku="PRUSS-150")
+
+        results = search_products("pruss 50x50")
+        result_ids = self.result_ids(results)
+
+        self.assertIn(target.pk, result_ids)
+        self.assertLess(result_ids.index(target.pk), result_ids.index(wrong_size.pk))
+
+    def test_spaced_and_multiplication_sign_dimensions_are_equivalent(self):
+        target = self.offer("Höövelpruss 50x50x3000 mm", sku="PRUSS-VARIANTS")
+
+        compact = self.result_ids(search_products("pruss 50x50"))
+        spaced = self.result_ids(search_products("pruss 50 x 50"))
+        multiplication_sign = self.result_ids(search_products("pruss 50×50"))
+
+        self.assertIn(target.pk, compact)
+        self.assertEqual(compact, spaced)
+        self.assertEqual(compact, multiplication_sign)
+
+    def test_number_token_does_not_match_inside_larger_number(self):
+        exact_number = self.offer("Höövelpruss 50x50x3000 mm", sku="NUMBER-50")
+        larger_number = self.offer("Höövelpruss 150x150x3000 mm", sku="NUMBER-150")
+        exact_hundred = self.offer("Ehitusnael 3,1x100 mm", sku="NUMBER-100")
+        larger_hundred = self.offer("Ehitusnael 3,1x1000 mm", sku="NUMBER-1000")
+
+        fifty_ids = self.result_ids(search_products("50"))
+        hundred_ids = self.result_ids(search_products("100"))
+
+        self.assertIn(exact_number.pk, fifty_ids)
+        self.assertNotIn(larger_number.pk, fifty_ids)
+        self.assertIn(exact_hundred.pk, hundred_ids)
+        self.assertNotIn(larger_hundred.pk, hundred_ids)
+
+    def test_barcode_search_remains_exact(self):
+        target = self.offer("Exact barcode product", barcode="4740000000001", sku="BARCODE-EXACT")
+        longer = self.offer("Longer barcode product", barcode="147400000000010", sku="BARCODE-LONGER")
+
+        results = search_products("4740000000001")
+
+        self.assertIn(target.pk, self.ids(results.exact_matches))
+        self.assertNotIn(longer.pk, self.result_ids(results))
+
     def test_inactive_and_unavailable_offers_are_hidden(self):
         self.offer("Visible Makita DDF482", brand="Makita", model="DDF482Z")
         inactive = self.offer("Inactive Makita DDF482", sku="INACTIVE", is_active=False, brand="Makita", model="DDF482Z")
@@ -211,6 +272,12 @@ class ProductSearchTests(TestCase):
 
 
 class AttributeExtractionTests(TestCase):
+    def test_normalization_keeps_words_separate_from_measurements(self):
+        self.assertEqual(normalize_product_name("nael 100"), "nael 100")
+        self.assertEqual(normalize_product_name("pruss 50x50"), "pruss 50x50")
+        self.assertEqual(normalize_product_name("pruss 50 x 50"), "pruss 50x50")
+        self.assertEqual(normalize_product_name("pruss 50×50"), "pruss 50x50")
+
     def test_extracts_model_dimensions_weight_and_battery(self):
         attributes = extract_product_attributes("Makita DDF482 18V 2x5Ah screw 5x70mm 1kg")
 

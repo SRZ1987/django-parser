@@ -15,6 +15,11 @@ _NUMBER_UNIT_RE = re.compile(
 )
 _UNWANTED_CHARS_RE = re.compile(r"[^\w\s.]+", re.UNICODE)
 _SPACES_RE = re.compile(r"\s+")
+_NUMBER_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)?$")
+_DIMENSION_TOKEN_RE = re.compile(
+    r"^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:x(\d+(?:\.\d+)?))?(?:mm|cm|m)?$"
+)
+_MODEL_PREFIX_VOWELS = frozenset("aeiouyõäöü")
 _UNIT_ALIASES = {
     "мм": "mm",
     "см": "cm",
@@ -40,10 +45,13 @@ def _normalize_dimension(match) -> str:
 
 
 def _normalize_split_model(match) -> str:
+    prefix = match.group(1)
     suffix = match.group(3)
+    if any(character in _MODEL_PREFIX_VOWELS for character in prefix):
+        return match.group(0)
     if suffix in {"v", "w", "ah", "mm", "cm", "m", "kg", "g", "l", "ml"}:
         return match.group(0)
-    return f"{match.group(1)}{match.group(2)}{suffix}"
+    return f"{prefix}{match.group(2)}{suffix}"
 
 
 def _compact_number_units(text: str) -> str:
@@ -81,6 +89,17 @@ def normalize_model(value: str) -> str:
 
 def tokenize(value: str) -> list[str]:
     return [token for token in normalize_product_name(value).split() if token]
+
+
+def is_number_token(value: str) -> bool:
+    return bool(_NUMBER_TOKEN_RE.fullmatch(value or ""))
+
+
+def parse_dimension_token(value: str) -> tuple[str, ...]:
+    match = _DIMENSION_TOKEN_RE.fullmatch(value or "")
+    if not match:
+        return ()
+    return tuple(part for part in match.groups() if part)
 
 
 def build_search_text(*values: str) -> str:

@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
@@ -6,7 +7,13 @@ from django.db.models import Q
 from catalog.models import ProductOffer
 
 from .attribute_extraction import extract_product_attributes
-from .normalization import normalize_product_name, normalize_text, tokenize
+from .normalization import (
+    is_number_token,
+    normalize_product_name,
+    normalize_text,
+    parse_dimension_token,
+    tokenize,
+)
 from .product_matching import (
     MATCH_BUNDLE_OR_VARIANT,
     MATCH_EXACT,
@@ -144,12 +151,15 @@ def _retrieve_candidates(normalized_query, source_offer, source_attributes, cand
         _extend_candidates(candidates, seen_ids, queryset.filter(exact_query), candidate_limit)
 
         broad_query |= exact_query
-        broad_query |= Q(normalized_name__icontains=normalized_query) | Q(search_text__icontains=normalized_query)
+        if is_number_token(normalized_query) or parse_dimension_token(normalized_query):
+            broad_query |= _token_candidate_query(normalized_query)
+        else:
+            broad_query |= Q(normalized_name__icontains=normalized_query) | Q(search_text__icontains=normalized_query)
 
     if meaningful_tokens:
         all_tokens_query = Q()
         for token in meaningful_tokens:
-            all_tokens_query &= Q(search_text__icontains=token) | Q(normalized_name__icontains=token)
+            all_tokens_query &= _token_candidate_query(token)
         _extend_candidates(candidates, seen_ids, queryset.filter(all_tokens_query), candidate_limit)
 
     if source_offer:
@@ -168,12 +178,27 @@ def _retrieve_candidates(normalized_query, source_offer, source_attributes, cand
         broad_query |= Q(search_text__icontains=dimension)
 
     for token in meaningful_tokens:
-        broad_query |= Q(search_text__icontains=token)
+        broad_query |= _token_candidate_query(token)
 
     if broad_query and len(candidates) < candidate_limit:
         _extend_candidates(candidates, seen_ids, queryset.filter(broad_query), candidate_limit)
 
     return candidates
+
+
+def _token_candidate_query(token: str) -> Q:
+    dimensions = parse_dimension_token(token)
+    if dimensions:
+        dimension = "x".join(re.escape(value) for value in dimensions)
+        suffix = r"(x[0-9]|[^0-9.]|$)" if len(dimensions) < 3 else r"([^0-9.]|$)"
+        pattern = rf"(^|[^0-9.]){dimension}{suffix}"
+        return Q(search_text__regex=pattern) | Q(normalized_name__regex=pattern)
+
+    if is_number_token(token):
+        pattern = rf"(^|[^0-9.]){re.escape(token)}([^0-9.]|$)"
+        return Q(search_text__regex=pattern) | Q(normalized_name__regex=pattern)
+
+    return Q(search_text__icontains=token) | Q(normalized_name__icontains=token)
 
 
 def _extend_candidates(candidates, seen_ids, queryset, candidate_limit):
