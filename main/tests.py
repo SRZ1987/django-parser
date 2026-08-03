@@ -119,7 +119,7 @@ class MainCatalogTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Введите название, SKU или штрихкод")
 
-    def test_product_search_groups_exact_barcode_and_same_product(self):
+    def test_product_search_shows_exact_barcode_and_same_product(self):
         exact = self.create_offer(name="Makita DDF482Z drill", barcode="4000000000001", brand="Makita", model="DDF482Z")
         same = self.create_offer(
             name="Akutrell MAKITA DDF 482 Z",
@@ -135,10 +135,46 @@ class MainCatalogTests(TestCase):
         response = self.client.get(reverse("product_search"), {"q": "4000000000001"}, HTTP_HOST="127.0.0.1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Точные совпадения")
-        self.assertContains(response, "Тот же товар")
+        self.assertContains(response, "Результаты поиска")
         self.assertContains(response, exact.original_name)
         self.assertContains(response, same.original_name)
+
+    def test_product_search_paginates_after_complete_stable_sorting(self):
+        offers_by_price = {}
+        for index in range(30):
+            price = Decimal(30 - index)
+            offer = self.create_offer(
+                name=f"Pruss product {index:02d}",
+                shop=self.other_shop if index % 2 else self.shop,
+                category=self.other_category if index % 2 else self.category,
+                sku=f"PRUSS-PAGE-{index}",
+                barcode=f"PRUSS-EAN-{index}",
+                external_id=f"pruss-page-{index}",
+                price=price,
+            )
+            offers_by_price[price] = offer.pk
+
+        expected_ids = [offers_by_price[price] for price in sorted(offers_by_price)]
+        first_page = self.client.get(reverse("product_search"), {"q": "pruss"}, HTTP_HOST="127.0.0.1")
+        second_page = self.client.get(
+            reverse("product_search"),
+            {"q": "pruss", "page": 2},
+            HTTP_HOST="127.0.0.1",
+        )
+        repeated_second_page = self.client.get(
+            reverse("product_search"),
+            {"q": "pruss", "page": 2},
+            HTTP_HOST="127.0.0.1",
+        )
+
+        first_ids = [match.offer.pk for match in first_page.context["results_page"].object_list]
+        second_ids = [match.offer.pk for match in second_page.context["results_page"].object_list]
+        repeated_second_ids = [match.offer.pk for match in repeated_second_page.context["results_page"].object_list]
+
+        self.assertEqual(first_ids, expected_ids[:24])
+        self.assertEqual(second_ids, expected_ids[24:])
+        self.assertEqual(second_ids, repeated_second_ids)
+        self.assertFalse(set(first_ids) & set(second_ids))
 
     def test_registration_creates_and_logs_in_user(self):
         response = self.client.post(

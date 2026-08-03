@@ -33,6 +33,7 @@ class ProductSearchTests(TestCase):
         brand="",
         model="",
         price="10.00",
+        sale_price=None,
         is_active=True,
         is_available=True,
     ):
@@ -48,7 +49,8 @@ class ProductSearchTests(TestCase):
             sku=sku,
             barcode=barcode,
             original_name=name,
-            price=Decimal(price),
+            price=Decimal(price) if price is not None else None,
+            sale_price=Decimal(sale_price) if sale_price is not None else None,
             currency="EUR",
             is_active=is_active,
             is_available=is_available,
@@ -58,7 +60,7 @@ class ProductSearchTests(TestCase):
         return [match.offer.pk for match in matches]
 
     def result_ids(self, results):
-        return self.ids(results.exact_matches + results.same_product + results.bundles_or_variants + results.similar_products)
+        return self.ids(results.matches)
 
     def test_exact_barcode_returns_all_barcode_matches_first(self):
         espak = self.offer("Makita DDF482Z drill", barcode="4000000000001", brand="Makita", model="DDF482Z")
@@ -284,6 +286,49 @@ class ProductSearchTests(TestCase):
 
         self.assertEqual(first_search, second_search)
         self.assertEqual(first_search[:2], [first.pk, second.pk])
+
+    def test_equal_relevance_sorts_by_price_across_shops(self):
+        expensive = self.offer("Pruss 45x45x3000 mm", sku="PRICE-6", price="6.00")
+        cheap = self.offer(
+            "Pruss 45x45x3600 mm",
+            shop=self.depo,
+            category=None,
+            sku="PRICE-3",
+            price="3.00",
+        )
+
+        result_ids = self.result_ids(search_products("pruss"))
+
+        self.assertLess(result_ids.index(cheap.pk), result_ids.index(expensive.pk))
+
+    def test_sale_price_is_used_for_equal_relevance_sorting(self):
+        regular = self.offer("Pruss 45x45x3000 mm", sku="REGULAR-3", price="3.00")
+        discounted = self.offer(
+            "Pruss 45x45x3600 mm",
+            shop=self.depo,
+            category=None,
+            sku="SALE-2",
+            price="10.00",
+            sale_price="2.00",
+        )
+
+        result_ids = self.result_ids(search_products("pruss"))
+
+        self.assertLess(result_ids.index(discounted.pk), result_ids.index(regular.pk))
+
+    def test_offer_without_price_is_last_within_relevance_level(self):
+        missing_price = self.offer("Pruss 45x45x3000 mm", sku="NO-PRICE", price=None)
+        priced = self.offer(
+            "Pruss 45x45x3600 mm",
+            shop=self.depo,
+            category=None,
+            sku="WITH-PRICE",
+            price="100.00",
+        )
+
+        result_ids = self.result_ids(search_products("pruss"))
+
+        self.assertLess(result_ids.index(priced.pk), result_ids.index(missing_price.pk))
 
     def test_partial_dimensions_match_full_hoovelpruss_dimensions(self):
         target = self.offer("Höövelpruss 50x50x3000 mm", sku="PRUSS-50")

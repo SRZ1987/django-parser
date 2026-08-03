@@ -27,9 +27,10 @@ SIMILAR_SCORE = 0.12
 RANK_WEAK = 0
 RANK_PARTIAL = 1
 RANK_ALL_TOKENS = 2
-RANK_EXACT_WORDS_AND_DIMENSIONS = 3
-RANK_EXACT_PHRASE = 4
-RANK_EXACT_IDENTIFIER_OR_MODEL = 5
+RANK_EXACT_STRUCTURE = 3
+RANK_EXACT_WORDS_AND_DIMENSIONS = 4
+RANK_EXACT_PHRASE = 5
+RANK_EXACT_IDENTIFIER_OR_MODEL = 6
 
 TEXT_MATCH_NONE = 0
 TEXT_MATCH_COMPOUND_SUFFIX = 1
@@ -212,6 +213,11 @@ def score_offer_against_query(
     all_text_matched = all(text_match_kinds.values())
     all_text_exact = all(kind == TEXT_MATCH_EXACT_WORD for kind in text_match_kinds.values())
     all_structured_matched = all(structured_matches.values())
+    exact_structured_match = _structured_tokens_match_dimensions(
+        structured_tokens,
+        target_attributes,
+        offer_attributes,
+    )
     exact_query_dimensions = bool(
         not target_attributes.dimensions
         or _dimensions_match(target_attributes, offer_attributes)
@@ -225,6 +231,8 @@ def score_offer_against_query(
         score = max(score, 0.9)
     elif effective_query_tokens and all_text_exact and all_structured_matched and exact_query_dimensions:
         ranking_tier = RANK_EXACT_WORDS_AND_DIMENSIONS
+    elif effective_query_tokens and all_text_matched and exact_structured_match:
+        ranking_tier = RANK_EXACT_STRUCTURE
     elif effective_query_tokens and all_text_matched and all_structured_matched:
         ranking_tier = RANK_ALL_TOKENS
     elif any(text_match_kinds.values()) or any(structured_matches.values()):
@@ -370,6 +378,23 @@ def _dimension_match_count(source: ProductAttributes, candidate: ProductAttribut
 def _number_matches_dimension(number: str, candidate: ProductAttributes) -> bool:
     pattern = re.compile(rf"^{re.escape(number)}(?:mm|cm|m)$")
     return any(pattern.fullmatch(value) for value in candidate.dimensions)
+
+
+def _structured_tokens_match_dimensions(
+    structured_tokens: set[str],
+    source: ProductAttributes,
+    candidate: ProductAttributes,
+) -> bool:
+    if not structured_tokens:
+        return False
+
+    for token in structured_tokens:
+        if parse_dimension_token(token):
+            if not _dimensions_match(source, candidate):
+                return False
+        elif is_number_token(token) and not _number_matches_dimension(token, candidate):
+            return False
+    return True
 
 
 def _dimensions_match(source: ProductAttributes, candidate: ProductAttributes) -> bool:

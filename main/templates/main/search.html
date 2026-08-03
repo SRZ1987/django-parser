@@ -46,19 +46,16 @@
             {% endif %}
         </section>
 
-        {% include "main/search_section.html" with title="Точные совпадения" matches=results.exact_matches debug_scores=debug_scores list_offer_ids=list_offer_ids %}
-        {% include "main/search_section.html" with title="Тот же товар в других магазинах" matches=results.same_product debug_scores=debug_scores list_offer_ids=list_offer_ids %}
-        {% include "main/search_section.html" with title="Комплекты и варианты" matches=results.bundles_or_variants debug_scores=debug_scores list_offer_ids=list_offer_ids %}
-        {% include "main/search_section.html" with title="Похожие товары" matches=similar_page.object_list debug_scores=debug_scores list_offer_ids=list_offer_ids %}
+        {% include "main/search_section.html" with title="Результаты поиска" matches=results_page.object_list debug_scores=debug_scores list_offer_ids=list_offer_ids %}
 
-        {% if similar_page.paginator.num_pages > 1 %}
-            <nav class="pagination" aria-label="Похожие товары">
-                {% if similar_page.has_previous %}
-                    <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ similar_page.previous_page_number }}">Назад</a>
+        {% if results_page.paginator.num_pages > 1 %}
+            <nav class="pagination" aria-label="Результаты поиска">
+                {% if results_page.has_previous %}
+                    <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ results_page.previous_page_number }}">Назад</a>
                 {% endif %}
-                <span class="is-current">{{ similar_page.number }} / {{ similar_page.paginator.num_pages }}</span>
-                {% if similar_page.has_next %}
-                    <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ similar_page.next_page_number }}">Вперёд</a>
+                <span class="is-current">{{ results_page.number }} / {{ results_page.paginator.num_pages }}</span>
+                {% if results_page.has_next %}
+                    <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ results_page.next_page_number }}">Вперёд</a>
                 {% endif %}
             </nav>
         {% endif %}

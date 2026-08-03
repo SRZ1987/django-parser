@@ -104,8 +104,8 @@ def register(request):
 def product_search_view(request):
     query = request.GET.get("q", "").strip()
     results = search_products(query) if query else None
-    similar_page = paginate_group(
-        results.similar_products if results else [],
+    results_page = paginate_group(
+        results.matches if results else [],
         request.GET.get("page"),
         page_size=DEFAULT_PAGE_SIZE,
     )
@@ -120,7 +120,7 @@ def product_search_view(request):
         {
             "query": query,
             "results": results,
-            "similar_page": similar_page,
+            "results_page": results_page,
             "page_params": page_params.urlencode(),
             "debug_scores": request.user.is_staff if request.user.is_authenticated else False,
             "list_offer_ids": list_offer_ids,

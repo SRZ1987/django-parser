@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db.models import Q
@@ -37,6 +38,7 @@ DEFAULT_PAGE_SIZE = 24
 class SearchResults:
     query: str
     normalized_query: str
+    matches: list[MatchResult] = field(default_factory=list)
     exact_matches: list[MatchResult] = field(default_factory=list)
     same_product: list[MatchResult] = field(default_factory=list)
     bundles_or_variants: list[MatchResult] = field(default_factory=list)
@@ -75,21 +77,13 @@ def search_products(
         for candidate in candidates
     ]
     ranked = [match for match in ranked if match.score >= 0.05 or match.match_type == MATCH_EXACT]
-    ranked.sort(
-        key=lambda match: (
-            -match.ranking_tier,
-            -match.score,
-            _price_sort_value(match),
-            match.offer.original_name.casefold(),
-            match.offer.shop_id,
-            match.offer.pk,
-        )
-    )
+    ranked.sort(key=_match_sort_key)
     ranked = ranked[:results_limit]
 
     results = SearchResults(
         query=query,
         normalized_query=normalized_query,
+        matches=ranked,
         candidates_count=len(candidates),
     )
     for match in ranked:
@@ -97,15 +91,7 @@ def search_products(
 
     same_product_for_price = results.exact_matches + results.same_product
     results.price_summary = build_price_summary(same_product_for_price) if same_product_for_price else None
-    results.total_count = sum(
-        len(group)
-        for group in (
-            results.exact_matches,
-            results.same_product,
-            results.bundles_or_variants,
-            results.similar_products,
-        )
-    )
+    results.total_count = len(ranked)
     return results
 
 
@@ -212,7 +198,7 @@ def _token_candidate_query(token: str) -> Q:
 
 
 def _extend_candidates(candidates, seen_ids, queryset, candidate_limit):
-    for offer in queryset.distinct().order_by("shop__name", "original_name", "id")[:candidate_limit]:
+    for offer in queryset.distinct().order_by("original_name", "id")[:candidate_limit]:
         if offer.pk in seen_ids:
             continue
         candidates.append(offer)
@@ -232,5 +218,20 @@ def _append_match(results: SearchResults, match: MatchResult):
         results.similar_products.append(match)
 
 
-def _price_sort_value(match: MatchResult):
-    return match.offer.current_price if match.offer.current_price is not None else 999999999
+def _match_sort_key(match: MatchResult):
+    price = _effective_price(match.offer)
+    return (
+        match.match_type != MATCH_EXACT,
+        -match.ranking_tier,
+        price is None,
+        price if price is not None else Decimal("0"),
+        match.offer.original_name.casefold(),
+        match.offer.shop.name.casefold(),
+        match.offer.pk,
+    )
+
+
+def _effective_price(offer: ProductOffer):
+    if offer.sale_price is not None and (offer.price is None or offer.sale_price < offer.price):
+        return offer.sale_price
+    return offer.price
