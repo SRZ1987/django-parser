@@ -201,10 +201,25 @@ class ProductSearchTests(TestCase):
 
     def test_compound_word_fragment_matches_ehitusnael(self):
         target = self.offer("Ehitusnael 3,1x100 mm", category=self.fasteners, sku="NAEL-WORD")
+        nail_gun = self.offer("Naelapüstol 18 V", category=self.fasteners, sku="NAEL-GUN")
 
         results = search_products("nael")
+        result_ids = self.result_ids(results)
 
-        self.assertIn(target.pk, self.result_ids(results))
+        self.assertIn(target.pk, result_ids)
+        self.assertNotIn(nail_gun.pk, result_ids)
+
+    def test_text_token_matches_word_or_compound_suffix_only(self):
+        separate_word = self.offer("Puitm. - Pruss 47x50x4800mm", sku="PRUSS-WORD")
+        compound_suffix = self.offer("Höövelpruss 50x50x3000", sku="PRUSS-SUFFIX")
+        prefix_only = self.offer("Prussakalõks Arox 2tk", sku="PRUSS-TRAP")
+
+        results = search_products("pruss")
+        result_ids = self.result_ids(results)
+
+        self.assertIn(separate_word.pk, result_ids)
+        self.assertIn(compound_suffix.pk, result_ids)
+        self.assertNotIn(prefix_only.pk, result_ids)
 
     def test_partial_dimensions_match_full_hoovelpruss_dimensions(self):
         target = self.offer("Höövelpruss 50x50x3000 mm", sku="PRUSS-50")

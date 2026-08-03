@@ -60,6 +60,9 @@ def score_offer_against_query(
     normalized_query = normalize_product_name(query)
     query_tokens = set(tokenize(normalized_query))
     offer_attributes = build_offer_attributes(offer)
+    offer_tokens = set(offer_attributes.tokens)
+    offer_tokens.update(tokenize(offer_attributes.brand))
+    offer_tokens.update(tokenize(offer_attributes.model))
     target_attributes = source_attributes or extract_product_attributes(query)
     score = 0.0
     reasons = []
@@ -86,11 +89,11 @@ def score_offer_against_query(
             score -= 0.32
             reasons.append("different brand")
 
-    token_score = _token_similarity(query_tokens or target_attributes.tokens, offer_attributes.tokens)
+    token_score = _token_similarity(query_tokens or target_attributes.tokens, offer_tokens)
     if token_score:
         score += token_score * 0.28
         reasons.append("name tokens overlap")
-    token_coverage = _token_coverage(query_tokens or target_attributes.tokens, offer_attributes.tokens)
+    token_coverage = _token_coverage(query_tokens or target_attributes.tokens, offer_tokens)
     if token_coverage:
         score += token_coverage * 0.18
         reasons.append("query tokens covered")
@@ -125,14 +128,22 @@ def score_offer_against_query(
         for token in query_tokens
         if is_number_token(token) or parse_dimension_token(token)
     }
+    text_tokens = query_tokens - structured_tokens
     if (
         match_type != MATCH_EXACT
         and structured_tokens
         and structured_tokens == query_tokens
-        and not all(_token_matches(token, offer_attributes.tokens) for token in structured_tokens)
+        and not all(_token_matches(token, offer_tokens) for token in structured_tokens)
     ):
         score = 0.0
         reasons.append("different number or dimensions")
+    if (
+        match_type != MATCH_EXACT
+        and text_tokens
+        and not any(_token_matches(token, offer_tokens) for token in text_tokens)
+    ):
+        score = 0.0
+        reasons.append("no matching text token")
 
     if match_type != MATCH_EXACT:
         if _bundle_relation(target_attributes, offer_attributes):
@@ -238,13 +249,7 @@ def _token_matches(query_token: str, offer_tokens: set[str]) -> bool:
     if is_number_token(query_token):
         number_pattern = re.compile(rf"(?<![\d.]){re.escape(query_token)}(?![\d.])")
         return any(number_pattern.search(offer_token) for offer_token in offer_tokens)
-    if len(query_token) < 4:
-        return any(
-            offer_token.startswith(query_token)
-            and any(character.isdigit() for character in offer_token)
-            for offer_token in offer_tokens
-        )
-    return any(query_token in offer_token for offer_token in offer_tokens)
+    return any(offer_token.endswith(query_token) for offer_token in offer_tokens)
 
 
 def _dimensions_match(source: ProductAttributes, candidate: ProductAttributes) -> bool:

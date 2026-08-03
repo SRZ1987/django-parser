@@ -198,7 +198,8 @@ def _token_candidate_query(token: str) -> Q:
         pattern = rf"(^|[^0-9.]){re.escape(token)}([^0-9.]|$)"
         return Q(search_text__regex=pattern) | Q(normalized_name__regex=pattern)
 
-    return Q(search_text__icontains=token) | Q(normalized_name__icontains=token)
+    pattern = rf"(^|[^\w])\w*{re.escape(token)}([^\w]|$)"
+    return Q(search_text__iregex=pattern) | Q(normalized_name__iregex=pattern)
 
 
 def _extend_candidates(candidates, seen_ids, queryset, candidate_limit):
