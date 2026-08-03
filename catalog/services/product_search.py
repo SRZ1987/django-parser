@@ -75,7 +75,16 @@ def search_products(
         for candidate in candidates
     ]
     ranked = [match for match in ranked if match.score >= 0.05 or match.match_type == MATCH_EXACT]
-    ranked.sort(key=lambda match: (-_match_type_weight(match.match_type), -match.score, _price_sort_value(match), match.offer.original_name))
+    ranked.sort(
+        key=lambda match: (
+            -match.ranking_tier,
+            -match.score,
+            _price_sort_value(match),
+            match.offer.original_name.casefold(),
+            match.offer.shop_id,
+            match.offer.pk,
+        )
+    )
     ranked = ranked[:results_limit]
 
     results = SearchResults(
@@ -221,15 +230,6 @@ def _append_match(results: SearchResults, match: MatchResult):
         results.bundles_or_variants.append(match)
     else:
         results.similar_products.append(match)
-
-
-def _match_type_weight(match_type: str) -> int:
-    return {
-        MATCH_EXACT: 4,
-        MATCH_SAME_PRODUCT: 3,
-        MATCH_BUNDLE_OR_VARIANT: 2,
-        MATCH_SIMILAR_PRODUCT: 1,
-    }.get(match_type, 0)
 
 
 def _price_sort_value(match: MatchResult):

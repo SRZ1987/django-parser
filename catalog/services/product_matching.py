@@ -24,6 +24,17 @@ SAME_PRODUCT_SCORE = 0.46
 BUNDLE_SCORE = 0.42
 SIMILAR_SCORE = 0.12
 
+RANK_WEAK = 0
+RANK_PARTIAL = 1
+RANK_ALL_TOKENS = 2
+RANK_EXACT_WORDS_AND_DIMENSIONS = 3
+RANK_EXACT_PHRASE = 4
+RANK_EXACT_IDENTIFIER_OR_MODEL = 5
+
+TEXT_MATCH_NONE = 0
+TEXT_MATCH_COMPOUND_SUFFIX = 1
+TEXT_MATCH_EXACT_WORD = 2
+
 
 @dataclass(frozen=True)
 class MatchResult:
@@ -31,6 +42,7 @@ class MatchResult:
     score: float
     match_type: str
     confidence: str
+    ranking_tier: int = RANK_WEAK
     reasons: list[str] = field(default_factory=list)
 
 
@@ -64,11 +76,38 @@ def score_offer_against_query(
     offer_tokens.update(tokenize(offer_attributes.brand))
     offer_tokens.update(tokenize(offer_attributes.model))
     target_attributes = source_attributes or extract_product_attributes(query)
+    effective_query_tokens = query_tokens or target_attributes.tokens
+    structured_tokens = {
+        token
+        for token in effective_query_tokens
+        if is_number_token(token) or parse_dimension_token(token)
+    }
+    text_tokens = effective_query_tokens - structured_tokens
+    text_match_kinds = {
+        token: _text_token_match_kind(token, offer_tokens)
+        for token in text_tokens
+    }
+    exact_identifier = bool(normalized_query and _identifier_matches(offer, normalized_query))
+    exact_model = bool(
+        target_attributes.model
+        and offer_attributes.model
+        and target_attributes.model == offer_attributes.model
+    )
+    exact_name = bool(normalized_query and normalized_query == offer_attributes.normalized_name)
+    exact_phrase = bool(
+        len(effective_query_tokens) > 1
+        and _contains_exact_phrase(offer_attributes.normalized_name, normalized_query)
+    )
+    structured_matches = {
+        token: _token_matches(token, offer_tokens)
+        for token in structured_tokens
+    }
+    dimension_matches = _dimension_match_count(target_attributes, offer_attributes)
     score = 0.0
     reasons = []
     match_type = MATCH_SIMILAR_PRODUCT
 
-    if normalized_query and _identifier_matches(offer, normalized_query):
+    if exact_identifier:
         score = 1.0
         match_type = MATCH_EXACT
         reasons.append("exact barcode or shop code")
@@ -89,26 +128,57 @@ def score_offer_against_query(
             score -= 0.32
             reasons.append("different brand")
 
-    token_score = _token_similarity(query_tokens or target_attributes.tokens, offer_tokens)
+    token_score = _token_similarity(effective_query_tokens, offer_tokens)
     if token_score:
         score += token_score * 0.28
         reasons.append("name tokens overlap")
-    token_coverage = _token_coverage(query_tokens or target_attributes.tokens, offer_tokens)
+    token_coverage = _token_coverage(effective_query_tokens, offer_tokens)
     if token_coverage:
         score += token_coverage * 0.18
         reasons.append("query tokens covered")
 
+    exact_word_ratio = (
+        sum(kind == TEXT_MATCH_EXACT_WORD for kind in text_match_kinds.values()) / len(text_match_kinds)
+        if text_match_kinds
+        else 0.0
+    )
+    compound_suffix_ratio = (
+        sum(kind == TEXT_MATCH_COMPOUND_SUFFIX for kind in text_match_kinds.values()) / len(text_match_kinds)
+        if text_match_kinds
+        else 0.0
+    )
+    if exact_word_ratio:
+        score += exact_word_ratio * 0.12
+        reasons.append("exact words")
+    if compound_suffix_ratio:
+        score += compound_suffix_ratio * 0.05
+        reasons.append("compound word suffix")
+
     sequence_score = SequenceMatcher(None, normalized_query, offer_attributes.normalized_name).ratio() if normalized_query else 0
     if sequence_score >= 0.55:
-        score += sequence_score * 0.14
+        score += sequence_score * 0.04
         reasons.append("normalized name similarity")
 
-    if _dimensions_match(target_attributes, offer_attributes):
-        score += 0.12
-        reasons.append("dimensions match")
-    elif target_attributes.dimensions and offer_attributes.dimensions:
-        score -= 0.06
-        reasons.append("different dimensions")
+    if target_attributes.dimensions and offer_attributes.dimensions:
+        dimension_ratio = dimension_matches / len(target_attributes.dimensions)
+        if dimension_matches:
+            score += dimension_ratio * 0.18
+            reasons.append("dimension parameters match")
+        if _dimensions_match(target_attributes, offer_attributes):
+            score += 0.12
+            reasons.append("exact dimensions")
+        else:
+            score -= 0.06
+            reasons.append("different dimensions")
+
+    dimension_number_matches = sum(
+        _number_matches_dimension(token, offer_attributes)
+        for token in structured_tokens
+        if is_number_token(token)
+    )
+    if dimension_number_matches:
+        score += min(0.18, dimension_number_matches * 0.12)
+        reasons.append("number matches a dimension")
 
     if _quantity_matches(target_attributes, offer_attributes):
         score += 0.08
@@ -123,17 +193,11 @@ def score_offer_against_query(
         if match_type != MATCH_EXACT:
             match_type = MATCH_BUNDLE_OR_VARIANT
 
-    structured_tokens = {
-        token
-        for token in query_tokens
-        if is_number_token(token) or parse_dimension_token(token)
-    }
-    text_tokens = query_tokens - structured_tokens
     if (
         match_type != MATCH_EXACT
         and structured_tokens
-        and structured_tokens == query_tokens
-        and not all(_token_matches(token, offer_tokens) for token in structured_tokens)
+        and structured_tokens == effective_query_tokens
+        and not all(structured_matches.values())
     ):
         score = 0.0
         reasons.append("different number or dimensions")
@@ -144,6 +208,29 @@ def score_offer_against_query(
     ):
         score = 0.0
         reasons.append("no matching text token")
+
+    all_text_matched = all(text_match_kinds.values())
+    all_text_exact = all(kind == TEXT_MATCH_EXACT_WORD for kind in text_match_kinds.values())
+    all_structured_matched = all(structured_matches.values())
+    exact_query_dimensions = bool(
+        not target_attributes.dimensions
+        or _dimensions_match(target_attributes, offer_attributes)
+    )
+
+    if exact_identifier or exact_model:
+        ranking_tier = RANK_EXACT_IDENTIFIER_OR_MODEL
+        score = max(score, 0.96 if exact_model and not exact_identifier else 1.0)
+    elif exact_name or exact_phrase:
+        ranking_tier = RANK_EXACT_PHRASE
+        score = max(score, 0.9)
+    elif effective_query_tokens and all_text_exact and all_structured_matched and exact_query_dimensions:
+        ranking_tier = RANK_EXACT_WORDS_AND_DIMENSIONS
+    elif effective_query_tokens and all_text_matched and all_structured_matched:
+        ranking_tier = RANK_ALL_TOKENS
+    elif any(text_match_kinds.values()) or any(structured_matches.values()):
+        ranking_tier = RANK_PARTIAL
+    else:
+        ranking_tier = RANK_WEAK
 
     if match_type != MATCH_EXACT:
         if _bundle_relation(target_attributes, offer_attributes):
@@ -162,6 +249,7 @@ def score_offer_against_query(
         score=round(score, 4),
         match_type=match_type,
         confidence=_confidence(score, match_type),
+        ranking_tier=ranking_tier,
         reasons=reasons or ["candidate match"],
     )
 
@@ -173,18 +261,22 @@ def score_offer_against_offer(candidate: ProductOffer, source: ProductOffer) -> 
     reasons = list(result.reasons)
     score = result.score
     match_type = result.match_type
+    ranking_tier = result.ranking_tier
     if source.barcode and candidate.barcode and source.barcode == candidate.barcode:
         score = 1.0
         match_type = MATCH_EXACT
+        ranking_tier = RANK_EXACT_IDENTIFIER_OR_MODEL
         reasons.insert(0, "same barcode")
     elif source.sku and source.shop_id == candidate.shop_id and source.sku == candidate.sku:
         score = max(score, 0.98)
         match_type = MATCH_EXACT
+        ranking_tier = RANK_EXACT_IDENTIFIER_OR_MODEL
         reasons.insert(0, "same shop code")
 
     if source.pk == candidate.pk:
         score = 1.0
         match_type = MATCH_EXACT
+        ranking_tier = RANK_EXACT_IDENTIFIER_OR_MODEL
         reasons.insert(0, "selected offer")
 
     return MatchResult(
@@ -192,6 +284,7 @@ def score_offer_against_offer(candidate: ProductOffer, source: ProductOffer) -> 
         score=round(max(0.0, min(score, 1.0)), 4),
         match_type=match_type,
         confidence=_confidence(score, match_type),
+        ranking_tier=ranking_tier,
         reasons=_unique_reasons(reasons),
     )
 
@@ -250,6 +343,33 @@ def _token_matches(query_token: str, offer_tokens: set[str]) -> bool:
         number_pattern = re.compile(rf"(?<![\d.]){re.escape(query_token)}(?![\d.])")
         return any(number_pattern.search(offer_token) for offer_token in offer_tokens)
     return any(offer_token.endswith(query_token) for offer_token in offer_tokens)
+
+
+def _text_token_match_kind(query_token: str, offer_tokens: set[str]) -> int:
+    if query_token in offer_tokens:
+        return TEXT_MATCH_EXACT_WORD
+    if any(offer_token.endswith(query_token) for offer_token in offer_tokens):
+        return TEXT_MATCH_COMPOUND_SUFFIX
+    return TEXT_MATCH_NONE
+
+
+def _contains_exact_phrase(normalized_name: str, normalized_query: str) -> bool:
+    if not normalized_name or not normalized_query:
+        return False
+    phrase = r"\s+".join(re.escape(part) for part in normalized_query.split())
+    return bool(re.search(rf"(?<!\w){phrase}(?!\w)", normalized_name))
+
+
+def _dimension_match_count(source: ProductAttributes, candidate: ProductAttributes) -> int:
+    return sum(
+        source_value == candidate_value
+        for source_value, candidate_value in zip(source.dimensions, candidate.dimensions)
+    )
+
+
+def _number_matches_dimension(number: str, candidate: ProductAttributes) -> bool:
+    pattern = re.compile(rf"^{re.escape(number)}(?:mm|cm|m)$")
+    return any(pattern.fullmatch(value) for value in candidate.dimensions)
 
 
 def _dimensions_match(source: ProductAttributes, candidate: ProductAttributes) -> bool:

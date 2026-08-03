@@ -221,6 +221,70 @@ class ProductSearchTests(TestCase):
         self.assertIn(compound_suffix.pk, result_ids)
         self.assertNotIn(prefix_only.pk, result_ids)
 
+    def test_exact_pruss_dimensions_rank_above_other_dimensions(self):
+        exact_size = self.offer("Pruss 50x50x3000 mm", sku="RANK-PRUSS-50", price="20.00")
+        other_size = self.offer("Pruss 47x50x4800 mm", sku="RANK-PRUSS-47", price="1.00")
+
+        result_ids = self.result_ids(search_products("pruss 50x50"))
+
+        self.assertLess(result_ids.index(exact_size.pk), result_ids.index(other_size.pk))
+
+    def test_exact_word_ranks_above_compound_suffix_for_same_dimensions(self):
+        exact_word = self.offer("Pruss 50x50x3000 mm", sku="RANK-WORD", price="20.00")
+        compound = self.offer("Höövelpruss 50x50x3000 mm", sku="RANK-COMPOUND", price="1.00")
+
+        result_ids = self.result_ids(search_products("pruss 50x50"))
+
+        self.assertLess(result_ids.index(exact_word.pk), result_ids.index(compound.pk))
+
+    def test_number_in_dimension_ranks_above_same_number_as_quantity(self):
+        exact_length = self.offer("Ehitusnael 4x100 mm", sku="RANK-NAEL-100", price="20.00")
+        other_length = self.offer("Ehitusnael 4x90 mm 100 tk", sku="RANK-NAEL-90", price="1.00")
+
+        result_ids = self.result_ids(search_products("nael 100"))
+
+        self.assertLess(result_ids.index(exact_length.pk), result_ids.index(other_length.pk))
+
+    def test_exact_barcode_ranks_first_even_when_other_product_is_cheaper(self):
+        exact = self.offer(
+            "Bosch drill GSR 18V",
+            barcode="4740000000001",
+            sku="RANK-BARCODE",
+            brand="Bosch",
+            model="GSR18V",
+            price="20.00",
+        )
+        self.offer(
+            "Bosch drill GSR 18V budget",
+            sku="RANK-BUDGET",
+            brand="Bosch",
+            model="GSR18V",
+            price="1.00",
+        )
+
+        result_ids = self.result_ids(search_products("4740000000001"))
+
+        self.assertEqual(result_ids[0], exact.pk)
+
+    def test_weak_fuzzy_match_does_not_outrank_exact_words_and_dimensions(self):
+        exact = self.offer("Pruss 50x50x3000 mm", sku="RANK-EXACT", price="20.00")
+        fuzzy = self.offer("Pruzz 50x50x3000 mm", sku="RANK-FUZZY", price="1.00")
+
+        result_ids = self.result_ids(search_products("pruss 50x50"))
+
+        self.assertEqual(result_ids[0], exact.pk)
+        self.assertNotIn(fuzzy.pk, result_ids[:1])
+
+    def test_equal_relevance_has_stable_order(self):
+        first = self.offer("Pruss 50x50x3000 mm", sku="RANK-STABLE-1", price="10.00")
+        second = self.offer("Pruss 50x50x3000 mm", sku="RANK-STABLE-2", price="10.00")
+
+        first_search = self.result_ids(search_products("pruss 50x50"))
+        second_search = self.result_ids(search_products("pruss 50x50"))
+
+        self.assertEqual(first_search, second_search)
+        self.assertEqual(first_search[:2], [first.pk, second.pk])
+
     def test_partial_dimensions_match_full_hoovelpruss_dimensions(self):
         target = self.offer("Höövelpruss 50x50x3000 mm", sku="PRUSS-50")
         wrong_size = self.offer("Höövelpruss 150x50x3000 mm", sku="PRUSS-150")
