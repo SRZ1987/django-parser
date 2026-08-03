@@ -12,11 +12,14 @@
         </p>
     </section>
 
-    <form class="catalog-filters" method="get" action="{% url 'catalog' %}">
-        <label>
-            <span>Поиск</span>
-            <input name="q" type="search" value="{{ query }}" placeholder="Название, SKU или штрихкод">
-        </label>
+    <form class="catalog-filters" method="get" action="{% url 'catalog' %}" data-barcode-search-form>
+        <div class="catalog-search-control">
+            <label for="catalog-search-input">Поиск</label>
+            <div class="catalog-search-input-row">
+                <input id="catalog-search-input" name="q" type="search" value="{{ query }}" placeholder="Название, SKU или штрихкод" data-barcode-search-input>
+                {% include "main/includes/barcode_scan_button.html" %}
+            </div>
+        </div>
 
         <label>
             <span>Магазин</span>

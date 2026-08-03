@@ -95,6 +95,24 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, f'action="{reverse("product_search")}"')
         self.assertContains(response, "Название товара, SKU или штрихкод")
 
+    def test_home_search_includes_accessible_barcode_scanner(self):
+        response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
+
+        self.assertContains(response, 'data-barcode-scanner-trigger')
+        self.assertContains(response, 'aria-label="Сканировать штрихкод камерой"')
+        self.assertContains(response, 'data-barcode-scanner-modal')
+        self.assertContains(response, 'accept="image/*"')
+        self.assertContains(response, 'capture="environment"')
+
+    def test_search_and_catalog_forms_support_barcode_scanner(self):
+        search_response = self.client.get(reverse("product_search"), HTTP_HOST="127.0.0.1")
+        catalog_response = self.client.get(reverse("catalog"), HTTP_HOST="127.0.0.1")
+
+        for response in (search_response, catalog_response):
+            self.assertContains(response, 'data-barcode-search-form')
+            self.assertContains(response, 'data-barcode-search-input')
+            self.assertContains(response, 'data-barcode-scanner-trigger')
+
     def test_product_search_page_opens_without_query(self):
         response = self.client.get(reverse("product_search"), HTTP_HOST="127.0.0.1")
 

@@ -1,0 +1,8 @@
+{
+  "name": "django-parser-frontend-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:js": "node --test main/static/main/js/tests/*.test.js"
+  }
+}

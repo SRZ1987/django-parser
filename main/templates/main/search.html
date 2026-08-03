@@ -10,11 +10,14 @@
         <p>Введите название, SKU, модель или штрихкод. Мы покажем совпадения и похожие предложения из подключённых магазинов.</p>
     </section>
 
-    <form class="catalog-filters search-page-form" method="get" action="{% url 'product_search' %}">
-        <label>
-            <span>Поиск</span>
-            <input name="q" type="search" value="{{ query }}" placeholder="Название товара, SKU или штрихкод" autofocus>
-        </label>
+    <form class="catalog-filters search-page-form" method="get" action="{% url 'product_search' %}" data-barcode-search-form>
+        <div class="catalog-search-control">
+            <label for="product-search-input">Поиск</label>
+            <div class="catalog-search-input-row">
+                <input id="product-search-input" name="q" type="search" value="{{ query }}" placeholder="Название товара, SKU или штрихкод" autofocus data-barcode-search-input>
+                {% include "main/includes/barcode_scan_button.html" %}
+            </div>
+        </div>
         <div class="filter-actions">
             <button type="submit">Найти</button>
             <a href="{% url 'product_search' %}">Сбросить</a>

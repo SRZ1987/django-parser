@@ -12,7 +12,7 @@
                 Найдите товар, добавьте его в список — мы покажем, где купить дешевле после каждого обновления каталога.
             </p>
 
-            <form class="search-panel" method="get" action="{% url 'product_search' %}" role="search" data-search-form>
+            <form class="search-panel" method="get" action="{% url 'product_search' %}" role="search" data-search-form data-barcode-search-form>
                 <label class="visually-hidden" for="search-input">Поиск товара</label>
                 <div class="search-input-wrap">
                     <input
@@ -27,6 +27,7 @@
                         aria-expanded="false"
                         data-suggestions-input
                         data-suggestions-url="{% url 'search_suggestions' %}"
+                        data-barcode-search-input
                     >
                     <div
                         id="search-suggestions"
@@ -37,6 +38,7 @@
                         hidden
                     ></div>
                 </div>
+                {% include "main/includes/barcode_scan_button.html" %}
                 <button class="search-submit search-submit-text" type="submit">Найти</button>
             </form>
         </div>
