@@ -2,7 +2,7 @@
     width: 48px;
     height: 48px;
     flex: 0 0 48px;
-    display: inline-grid;
+    display: none;
     place-items: center;
     border: 1px solid rgba(53, 231, 208, 0.32);
     border-radius: 16px;
@@ -201,6 +201,12 @@
 
 body.is-barcode-scanner-open {
     overflow: hidden;
+}
+
+@media (max-width: 1024px) {
+    .barcode-scan-trigger {
+        display: inline-grid;
+    }
 }
 
 @media (max-width: 560px) {
