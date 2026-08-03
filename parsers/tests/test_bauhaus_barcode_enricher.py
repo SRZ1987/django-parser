@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from io import StringIO
 from unittest.mock import patch
 
@@ -6,6 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from catalog.models import Product, ProductOffer, Shop
+from parsers.services import bauhaus_barcode_enricher
 from parsers.services.bauhaus_barcode_enricher import (
     BarcodeFetchResult,
     BauhausBarcodeEnrichmentResult,
@@ -36,8 +39,16 @@ class BauhausBarcodeEnricherTests(TestCase):
     def test_found_ean_updates_offer_and_product(self):
         offer = self.create_offer("SKU-1")
 
-        async def fake_fetch(targets, concurrency):
-            return [BarcodeFetchResult(offer_id=offer.pk, ean=VALID_EAN, source="jsonld_gtin")]
+        async def fake_fetch(targets, concurrency, result_callback=None, stop_event=None):
+            item = BarcodeFetchResult(
+                offer_id=offer.pk,
+                ean=VALID_EAN,
+                source="jsonld_gtin",
+            )
+            if result_callback is not None:
+                result_callback(item)
+                return []
+            return [item]
 
         with patch("parsers.services.bauhaus_barcode_enricher._fetch_barcodes", fake_fetch):
             result = enrich_bauhaus_offer_barcodes([offer.pk])
@@ -53,8 +64,16 @@ class BauhausBarcodeEnricherTests(TestCase):
     def test_missing_ean_marks_offer_as_checked(self):
         offer = self.create_offer("SKU-1")
 
-        async def fake_fetch(targets, concurrency):
-            return [BarcodeFetchResult(offer_id=offer.pk, ean="", source="ean_not_found")]
+        async def fake_fetch(targets, concurrency, result_callback=None, stop_event=None):
+            item = BarcodeFetchResult(
+                offer_id=offer.pk,
+                ean="",
+                source="ean_not_found",
+            )
+            if result_callback is not None:
+                result_callback(item)
+                return []
+            return [item]
 
         with patch("parsers.services.bauhaus_barcode_enricher._fetch_barcodes", fake_fetch):
             result = enrich_bauhaus_offer_barcodes([offer.pk])
@@ -87,6 +106,164 @@ class BauhausBarcodeEnricherTests(TestCase):
         self.assertIsNotNone(failed_offer.barcode_checked_at)
         self.assertEqual(successful_offer.barcode, VALID_EAN)
         self.assertTrue(any("WARNING" in message for message in logs))
+
+    def test_ean_is_persisted_before_remaining_download_finishes(self):
+        first_offer = self.create_offer("SKU-FIRST")
+        second_offer = self.create_offer("SKU-SECOND")
+        first_persisted = threading.Event()
+        original_persist = bauhaus_barcode_enricher._persist_fetch_result
+
+        def tracking_persist(item, *, product_id):
+            outcome = original_persist(item, product_id=product_id)
+            if item.offer_id == first_offer.pk:
+                first_persisted.set()
+            return outcome
+
+        async def fake_fetch(targets, concurrency, result_callback=None, stop_event=None):
+            result_callback(
+                BarcodeFetchResult(
+                    offer_id=first_offer.pk,
+                    ean=VALID_EAN,
+                    source="jsonld_gtin",
+                )
+            )
+            deadline = asyncio.get_running_loop().time() + 2
+            while not first_persisted.is_set():
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise AssertionError("First EAN was not persisted during download")
+                await asyncio.sleep(0.01)
+            result_callback(
+                BarcodeFetchResult(
+                    offer_id=second_offer.pk,
+                    ean=VALID_EAN,
+                    source="jsonld_gtin",
+                )
+            )
+            return []
+
+        with (
+            patch(
+                "parsers.services.bauhaus_barcode_enricher._fetch_barcodes",
+                fake_fetch,
+            ),
+            patch(
+                "parsers.services.bauhaus_barcode_enricher._persist_fetch_result",
+                side_effect=tracking_persist,
+            ),
+        ):
+            result = enrich_bauhaus_offer_barcodes(
+                [first_offer.pk, second_offer.pk],
+            )
+
+        first_offer.refresh_from_db()
+        second_offer.refresh_from_db()
+        self.assertEqual(result.found, 2)
+        self.assertEqual(first_offer.barcode, VALID_EAN)
+        self.assertEqual(second_offer.barcode, VALID_EAN)
+
+    def test_completed_ean_survives_later_download_interruption(self):
+        completed_offer = self.create_offer("SKU-COMPLETED")
+        pending_offer = self.create_offer("SKU-PENDING")
+        first_persisted = threading.Event()
+        original_persist = bauhaus_barcode_enricher._persist_fetch_result
+
+        def tracking_persist(item, *, product_id):
+            outcome = original_persist(item, product_id=product_id)
+            first_persisted.set()
+            return outcome
+
+        async def interrupted_fetch(
+            targets,
+            concurrency,
+            result_callback=None,
+            stop_event=None,
+        ):
+            result_callback(
+                BarcodeFetchResult(
+                    offer_id=completed_offer.pk,
+                    ean=VALID_EAN,
+                    source="jsonld_gtin",
+                )
+            )
+            deadline = asyncio.get_running_loop().time() + 2
+            while not first_persisted.is_set():
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise AssertionError("Completed EAN was not persisted")
+                await asyncio.sleep(0.01)
+            raise KeyboardInterrupt
+
+        with (
+            patch(
+                "parsers.services.bauhaus_barcode_enricher._fetch_barcodes",
+                interrupted_fetch,
+            ),
+            patch(
+                "parsers.services.bauhaus_barcode_enricher._persist_fetch_result",
+                side_effect=tracking_persist,
+            ),
+            self.assertRaises(KeyboardInterrupt),
+        ):
+            enrich_bauhaus_offer_barcodes(
+                [completed_offer.pk, pending_offer.pk],
+            )
+
+        completed_offer.refresh_from_db()
+        pending_offer.refresh_from_db()
+        self.assertEqual(completed_offer.barcode, VALID_EAN)
+        self.assertIsNotNone(completed_offer.barcode_checked_at)
+        self.assertEqual(pending_offer.barcode, "")
+        self.assertIsNone(pending_offer.barcode_checked_at)
+
+    def test_progress_is_logged_before_download_finishes(self):
+        first_offer = self.create_offer("SKU-FIRST")
+        second_offer = self.create_offer("SKU-SECOND")
+        progress_logged = threading.Event()
+        logs = []
+
+        def log_callback(message):
+            logs.append(message)
+            if "barcode progress" in message and "checked=1/2" in message:
+                progress_logged.set()
+
+        async def fake_fetch(targets, concurrency, result_callback=None, stop_event=None):
+            result_callback(
+                BarcodeFetchResult(
+                    offer_id=first_offer.pk,
+                    ean=VALID_EAN,
+                    source="jsonld_gtin",
+                )
+            )
+            deadline = asyncio.get_running_loop().time() + 2
+            while not progress_logged.is_set():
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise AssertionError("Progress was not logged during download")
+                await asyncio.sleep(0.01)
+            result_callback(
+                BarcodeFetchResult(
+                    offer_id=second_offer.pk,
+                    ean=VALID_EAN,
+                    source="jsonld_gtin",
+                )
+            )
+            return []
+
+        with (
+            patch(
+                "parsers.services.bauhaus_barcode_enricher._fetch_barcodes",
+                fake_fetch,
+            ),
+            patch(
+                "parsers.services.bauhaus_barcode_enricher.PROGRESS_EVERY_ITEMS",
+                1,
+            ),
+        ):
+            enrich_bauhaus_offer_barcodes(
+                [first_offer.pk, second_offer.pk],
+                log_callback=log_callback,
+            )
+
+        self.assertTrue(progress_logged.is_set())
+        self.assertTrue(any("remaining=1" in message for message in logs))
 
     def test_existing_barcode_and_checked_offer_are_skipped(self):
         barcode_offer = self.create_offer("SKU-BARCODE", barcode=VALID_EAN)
