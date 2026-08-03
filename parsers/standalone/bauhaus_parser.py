@@ -373,6 +373,16 @@ def clean_text(value: Any) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def clean_sku(value: Any) -> str:
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            sku = clean_text(item)
+            if sku:
+                return sku
+        return ""
+    return clean_text(value)
+
+
 def as_number(value: Any) -> float | None:
     if value is None or value == "":
         return None
@@ -620,7 +630,7 @@ def is_product_hit(item: Any) -> bool:
     if not isinstance(item, dict):
         return False
 
-    sku = clean_text(item.get("sku"))
+    sku = clean_sku(item.get("sku"))
 
     if not sku:
         return False
@@ -651,7 +661,7 @@ def extract_hits_from_document(text: str) -> list[dict[str, Any]]:
                 if not is_product_hit(item):
                     continue
 
-                sku = clean_text(item.get("sku"))
+                sku = clean_sku(item.get("sku"))
 
                 if sku:
                     found[sku] = item
@@ -1154,7 +1164,7 @@ def product_from_hit(
         hit: dict[str, Any],
         source_category_url: str,
 ) -> dict[str, Any] | None:
-    sku = clean_text(hit.get("sku"))
+    sku = clean_sku(hit.get("sku"))
 
     if not sku:
         return None
@@ -2060,7 +2070,7 @@ async def enrich_all_products_with_ean(
 
     # EAN из каталога сразу переносим в кэш. Остальные уникальные SKU ставим в очередь.
     for product in products:
-        sku = clean_text(product.get("sku"))
+        sku = clean_sku(product.get("sku"))
         url = clean_text(product.get("product_url"))
         catalog_ean = normalize_barcode_candidate(product.get("ean"))
         if not sku:
@@ -2190,7 +2200,7 @@ async def enrich_all_products_with_ean(
     await asyncio.gather(monitor_task, return_exceptions=True)
 
     for product in products:
-        sku = clean_text(product.get("sku"))
+        sku = clean_sku(product.get("sku"))
         ean = normalize_barcode_candidate(cache.get(sku, {}).get("ean"))
         if ean:
             product["ean"] = ean
@@ -2311,7 +2321,7 @@ def export_final_excel(products: list[dict[str, Any]]) -> None:
     rows: list[dict[str, Any]] = []
 
     for product in products:
-        sku = clean_text(product.get("sku"))
+        sku = clean_sku(product.get("sku"))
         name = clean_text(product.get("name"))
         product_url = clean_text(product.get("product_url"))
 

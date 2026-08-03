@@ -126,6 +126,119 @@ class ExcelImportTests(TestCase):
         self.assertEqual(offer.barcode, "4740000000001")
 
     @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_overlong_field_reports_row_field_length_and_preview(self):
+        long_external_id = str(["PC692956"] + [str(1558800 + index) for index in range(20)])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "overlong.xlsx"
+            create_xlsx(
+                path,
+                rows=[["Invalid hammer", 10, "", "", "", long_external_id, "", ""]],
+            )
+            parser_export = self._create_export(path, rows_count=1)
+
+            with self.assertRaises(ExcelImportError):
+                ExcelCatalogImporter().import_file(
+                    parser_export,
+                    column_map=EspakAdapter.column_map,
+                    parser_run=self.run,
+                )
+
+        parser_export.refresh_from_db()
+        self.run.refresh_from_db()
+        expected_details = [
+            "row 2",
+            "field=ProductOffer.external_id",
+            "max_length=150",
+            f"actual_length={len(long_external_id)}",
+            f"value_preview={long_external_id[:200]!r}",
+        ]
+        for detail in expected_details:
+            self.assertIn(detail, parser_export.validation_error)
+            self.assertIn(detail, self.run.log)
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_one_overlong_row_does_not_roll_back_valid_rows(self):
+        old_product = Product.objects.create(name="Existing hammer")
+        old_offer = ProductOffer.objects.create(
+            shop=self.shop,
+            product=old_product,
+            external_id="SKU-OLD",
+            sku="SKU-OLD",
+            original_name="Existing hammer",
+            is_active=True,
+            is_available=True,
+        )
+        long_external_id = "X" * 151
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "partial.xlsx"
+            create_xlsx(
+                path,
+                rows=[
+                    ["Invalid hammer", 9, "", "", "", long_external_id, "", ""],
+                    ["Valid hammer", 10, "", "", "", "SKU-VALID", "", ""],
+                ],
+            )
+            parser_export = self._create_export(path, rows_count=2)
+
+            result = ExcelCatalogImporter().import_file(
+                parser_export,
+                column_map=EspakAdapter.column_map,
+                parser_run=self.run,
+            )
+
+        parser_export.refresh_from_db()
+        old_offer.refresh_from_db()
+        self.assertEqual(result.products_created, 1)
+        self.assertEqual(result.products_found, 1)
+        self.assertEqual(result.errors_count, 1)
+        self.assertEqual(result.skipped_rows, 1)
+        self.assertTrue(ProductOffer.objects.filter(shop=self.shop, external_id="SKU-VALID").exists())
+        self.assertFalse(ProductOffer.objects.filter(shop=self.shop, external_id=long_external_id).exists())
+        self.assertTrue(old_offer.is_active)
+        self.assertTrue(old_offer.is_available)
+        self.assertTrue(parser_export.import_success)
+        self.assertIn("row 2", parser_export.validation_error)
+        self.assertIn("field=ProductOffer.external_id", parser_export.validation_error)
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_one_database_row_error_does_not_roll_back_other_rows(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "database-row-error.xlsx"
+            create_xlsx(
+                path,
+                rows=[
+                    ["Broken hammer", 9, "", "", "", "SKU-BROKEN", "", ""],
+                    ["Valid hammer", 10, "", "", "", "SKU-VALID", "", ""],
+                ],
+            )
+            parser_export = self._create_export(path, rows_count=2)
+            importer = ExcelCatalogImporter()
+            save_offer = importer._save_offer
+
+            def save_with_one_error(shop, parsed, seen_at):
+                if parsed["external_id"] == "SKU-BROKEN":
+                    raise ValueError("invalid row data")
+                return save_offer(shop, parsed, seen_at)
+
+            with patch.object(importer, "_save_offer", side_effect=save_with_one_error):
+                result = importer.import_file(
+                    parser_export,
+                    column_map=EspakAdapter.column_map,
+                    parser_run=self.run,
+                )
+
+        parser_export.refresh_from_db()
+        self.assertEqual(result.products_created, 1)
+        self.assertEqual(result.products_found, 1)
+        self.assertEqual(result.errors_count, 1)
+        self.assertEqual(result.skipped_rows, 1)
+        self.assertFalse(ProductOffer.objects.filter(shop=self.shop, external_id="SKU-BROKEN").exists())
+        self.assertTrue(ProductOffer.objects.filter(shop=self.shop, external_id="SKU-VALID").exists())
+        self.assertTrue(parser_export.import_success)
+        self.assertIn("row 2", parser_export.validation_error)
+        self.assertIn("database save failed: ValueError: invalid row data", parser_export.validation_error)
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
     def test_empty_barcode_does_not_overwrite_existing_barcode(self):
         product = Product.objects.create(name="Hammer", barcode="4740000000001")
         ProductOffer.objects.create(
@@ -437,6 +550,29 @@ class BauhausAdapterTests(TestCase):
         self.assertEqual(external_id, "SKU-BAUHAUS-1")
         enrich_ean.assert_not_called()
         self.assertTrue(logs)
+
+    def test_bauhaus_list_sku_exports_primary_identifier(self):
+        products = [
+            {
+                "sku": ["PC692956", "1558895", "1558894"],
+                "name": "BAUHAUS grouped product",
+                "price": 2.9,
+                "product_url": "https://www.bauhaus.ee/grouped-product",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "bauhaus.xlsx"
+            with patch.object(bauhaus_parser, "OUTPUT_FILE", output_path):
+                bauhaus_parser.export_final_excel(products)
+
+            workbook = load_workbook(output_path, read_only=True, data_only=True)
+            try:
+                external_id = workbook[BauhausAdapter.worksheet_name]["F2"].value
+            finally:
+                workbook.close()
+
+        self.assertEqual(external_id, "PC692956")
 
     def test_ean_error_does_not_prevent_excel_creation(self):
         products = [

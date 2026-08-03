@@ -2,7 +2,8 @@ import hashlib
 import time
 from dataclasses import dataclass, field
 
-from django.db import transaction
+from django.core.exceptions import ValidationError
+from django.db import DataError, IntegrityError, transaction
 from django.utils import timezone
 from openpyxl import load_workbook
 
@@ -16,10 +17,15 @@ class ExcelImportError(ValueError):
     pass
 
 
+class ExcelFieldLengthError(ExcelImportError):
+    pass
+
+
 @dataclass
 class ExcelRowError:
     row_number: int
     reason: str
+    recoverable: bool = False
 
     def format(self):
         return f"row {self.row_number}: {self.reason}"
@@ -49,31 +55,61 @@ class ExcelCatalogImporter:
         result, parsed_rows, remote_external_ids = self._read_and_normalize(parser_export, column_map, worksheet_name, parser_run)
 
         try:
-            self._validate_import_readiness(parser_export.shop, result, remote_external_ids, deactivate_missing)
+            can_deactivate = deactivate_missing and not result.row_errors
+            self._validate_import_readiness(parser_export.shop, result, remote_external_ids, can_deactivate)
             self._check_cancel_requested(parser_run, "Parser run was cancelled before database import.")
 
             seen_at = timezone.now()
             last_heartbeat = time.monotonic()
+            database_row_errors = []
             with transaction.atomic():
                 for parsed in parsed_rows:
-                    created, price_changed = self._save_offer(parser_export.shop, parsed, seen_at)
-                    result.products_found += 1
-                    result.products_created += int(created)
-                    result.products_updated += int(not created)
-                    result.prices_changed += int(price_changed)
+                    try:
+                        created, price_changed = self._save_offer(parser_export.shop, parsed, seen_at)
+                    except (DataError, IntegrityError, ValidationError, ValueError) as exc:
+                        row_error = self._add_row_issue(
+                            result,
+                            parsed["_row_number"],
+                            f"database save failed: {type(exc).__name__}: {exc}",
+                            skipped=True,
+                            error=True,
+                            recoverable=True,
+                        )
+                        database_row_errors.append(row_error)
+                    else:
+                        result.products_found += 1
+                        result.products_created += int(created)
+                        result.products_updated += int(not created)
+                        result.prices_changed += int(price_changed)
                     last_heartbeat = self._heartbeat(
                         parser_run,
                         last_heartbeat,
                         f"Imported {result.products_found}/{result.valid_rows} Excel rows.",
                     )
 
-                if deactivate_missing:
+                if database_row_errors:
+                    self._log_row_errors(parser_run, database_row_errors)
+                    database_error_ratio = len(database_row_errors) / max(result.valid_rows, 1)
+                    if len(database_row_errors) > 1 and database_error_ratio > self.MAX_INVALID_ROW_RATIO:
+                        raise ExcelImportError(
+                            f"Database import has too many row errors: {len(database_row_errors)}/"
+                            f"{result.valid_rows} ({database_error_ratio:.1%})."
+                        )
+                if result.products_found <= 0:
+                    raise ExcelImportError("Excel import did not save any product rows.")
+
+                can_deactivate = deactivate_missing and not result.row_errors
+                if can_deactivate:
                     self._check_cancel_requested(parser_run, "Parser run was cancelled before deactivation.")
                     self._deactivate_missing_offers(parser_export.shop, remote_external_ids)
 
             parser_export.imported_at = timezone.now()
             parser_export.import_success = True
-            parser_export.validation_error = ""
+            parser_export.validation_error = (
+                self._format_validation_error("Excel imported with skipped rows.", result.row_errors)
+                if result.row_errors
+                else ""
+            )
             parser_export.save(update_fields=["imported_at", "import_success", "validation_error"])
             return result
         except Exception as exc:
@@ -108,11 +144,22 @@ class ExcelCatalogImporter:
                         if not parsed["original_name"]:
                             self._add_row_issue(result, row_number, "missing original_name", skipped=True)
                             continue
+                        self._validate_model_field_lengths(parsed)
+                        parsed["_row_number"] = row_number
                         parsed_rows.append(parsed)
                         remote_external_ids.add(parsed["external_id"])
                         result.valid_rows += 1
+                    except ExcelFieldLengthError as exc:
+                        self._add_row_issue(
+                            result,
+                            row_number,
+                            str(exc),
+                            skipped=True,
+                            error=True,
+                            recoverable=True,
+                        )
                     except Exception as exc:
-                        self._add_row_issue(result, row_number, str(exc), error=True)
+                        self._add_row_issue(result, row_number, str(exc), skipped=True, error=True)
 
                     last_heartbeat = self._heartbeat(
                         parser_run,
@@ -122,6 +169,7 @@ class ExcelCatalogImporter:
             finally:
                 workbook.close()
 
+        self._log_row_errors(parser_run, result.row_errors)
         return result, parsed_rows, remote_external_ids
 
     def _validate_headers(self, header_index, column_map):
@@ -133,12 +181,20 @@ class ExcelCatalogImporter:
         if result.valid_rows <= 0:
             raise ExcelImportError("Excel import produced no valid product rows.")
 
-        invalid_rows = result.skipped_rows + result.errors_count
+        invalid_rows = sum(not row_error.recoverable for row_error in result.row_errors)
         invalid_ratio = invalid_rows / max(result.total_rows, 1)
         if invalid_ratio > self.MAX_INVALID_ROW_RATIO:
             raise ExcelImportError(
                 f"Excel import has too many invalid rows: {invalid_rows}/{result.total_rows} "
                 f"({invalid_ratio:.1%})."
+            )
+
+        recoverable_rows = sum(row_error.recoverable for row_error in result.row_errors)
+        recoverable_ratio = recoverable_rows / max(result.total_rows, 1)
+        if recoverable_rows > 1 and recoverable_ratio > self.MAX_INVALID_ROW_RATIO:
+            raise ExcelImportError(
+                f"Excel import has too many recoverable row errors: {recoverable_rows}/{result.total_rows} "
+                f"({recoverable_ratio:.1%})."
             )
 
         if deactivate_missing:
@@ -169,6 +225,34 @@ class ExcelCatalogImporter:
             "product_url": data.get("product_url", ""),
             "image_url": data.get("image_url", ""),
         }
+
+    def _validate_model_field_lengths(self, parsed):
+        normalized_name = normalize_product_name(parsed["original_name"])
+        fields = (
+            ("external_id", parsed["external_id"], ProductOffer, "external_id"),
+            ("sku", parsed["sku"], ProductOffer, "sku"),
+            ("barcode", parsed["barcode"], ProductOffer, "barcode"),
+            ("barcode", parsed["barcode"], Product, "barcode"),
+            ("original_name", parsed["original_name"], ProductOffer, "original_name"),
+            ("name", parsed["original_name"], Product, "name"),
+            ("normalized_name", normalized_name, ProductOffer, "normalized_name"),
+            ("normalized_name", normalized_name, Product, "normalized_name"),
+            ("product_url", parsed["product_url"], ProductOffer, "product_url"),
+            ("image_url", parsed["image_url"], ProductOffer, "image_url"),
+        )
+        for source_field, value, model, model_field_name in fields:
+            model_field = model._meta.get_field(model_field_name)
+            max_length = model_field.max_length
+            if max_length is None or value is None:
+                continue
+            value = str(value)
+            if len(value) <= max_length:
+                continue
+            raise ExcelFieldLengthError(
+                f"field={model.__name__}.{model_field.name} source={source_field} "
+                f"max_length={max_length} actual_length={len(value)} "
+                f"value_preview={value[:200]!r}"
+            )
 
     @transaction.atomic
     def _save_offer(self, shop, parsed, seen_at):
@@ -237,14 +321,33 @@ class ExcelCatalogImporter:
                 is_available=False,
             )
 
-    def _add_row_issue(self, result, row_number, reason, *, skipped=False, error=False):
+    def _add_row_issue(
+        self,
+        result,
+        row_number,
+        reason,
+        *,
+        skipped=False,
+        error=False,
+        recoverable=False,
+    ):
         result.skipped_rows += int(skipped)
         result.errors_count += int(error)
-        result.row_errors.append(ExcelRowError(row_number=row_number, reason=reason))
+        row_error = ExcelRowError(row_number=row_number, reason=reason, recoverable=recoverable)
+        result.row_errors.append(row_error)
+        return row_error
 
     def _format_validation_error(self, message, row_errors):
         details = "\n".join(error.format() for error in row_errors[:50])
         return f"{message}\n{details}" if details else message
+
+    def _log_row_errors(self, parser_run, row_errors):
+        if parser_run is None or not row_errors:
+            return
+        message = self._format_validation_error("Excel row errors:", row_errors)
+        parser_run.log = f"{parser_run.log}\n{message}" if parser_run.log else message
+        parser_run.heartbeat_at = timezone.now()
+        parser_run.save(update_fields=["log", "heartbeat_at"])
 
     def _heartbeat(self, parser_run, last_heartbeat, message):
         if parser_run is None:
