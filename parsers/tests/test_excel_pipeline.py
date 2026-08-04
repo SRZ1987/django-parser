@@ -1092,7 +1092,8 @@ class DepoAdapterTests(TestCase):
 
 class AdapterRegistryTests(TestCase):
     existing_production_codes = {"espak", "depo", "bauhof", "ehituseabc", "fere", "bauhaus", "handymann"}
-    expected_production_codes = existing_production_codes | set(PUBLIC_COMMERCE_STORES)
+    custom_retail_codes = {"oomipood", "lemona", "vipex", "effex", "motonet"}
+    expected_production_codes = existing_production_codes | set(PUBLIC_COMMERCE_STORES) | custom_retail_codes
 
     def test_registry_contains_exactly_all_production_parsers(self):
         self.assertEqual(set(ADAPTERS), self.expected_production_codes)
@@ -1123,7 +1124,7 @@ class AdapterRegistryTests(TestCase):
         self.assertEqual(set(configs.values_list("code", flat=True)), self.expected_production_codes)
         self.assertEqual(
             set(configs.filter(is_enabled=True).values_list("code", flat=True)),
-            self.existing_production_codes | enabled_public_codes,
+            self.existing_production_codes | enabled_public_codes | self.custom_retail_codes,
         )
         self.assertFalse(configs.get(code="horden").is_enabled)
         self.assertEqual(

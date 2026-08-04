@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from parsers.models import ParserBatch, ParserBatchLock, ParserConfig, ParserRun
 from parsers.standalone.public_commerce_parser import PUBLIC_COMMERCE_STORES
+from parsers.standalone.sitemap_retailers_parser import SITEMAP_RETAILERS
 
 
 class NightlyParsersCommandTests(TestCase):
@@ -25,6 +26,10 @@ class NightlyParsersCommandTests(TestCase):
             for code, store in PUBLIC_COMMERCE_STORES.items()
             if store.enabled_by_default
         ),
+        "oomipood",
+        "lemona",
+        *SITEMAP_RETAILERS,
+        "motonet",
     ]
 
     def setUp(self):

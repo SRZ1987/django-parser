@@ -5,7 +5,11 @@ from .ehituseabc import EhituseABCAdapter
 from .espak import EspakAdapter
 from .fere import FereAdapter
 from .handymann import HandymannAdapter
+from .lemona import LemonaAdapter
+from .motonet import MotonetAdapter
+from .oomipood import OomipoodAdapter
 from .public_commerce import PUBLIC_COMMERCE_ADAPTERS
+from .sitemap_retailers import EffexAdapter, VipexAdapter
 
 
 ADAPTERS = {
@@ -16,6 +20,11 @@ ADAPTERS = {
     EspakAdapter.code: EspakAdapter,
     FereAdapter.code: FereAdapter,
     HandymannAdapter.code: HandymannAdapter,
+    LemonaAdapter.code: LemonaAdapter,
+    MotonetAdapter.code: MotonetAdapter,
+    OomipoodAdapter.code: OomipoodAdapter,
+    VipexAdapter.code: VipexAdapter,
+    EffexAdapter.code: EffexAdapter,
 }
 ADAPTERS.update({adapter.code: adapter for adapter in PUBLIC_COMMERCE_ADAPTERS})
 

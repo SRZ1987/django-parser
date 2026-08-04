@@ -9,7 +9,11 @@ from parsers.services.ehituseabc import EHITUSEABC_WEBSITE_URL
 from parsers.services.espak_client import ESPAK_WEBSITE_URL
 from parsers.services.fere import FERE_WEBSITE_URL
 from parsers.standalone.handymann_parser import BASE_URL as HANDYMANN_WEBSITE_URL
+from parsers.standalone.lemona_parser import BASE_URL as LEMONA_WEBSITE_URL
+from parsers.standalone.motonet_parser import BASE_URL as MOTONET_WEBSITE_URL
+from parsers.standalone.oomipood_parser import BASE_URL as OOMIPOOD_WEBSITE_URL
 from parsers.standalone.public_commerce_parser import PUBLIC_COMMERCE_STORES
+from parsers.standalone.sitemap_retailers_parser import SITEMAP_RETAILERS
 
 
 class Command(BaseCommand):
@@ -74,6 +78,36 @@ class Command(BaseCommand):
                 run_order=run_order,
                 is_enabled=store.enabled_by_default,
             )
+        next_run_order = 8 + len(PUBLIC_COMMERCE_STORES)
+        self._setup_parser(
+            shop_code="oomipood",
+            shop_name="Oomipood",
+            website_url=OOMIPOOD_WEBSITE_URL,
+            parser_name="Oomipood parser",
+            run_order=next_run_order,
+        )
+        self._setup_parser(
+            shop_code="lemona",
+            shop_name="Lemona",
+            website_url=LEMONA_WEBSITE_URL,
+            parser_name="Lemona parser",
+            run_order=next_run_order + 1,
+        )
+        for offset, store in enumerate(SITEMAP_RETAILERS.values(), start=2):
+            self._setup_parser(
+                shop_code=store.code,
+                shop_name=store.name,
+                website_url=store.base_url,
+                parser_name=f"{store.name} parser",
+                run_order=next_run_order + offset,
+            )
+        self._setup_parser(
+            shop_code="motonet",
+            shop_name="Motonet",
+            website_url=MOTONET_WEBSITE_URL,
+            parser_name="Motonet parser",
+            run_order=next_run_order + 2 + len(SITEMAP_RETAILERS),
+        )
 
     def _setup_parser(
         self,

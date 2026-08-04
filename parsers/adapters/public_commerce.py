@@ -74,6 +74,11 @@ class VannitoapoodAdapter(PublicCommerceAdapter):
     name = "Vannitoapood"
 
 
+class TetkoAdapter(PublicCommerceAdapter):
+    code = "tetko"
+    name = "Tetko"
+
+
 class FastenerestAdapter(PublicCommerceAdapter):
     code = "fastenerest"
     name = "FastenerEst"
@@ -151,6 +156,7 @@ PUBLIC_COMMERCE_ADAPTERS = (
     EcopoodAdapter,
     TevokaupAdapter,
     VannitoapoodAdapter,
+    TetkoAdapter,
     FastenerestAdapter,
     BestorAdapter,
     TooriistapoodAdapter,

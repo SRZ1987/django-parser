@@ -79,6 +79,7 @@ PUBLIC_COMMERCE_STORES = {
         CommerceStore("ecopood", "Ecopood", "https://ecopood.ee/"),
         CommerceStore("tevokaup", "Tevo Ehituskaup", "https://www.tevokaup.ee/"),
         CommerceStore("vannitoapood", "Vannitoapood", "https://vannitoapood.ee/"),
+        CommerceStore("tetko", "Tetko", "https://tetko.ee/"),
         CommerceStore("fastenerest", "FastenerEst", "https://www.fastenerest.ee/"),
         CommerceStore("bestor", "Bestor", "https://bestor.ee/"),
         CommerceStore("tooriistapood", "Tööriistapood", "https://www.tooriistapood.ee/"),
@@ -658,11 +659,16 @@ def build_rows(store: CommerceStore, products: list[dict[str, Any]]) -> tuple[li
     return rows, skipped
 
 
-def save_excel(rows: list[list[Any]], output_path: Path) -> None:
+def save_excel(
+    rows: list[list[Any]],
+    output_path: Path,
+    *,
+    columns: list[str] | None = None,
+) -> None:
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = WORKSHEET_NAME
-    worksheet.append(COLUMNS)
+    worksheet.append(columns or COLUMNS)
     for row in rows:
         worksheet.append(row)
 
@@ -681,6 +687,7 @@ def save_excel(rows: list[list[Any]], output_path: Path) -> None:
         "J": 35,
         "K": 24,
         "L": 80,
+        "M": 24,
     }
     for column, width in widths.items():
         worksheet.column_dimensions[column].width = width
