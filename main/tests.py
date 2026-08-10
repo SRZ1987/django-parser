@@ -1458,6 +1458,72 @@ class MainCatalogTests(TestCase):
             [("depo", source.pk), ("bauhof", bauhof_cheapest.pk)],
         )
 
+    def test_best_offer_finds_cheaper_trimmer_with_matching_type_and_power(self):
+        user = self.create_user()
+        handymann = Shop.objects.create(name="Handymann", code="handymann")
+        source = self.create_offer(
+            name="Elektrimootoriga murutrimmer QT6045 Jasper 350W/25cm",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="160452",
+            barcode="",
+            external_id="depo-qt6045",
+            brand="",
+            model="",
+            price=Decimal("19.56"),
+        )
+        cheaper = self.create_offer(
+            name="Murutrimmer Trolla 350W",
+            shop=handymann,
+            category=None,
+            sku="139-131319",
+            barcode="",
+            external_id="handymann-139-131319",
+            brand="",
+            model="",
+            price=Decimal("14.99"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, cheaper)
+        self.assertEqual(result.best_price, Decimal("14.99"))
+        self.assertEqual(result.potential_saving, Decimal("4.57"))
+
+    def test_best_offer_rejects_cheaper_trimmer_with_conflicting_power(self):
+        user = self.create_user()
+        handymann = Shop.objects.create(name="Handymann", code="handymann")
+        source = self.create_offer(
+            name="Elektrimootoriga murutrimmer QT6045 Jasper 350W/25cm",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="160452",
+            barcode="",
+            external_id="depo-qt6045",
+            brand="",
+            model="",
+            price=Decimal("19.56"),
+        )
+        self.create_offer(
+            name="Murutrimmer Trolla 500W",
+            shop=handymann,
+            category=None,
+            sku="139-500",
+            barcode="",
+            external_id="handymann-139-500",
+            brand="",
+            model="",
+            price=Decimal("9.99"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, source)
+        self.assertEqual(result.best_price, Decimal("19.56"))
+        self.assertEqual(result.potential_saving, Decimal("0.00"))
+
     def test_purchase_plan_saving_uses_selected_price_instead_of_highest_offer(self):
         user = self.create_user()
         source = self.create_offer(

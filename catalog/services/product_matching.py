@@ -340,14 +340,16 @@ def offers_are_comparable(source: ProductOffer, candidate: ProductOffer) -> bool
         for token in source_tokens
         if is_number_token(token) or parse_dimension_token(token) or parse_measure_token(token)
     }
+    text_tokens = source_tokens - structured_tokens
+    text_tokens.discard(source_attributes.brand)
+    text_tokens.discard(source_attributes.model)
 
     if structured_tokens:
-        if not all(_token_matches(token, candidate_tokens) for token in structured_tokens):
+        if not any(_token_matches(token, candidate_tokens) for token in text_tokens):
             return False
-        text_tokens = source_tokens - structured_tokens
-        text_tokens.discard(source_attributes.brand)
-        text_tokens.discard(source_attributes.model)
-        return any(_token_matches(token, candidate_tokens) for token in text_tokens)
+        if _structured_attributes_conflict(source_attributes, candidate_attributes):
+            return False
+        return any(_token_matches(token, candidate_tokens) for token in structured_tokens)
 
     if (
         source_attributes.model
@@ -480,6 +482,40 @@ def _dimensions_match(source: ProductAttributes, candidate: ProductAttributes) -
         and candidate.dimensions
         and candidate.dimensions[:len(source.dimensions)] == source.dimensions
     )
+
+
+def _structured_attributes_conflict(
+    source: ProductAttributes,
+    candidate: ProductAttributes,
+) -> bool:
+    scalar_pairs = (
+        (source.power, candidate.power),
+        (source.voltage, candidate.voltage),
+        (source.weight, candidate.weight),
+        (source.volume, candidate.volume),
+        (source.quantity, candidate.quantity),
+        (source.battery_capacity, candidate.battery_capacity),
+    )
+    if any(left and right and left != right for left, right in scalar_pairs):
+        return True
+    if source.dimensions and candidate.dimensions and not _dimensions_match(source, candidate):
+        return True
+    source_lengths = _length_measure_tokens(source)
+    candidate_lengths = _length_measure_tokens(candidate)
+    return bool(
+        source_lengths
+        and candidate_lengths
+        and not source_lengths.issubset(candidate_lengths)
+        and not candidate_lengths.issubset(source_lengths)
+    )
+
+
+def _length_measure_tokens(attributes: ProductAttributes) -> set[str]:
+    return {
+        token
+        for token in attributes.tokens
+        if (measure := parse_measure_token(token)) and measure[1] in {"mm", "cm", "m"}
+    }
 
 
 def _quantity_matches(source: ProductAttributes, candidate: ProductAttributes) -> bool:

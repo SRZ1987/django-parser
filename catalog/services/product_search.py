@@ -314,12 +314,12 @@ def _source_name_anchors(tokens, source_attributes):
         token
         for token in tokens
         if token != source_attributes.brand
+        and token != source_attributes.model
         and not is_number_token(token)
         and not parse_dimension_token(token)
         and not parse_measure_token(token)
     ]
-    first_anchor = text_tokens[0] if text_tokens else ""
-    return list(dict.fromkeys(filter(None, (primary_anchor, first_anchor))))
+    return list(dict.fromkeys(filter(None, (primary_anchor, *text_tokens))))
 
 
 def _extend_candidates(candidates, seen_ids, queryset, candidate_limit):
