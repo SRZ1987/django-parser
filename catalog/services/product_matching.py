@@ -321,6 +321,43 @@ def score_offer_against_offer(candidate: ProductOffer, source: ProductOffer) -> 
     )
 
 
+def offers_are_comparable(source: ProductOffer, candidate: ProductOffer) -> bool:
+    if source.pk == candidate.pk:
+        return True
+    if source.barcode and candidate.barcode and source.barcode == candidate.barcode:
+        return True
+
+    source_attributes = build_offer_attributes(source)
+    candidate_attributes = build_offer_attributes(candidate)
+    source_tokens = {
+        token
+        for token in source_attributes.tokens
+        if is_meaningful_query_token(token)
+    }
+    candidate_tokens = set(candidate_attributes.tokens)
+    structured_tokens = {
+        token
+        for token in source_tokens
+        if is_number_token(token) or parse_dimension_token(token) or parse_measure_token(token)
+    }
+
+    if structured_tokens:
+        if not all(_token_matches(token, candidate_tokens) for token in structured_tokens):
+            return False
+        text_tokens = source_tokens - structured_tokens
+        text_tokens.discard(source_attributes.brand)
+        text_tokens.discard(source_attributes.model)
+        return any(_token_matches(token, candidate_tokens) for token in text_tokens)
+
+    if (
+        source_attributes.model
+        and candidate_attributes.model
+        and source_attributes.model == candidate_attributes.model
+    ):
+        return True
+    return source_attributes.normalized_name == candidate_attributes.normalized_name
+
+
 def build_price_summary(matches: list[MatchResult]) -> PriceSummary:
     priced = [
         (price, match.offer.shop.name)

@@ -744,6 +744,119 @@ class MainCatalogTests(TestCase):
         self.assertEqual(result.best_price, Decimal("105.00"))
         self.assertEqual(result.price_difference, Decimal("15.00"))
 
+    def test_best_offer_compares_matching_measurements_across_distinct_shops(self):
+        user = self.create_user()
+        fere = Shop.objects.create(name="FERE", code="fere")
+        bauhof = Shop.objects.create(name="Bauhof", code="bauhof")
+        source = self.create_offer(
+            name="Trimmerijõhv Jasper 1.3mm/15m ruudukujuline",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="160250",
+            barcode="2770060166548",
+            external_id="depo-trimmer-line",
+            brand="",
+            model="",
+            price=Decimal("0.98"),
+        )
+        cheapest = self.create_offer(
+            name="TRIMMERIJÕHV, ÜMAR 15m 1,3mm",
+            shop=fere,
+            category=None,
+            sku="E62561",
+            barcode="4743217007269",
+            external_id="fere-trimmer-line",
+            brand="",
+            model="",
+            price=Decimal("0.86"),
+        )
+        bauhof_cheapest = self.create_offer(
+            name="Trimmerijõhv 1,3mm 15m",
+            shop=bauhof,
+            category=None,
+            sku="BAU-TRIMMER-1",
+            barcode="",
+            external_id="bauhof-trimmer-line-1",
+            brand="",
+            model="",
+            price=Decimal("1.10"),
+        )
+        self.create_offer(
+            name="Trimmerijõhv 15m 1.3mm",
+            shop=bauhof,
+            category=None,
+            sku="BAU-TRIMMER-2",
+            barcode="",
+            external_id="bauhof-trimmer-line-2",
+            brand="",
+            model="",
+            price=Decimal("1.20"),
+        )
+        wrong_diameter = self.create_offer(
+            name="Trimmerijõhv Jasper 3.0mm/15m ruudukujuline",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="160257",
+            barcode="2770060166586",
+            external_id="depo-trimmer-line-3mm",
+            brand="",
+            model="",
+            price=Decimal("4.32"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, cheapest)
+        self.assertEqual(result.best_price, Decimal("0.86"))
+        self.assertEqual(result.potential_saving, Decimal("0.12"))
+        self.assertEqual(result.price_difference, Decimal("0.34"))
+        self.assertNotIn(wrong_diameter, result.other_offers)
+        self.assertEqual(
+            [(offer.shop.code, offer.pk) for offer in result.other_offers],
+            [("depo", source.pk), ("bauhof", bauhof_cheapest.pk)],
+        )
+
+    def test_purchase_plan_saving_uses_selected_price_instead_of_highest_offer(self):
+        user = self.create_user()
+        source = self.create_offer(
+            name="Makita DDF482Z",
+            barcode="4000000000099",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("10.00"),
+        )
+        cheapest = self.create_offer(
+            name="Akutrell Makita DDF482Z",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-DDF482-CHEAP",
+            barcode="4000000000099",
+            external_id="depo-ddf482-cheap",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("8.00"),
+        )
+        self.create_offer(
+            name="Makita DDF482Z expensive",
+            shop=Shop.objects.create(name="Bauhof", code="bauhof"),
+            category=None,
+            sku="BAUHOF-DDF482-EXPENSIVE",
+            barcode="4000000000099",
+            external_id="bauhof-ddf482-expensive",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("100.00"),
+        )
+        add_offer_to_shopping_list(user, source)
+
+        plan = build_purchase_plan(user.shopping_list)
+
+        self.assertEqual(plan.rows[0].best_offer, cheapest)
+        self.assertEqual(plan.total_best_cost, Decimal("8.00"))
+        self.assertEqual(plan.total_source_cost, Decimal("10.00"))
+        self.assertEqual(plan.potential_saving, Decimal("2.00"))
+
     def test_price_change_is_reflected_without_changing_shopping_list_item(self):
         user = self.create_user()
         source = self.create_offer(name="Makita DDF482Z", barcode="4000000000001", brand="Makita", model="DDF482Z", price=Decimal("120.00"))
@@ -800,5 +913,5 @@ class MainCatalogTests(TestCase):
         self.assertIn(first_cheapest.shop, plan.grouped_by_shop)
         self.assertIn(second_cheapest.shop, plan.grouped_by_shop)
         self.assertEqual(plan.total_best_cost, Decimal("140.00"))
-        self.assertEqual(plan.total_highest_cost, Decimal("170.00"))
+        self.assertEqual(plan.total_source_cost, Decimal("170.00"))
         self.assertEqual(plan.potential_saving, Decimal("30.00"))

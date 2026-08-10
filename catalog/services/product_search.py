@@ -64,15 +64,23 @@ def search_products(
     *,
     candidate_limit: int = DEFAULT_CANDIDATE_LIMIT,
     results_limit: int = DEFAULT_RESULTS_LIMIT,
+    _source_offer_override: ProductOffer | None = None,
+    _expand_source_anchors: bool = False,
 ) -> SearchResults:
     query = (query or "").strip()
     normalized_query = normalize_product_name(query)
     if not normalized_query:
         return SearchResults(query=query, normalized_query=normalized_query)
 
-    source_offer = _find_source_offer(query, normalized_query)
+    source_offer = _source_offer_override or _find_source_offer(query, normalized_query)
     source_attributes = build_offer_attributes(source_offer) if source_offer else extract_product_attributes(query)
-    candidates = _retrieve_candidates(normalized_query, source_offer, source_attributes, candidate_limit)
+    candidates = _retrieve_candidates(
+        normalized_query,
+        source_offer,
+        source_attributes,
+        candidate_limit,
+        expand_source_anchors=_expand_source_anchors,
+    )
     ranked = [
         score_offer_against_offer(candidate, source_offer)
         if source_offer
@@ -104,7 +112,12 @@ def find_matches(offer_or_product, *, candidate_limit: int = DEFAULT_CANDIDATE_L
         offer = ProductOffer.objects.filter(product=offer_or_product, is_active=True, is_available=True).first()
     if offer is None:
         return SearchResults(query="", normalized_query="")
-    return search_products(offer.sku or offer.barcode or offer.original_name, candidate_limit=candidate_limit)
+    return search_products(
+        offer.sku or offer.barcode or offer.original_name,
+        candidate_limit=candidate_limit,
+        _source_offer_override=offer,
+        _expand_source_anchors=True,
+    )
 
 
 def paginate_group(items, page_number, *, page_size: int = DEFAULT_PAGE_SIZE):
@@ -152,7 +165,14 @@ def _find_source_offer(raw_query: str, normalized_query: str) -> ProductOffer | 
     )
 
 
-def _retrieve_candidates(normalized_query, source_offer, source_attributes, candidate_limit):
+def _retrieve_candidates(
+    normalized_query,
+    source_offer,
+    source_attributes,
+    candidate_limit,
+    *,
+    expand_source_anchors=False,
+):
     queryset = available_offer_queryset()
     broad_query = Q()
     tokens = tokenize(normalized_query)
@@ -203,8 +223,12 @@ def _retrieve_candidates(normalized_query, source_offer, source_attributes, cand
             model_query = Q(product__normalized_model=source_attributes.model)
             _extend_candidates(candidates, seen_ids, queryset.filter(model_query), candidate_limit)
 
-        source_anchor = _source_name_anchor(source_name_tokens, source_attributes)
-        if source_anchor:
+        source_anchors = (
+            _source_name_anchors(source_name_tokens, source_attributes)
+            if expand_source_anchors
+            else [_source_name_anchor(source_name_tokens, source_attributes)]
+        )
+        for source_anchor in filter(None, source_anchors):
             _extend_candidates(
                 candidates,
                 seen_ids,
@@ -282,6 +306,20 @@ def _source_name_anchor(tokens, source_attributes):
 
     structured_tokens = [token for token in tokens if token != source_attributes.brand]
     return max(structured_tokens, key=lambda token: (len(token), token), default="")
+
+
+def _source_name_anchors(tokens, source_attributes):
+    primary_anchor = _source_name_anchor(tokens, source_attributes)
+    text_tokens = [
+        token
+        for token in tokens
+        if token != source_attributes.brand
+        and not is_number_token(token)
+        and not parse_dimension_token(token)
+        and not parse_measure_token(token)
+    ]
+    first_anchor = text_tokens[0] if text_tokens else ""
+    return list(dict.fromkeys(filter(None, (primary_anchor, first_anchor))))
 
 
 def _extend_candidates(candidates, seen_ids, queryset, candidate_limit):

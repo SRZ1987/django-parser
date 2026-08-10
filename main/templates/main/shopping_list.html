@@ -45,8 +45,10 @@
                             <h2>{{ item.name }}</h2>
                             {% if offer %}
                                 <p class="recommendation">Лучше купить в {{ offer.shop.name }} — {{ row.best_price }} {{ offer.currency }}</p>
-                                {% if row.price_difference %}
-                                    <p class="saving-line">Разница между найденными предложениями: {{ row.price_difference }} {{ offer.currency }}</p>
+                                {% if row.potential_saving %}
+                                    <p class="saving-line">Можно сэкономить по сравнению с выбранным товаром: {{ row.potential_saving }} {{ offer.currency }}</p>
+                                {% elif row.other_offers %}
+                                    <p class="saving-line">Выбранное предложение уже по минимальной цене.</p>
                                 {% endif %}
                                 {% if row.other_offers %}
                                     <div class="other-offers">
