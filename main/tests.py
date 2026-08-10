@@ -325,6 +325,56 @@ class MainCatalogTests(TestCase):
         self.assertIn(offer.pk, self.catalog_offer_ids(direct))
         self.assertIn(offer.pk, self.catalog_offer_ids(reversed_query))
 
+    def test_catalog_decimal_measurement_variants_are_equivalent(self):
+        integer = self.create_offer(
+            name="Trimmerijõhv Oregon 2mm",
+            sku="JÕHV-INTEGER",
+            barcode="",
+            external_id="johv-integer",
+            price=Decimal("3.00"),
+        )
+        decimal = self.create_offer(
+            name="Trimmerijõhv Makita 2.0mm",
+            sku="JÕHV-DECIMAL",
+            barcode="",
+            external_id="johv-decimal",
+            price=Decimal("4.00"),
+        )
+        ProductOffer.objects.filter(pk=decimal.pk).update(
+            normalized_name="trimmerijõhv makita 2.0mm",
+            search_text="trimmerijõhv makita 2.0mm",
+        )
+
+        compact = self.client.get(reverse("catalog"), {"q": "Trimmerijõhv 2mm"}, HTTP_HOST="127.0.0.1")
+        dot = self.client.get(reverse("catalog"), {"q": "Trimmerijõhv 2.0mm"}, HTTP_HOST="127.0.0.1")
+        comma = self.client.get(reverse("catalog"), {"q": "Trimmerijõhv 2,0 mm"}, HTTP_HOST="127.0.0.1")
+
+        expected = [integer.pk, decimal.pk]
+        self.assertEqual(self.catalog_offer_ids(compact), expected)
+        self.assertEqual(self.catalog_offer_ids(dot), expected)
+        self.assertEqual(self.catalog_offer_ids(comma), expected)
+
+    def test_catalog_default_text_search_sorts_by_effective_price(self):
+        expensive = self.create_offer(
+            name="Trimmerijõhv Oregon 2mm",
+            sku="JÕHV-EXPENSIVE",
+            barcode="",
+            external_id="johv-expensive",
+            price=Decimal("8.00"),
+        )
+        discounted = self.create_offer(
+            name="Varutrimmerijõhv Makita 2mm",
+            sku="JÕHV-DISCOUNTED",
+            barcode="",
+            external_id="johv-discounted",
+            price=Decimal("10.00"),
+            sale_price=Decimal("2.50"),
+        )
+
+        response = self.client.get(reverse("catalog"), {"q": "trimmerijõhv"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(self.catalog_offer_ids(response), [discounted.pk, expensive.pk])
+
     def test_catalog_search_by_sku(self):
         offer = self.create_offer(name="Angle grinder", sku="SKU-BOSCH-42")
 
@@ -551,6 +601,32 @@ class MainCatalogTests(TestCase):
 
         self.assertEqual(direct.json()["results"][0]["id"], offer.pk)
         self.assertEqual(reversed_query.json()["results"][0]["id"], offer.pk)
+
+    def test_suggestions_decimal_measurement_variants_are_equivalent(self):
+        offer = self.create_offer(
+            name="Trimmerijõhv Oregon 2.0mm",
+            sku="JÕHV-SUGGESTION",
+            barcode="",
+            external_id="johv-suggestion",
+        )
+        ProductOffer.objects.filter(pk=offer.pk).update(
+            normalized_name="trimmerijõhv oregon 2.0mm",
+            search_text="trimmerijõhv oregon 2.0mm",
+        )
+
+        compact = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "Trimmerijõhv 2mm"},
+            HTTP_HOST="127.0.0.1",
+        )
+        decimal = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "Trimmerijõhv 2,0mm"},
+            HTTP_HOST="127.0.0.1",
+        )
+
+        self.assertEqual(compact.json()["results"][0]["id"], offer.pk)
+        self.assertEqual(decimal.json()["results"][0]["id"], offer.pk)
 
     def test_suggestions_search_by_sku_works(self):
         self.create_offer(name="Angle grinder", sku="SKU-BOSCH-42")

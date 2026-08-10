@@ -2,8 +2,7 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.core.paginator import Paginator
-from django.db.models import Case, IntegerField, Q, Value, When
-from django.db.models.functions import Coalesce
+from django.db.models import Case, DecimalField, F, IntegerField, Q, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -11,7 +10,12 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from catalog.models import Category, ProductOffer, Shop
 from catalog.services.normalization import normalize_product_name, tokenize
-from catalog.services.product_search import DEFAULT_PAGE_SIZE, paginate_group, search_products
+from catalog.services.product_search import (
+    DEFAULT_PAGE_SIZE,
+    build_token_candidate_query,
+    paginate_group,
+    search_products,
+)
 
 from .models import ShoppingListItem
 from .services import add_offer_to_shopping_list, build_purchase_plan, get_or_create_shopping_list
@@ -49,9 +53,8 @@ def product_offer_search_query(query):
     token_query = Q()
     for token in tokens:
         token_query &= (
-            Q(original_name__icontains=token)
-            | Q(normalized_name__icontains=token)
-            | Q(search_text__icontains=token)
+            build_token_candidate_query(token)
+            | Q(original_name__icontains=token)
             | Q(sku__icontains=token)
             | Q(barcode__icontains=token)
             | Q(external_id__icontains=token)
@@ -143,50 +146,56 @@ def apply_catalog_sorting(offers, sort, query):
         return offers.order_by("-original_name", "id")
 
     if sort == "price_asc":
-        return (
-            offers.annotate(
-                effective_price=Coalesce("sale_price", "price"),
-                price_missing=Case(
-                    When(sale_price__isnull=True, price__isnull=True, then=Value(1)),
-                    default=Value(0),
-                    output_field=IntegerField(),
-                ),
-            )
-            .order_by("price_missing", "effective_price", "id")
-        )
+        return _with_effective_price(offers).order_by("price_missing", "effective_price", "id")
 
     if sort == "price_desc":
-        return (
-            offers.annotate(
-                effective_price=Coalesce("sale_price", "price"),
-                price_missing=Case(
-                    When(sale_price__isnull=True, price__isnull=True, then=Value(1)),
-                    default=Value(0),
-                    output_field=IntegerField(),
-                ),
-            )
-            .order_by("price_missing", "-effective_price", "id")
-        )
+        return _with_effective_price(offers).order_by("price_missing", "-effective_price", "id")
 
     if sort == "newest":
         return offers.order_by("-created_at", "-id")
 
     if sort == "relevance" and query:
         return (
-            offers.annotate(
-                exact_identifier_match=Case(
+            _with_effective_price(offers)
+            .annotate(
+                identifier_match_priority=Case(
                     When(
-                        Q(sku__iexact=query) | Q(barcode__iexact=query) | Q(external_id__iexact=query),
+                        Q(barcode__iexact=query) | Q(product__barcode__iexact=query),
                         then=Value(0),
                     ),
-                    default=Value(1),
+                    When(Q(sku__iexact=query), then=Value(1)),
+                    When(Q(external_id__iexact=query), then=Value(2)),
+                    default=Value(3),
                     output_field=IntegerField(),
                 )
             )
-            .order_by("exact_identifier_match", "original_name", "id")
+            .order_by(
+                "identifier_match_priority",
+                "price_missing",
+                "effective_price",
+                "original_name",
+                "shop__name",
+                "id",
+            )
         )
 
     return offers.order_by("original_name", "id")
+
+
+def _with_effective_price(offers):
+    return offers.annotate(
+        effective_price=Case(
+            When(price__isnull=True, sale_price__isnull=False, then=F("sale_price")),
+            When(sale_price__lt=F("price"), then=F("sale_price")),
+            default=F("price"),
+            output_field=DecimalField(max_digits=12, decimal_places=2),
+        ),
+        price_missing=Case(
+            When(sale_price__isnull=True, price__isnull=True, then=Value(1)),
+            default=Value(0),
+            output_field=IntegerField(),
+        ),
+    )
 
 
 def catalog_view(request):

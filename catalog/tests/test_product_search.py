@@ -83,6 +83,60 @@ class ProductSearchTests(TestCase):
         self.assertIn(source.pk, self.ids(results.exact_matches))
         self.assertIn(analog.pk, self.ids(results.same_product))
 
+    def test_barcode_search_puts_exact_barcode_before_normalized_name_matches(self):
+        source = self.offer(
+            "Trimmerijõhv Oregon 2.0mm 15m",
+            barcode="4740000000025",
+            sku="OREGON-SOURCE",
+            price="8.00",
+        )
+        same_barcode = self.offer(
+            "Oregon trimmerijõhv 2mm 15m",
+            shop=self.depo,
+            barcode="4740000000025",
+            sku="OREGON-EAN",
+            price="6.00",
+        )
+        similar_name = self.offer(
+            "Trimmerijõhv Oregon 2mm 15m",
+            shop=self.bauhof,
+            barcode="",
+            sku="OREGON-NAME",
+            price="3.00",
+        )
+
+        result_ids = self.result_ids(search_products("4740000000025"))
+
+        self.assertEqual(set(result_ids[:2]), {source.pk, same_barcode.pk})
+        self.assertIn(similar_name.pk, result_ids[2:])
+
+    def test_sku_search_expands_through_barcode_and_normalized_name(self):
+        source = self.offer(
+            "Trimmerijõhv Oregon 2mm 15m",
+            barcode="4740000000032",
+            sku="OREGON-SKU-32",
+            price="8.00",
+        )
+        same_barcode = self.offer(
+            "Oregon trimmerijõhv 2.0mm 15m",
+            shop=self.depo,
+            barcode="4740000000032",
+            sku="DEPO-32",
+            price="6.00",
+        )
+        similar_name = self.offer(
+            "Trimmerijõhv Oregon 2,0 mm 15m",
+            shop=self.bauhof,
+            barcode="",
+            sku="BAUHOF-32",
+            price="3.00",
+        )
+
+        result_ids = self.result_ids(search_products("OREGON-SKU-32"))
+
+        self.assertEqual(set(result_ids[:2]), {source.pk, same_barcode.pk})
+        self.assertIn(similar_name.pk, result_ids[2:])
+
     def test_exact_shop_code_is_starting_point_for_catalog_matching(self):
         source = self.offer("Makita DDF482Z drill", sku="MAK-DDF482Z", barcode="", brand="Makita", model="DDF482Z")
         other = self.offer("Makita DDF482Z LXT", shop=self.depo, sku="DEPO-42", brand="Makita", model="DDF482Z")
@@ -263,21 +317,21 @@ class ProductSearchTests(TestCase):
         self.assertNotIn(other_size.pk, result_ids)
         self.assertNotIn(dimensions_only.pk, result_ids)
 
-    def test_exact_word_ranks_above_compound_suffix_for_same_dimensions(self):
+    def test_text_search_sorts_by_price_before_compound_match_kind(self):
         exact_word = self.offer("Pruss 50x50x3000 mm", sku="RANK-WORD", price="20.00")
         compound = self.offer("Höövelpruss 50x50x3000 mm", sku="RANK-COMPOUND", price="1.00")
 
         result_ids = self.result_ids(search_products("pruss 50x50"))
 
-        self.assertLess(result_ids.index(exact_word.pk), result_ids.index(compound.pk))
+        self.assertLess(result_ids.index(compound.pk), result_ids.index(exact_word.pk))
 
-    def test_number_in_dimension_ranks_above_same_number_as_quantity(self):
+    def test_text_search_sorts_by_price_when_all_tokens_match(self):
         exact_length = self.offer("Ehitusnael 4x100 mm", sku="RANK-NAEL-100", price="20.00")
         other_length = self.offer("Ehitusnael 4x90 mm 100 tk", sku="RANK-NAEL-90", price="1.00")
 
         result_ids = self.result_ids(search_products("nael 100"))
 
-        self.assertLess(result_ids.index(exact_length.pk), result_ids.index(other_length.pk))
+        self.assertLess(result_ids.index(other_length.pk), result_ids.index(exact_length.pk))
 
     def test_exact_barcode_ranks_first_even_when_other_product_is_cheaper(self):
         exact = self.offer(
@@ -299,6 +353,26 @@ class ProductSearchTests(TestCase):
         result_ids = self.result_ids(search_products("4740000000001"))
 
         self.assertEqual(result_ids[0], exact.pk)
+
+    def test_barcode_has_priority_over_a_colliding_sku(self):
+        barcode_match = self.offer(
+            "Trimmerijõhv Oregon 2mm",
+            barcode="4740000000049",
+            sku="BARCODE-PRODUCT",
+            price="10.00",
+        )
+        sku_collision = self.offer(
+            "Unrelated cheap product",
+            shop=self.depo,
+            barcode="",
+            sku="4740000000049",
+            price="1.00",
+        )
+
+        result_ids = self.result_ids(search_products("4740000000049"))
+
+        self.assertEqual(result_ids[0], barcode_match.pk)
+        self.assertNotIn(sku_collision.pk, self.ids(search_products("4740000000049").exact_matches))
 
     def test_weak_fuzzy_match_does_not_outrank_exact_words_and_dimensions(self):
         exact = self.offer("Pruss 50x50x3000 mm", sku="RANK-EXACT", price="20.00")
@@ -383,6 +457,26 @@ class ProductSearchTests(TestCase):
         self.assertEqual(compact, spaced)
         self.assertEqual(compact, multiplication_sign)
 
+    def test_decimal_measurement_variants_return_the_same_products(self):
+        integer = self.offer("Trimmerijõhv Oregon 2mm 15m", sku="JÕHV-2", price="3.00")
+        decimal_dot = self.offer("Trimmerijõhv Makita 2.0mm 15m", sku="JÕHV-2-DOT", price="4.00")
+        decimal_comma = self.offer("Trimmerijõhv Bosch 2,00 mm 15m", sku="JÕHV-2-COMMA", price="5.00")
+        self.offer("Trimmerijõhv Oregon 2.4mm 15m", sku="JÕHV-24", price="1.00")
+
+        ProductOffer.objects.filter(pk=decimal_dot.pk).update(
+            normalized_name="trimmerijõhv makita 2.0mm 15m",
+            search_text="trimmerijõhv makita 2.0mm 15m",
+        )
+        expected = [integer.pk, decimal_dot.pk, decimal_comma.pk]
+
+        integer_query = self.result_ids(search_products("Trimmerijõhv 2mm"))
+        dot_query = self.result_ids(search_products("Trimmerijõhv 2.0mm"))
+        comma_query = self.result_ids(search_products("Trimmerijõhv 2,0 mm"))
+
+        self.assertEqual(integer_query, expected)
+        self.assertEqual(dot_query, expected)
+        self.assertEqual(comma_query, expected)
+
     def test_number_token_does_not_match_inside_larger_number(self):
         exact_number = self.offer("Höövelpruss 50x50x3000 mm", sku="NUMBER-50")
         larger_number = self.offer("Höövelpruss 150x150x3000 mm", sku="NUMBER-150")
@@ -404,7 +498,8 @@ class ProductSearchTests(TestCase):
         results = search_products("4740000000001")
 
         self.assertIn(target.pk, self.ids(results.exact_matches))
-        self.assertNotIn(longer.pk, self.result_ids(results))
+        self.assertNotIn(longer.pk, self.ids(results.exact_matches))
+        self.assertEqual(self.result_ids(results)[0], target.pk)
 
     def test_inactive_and_unavailable_offers_are_hidden(self):
         self.offer("Visible Makita DDF482", brand="Makita", model="DDF482Z")

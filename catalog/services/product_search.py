@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When
 
 from catalog.models import ProductOffer
 
@@ -15,6 +15,7 @@ from .normalization import (
     normalize_product_name,
     normalize_text,
     parse_dimension_token,
+    parse_measure_token,
     tokenize,
 )
 from .product_matching import (
@@ -79,7 +80,7 @@ def search_products(
         for candidate in candidates
     ]
     ranked = [match for match in ranked if match.score >= 0.05 or match.match_type == MATCH_EXACT]
-    ranked.sort(key=_match_sort_key)
+    ranked.sort(key=lambda match: _match_sort_key(match, identifier_search=source_offer is not None))
     ranked = ranked[:results_limit]
 
     results = SearchResults(
@@ -129,7 +130,24 @@ def _find_source_offer(raw_query: str, normalized_query: str) -> ProductOffer | 
             | Q(external_id__iexact=raw_query)
             | Q(external_id__iexact=normalized_query)
         )
-        .order_by("shop__name", "original_name")
+        .annotate(
+            identifier_priority=Case(
+                When(
+                    Q(barcode__iexact=raw_query)
+                    | Q(barcode__iexact=normalized_query)
+                    | Q(product__barcode__iexact=raw_query)
+                    | Q(product__barcode__iexact=normalized_query),
+                    then=Value(0),
+                ),
+                When(
+                    Q(sku__iexact=raw_query) | Q(sku__iexact=normalized_query),
+                    then=Value(1),
+                ),
+                default=Value(2),
+                output_field=IntegerField(),
+            )
+        )
+        .order_by("identifier_priority", "shop__name", "original_name")
         .first()
     )
 
@@ -149,14 +167,14 @@ def _retrieve_candidates(normalized_query, source_offer, source_attributes, cand
 
         broad_query |= exact_query
         if is_number_token(normalized_query) or parse_dimension_token(normalized_query):
-            broad_query |= _token_candidate_query(normalized_query)
+            broad_query |= build_token_candidate_query(normalized_query)
         else:
             broad_query |= Q(normalized_name__icontains=normalized_query) | Q(search_text__icontains=normalized_query)
 
     if meaningful_tokens:
         all_tokens_query = Q()
         for token in meaningful_tokens:
-            all_tokens_query &= _token_candidate_query(token)
+            all_tokens_query &= build_token_candidate_query(token)
         _extend_candidates(candidates, seen_ids, queryset.filter(all_tokens_query), candidate_limit)
 
     if len(meaningful_tokens) >= 2 and source_offer is None:
@@ -164,9 +182,34 @@ def _retrieve_candidates(normalized_query, source_offer, source_attributes, cand
 
     if source_offer:
         if source_offer.barcode:
-            broad_query |= Q(barcode=source_offer.barcode) | Q(product__barcode=source_offer.barcode)
+            barcode_query = Q(barcode=source_offer.barcode) | Q(product__barcode=source_offer.barcode)
+            _extend_candidates(candidates, seen_ids, queryset.filter(barcode_query), candidate_limit)
+            broad_query |= barcode_query
         if source_offer.sku:
             broad_query |= Q(sku=source_offer.sku, shop=source_offer.shop)
+
+        source_name_query = Q(normalized_name__iexact=source_attributes.normalized_name)
+        source_name_query |= Q(product__normalized_name__iexact=source_attributes.normalized_name)
+        _extend_candidates(candidates, seen_ids, queryset.filter(source_name_query), candidate_limit)
+        broad_query |= source_name_query
+
+        source_name_tokens = [
+            token
+            for token in tokenize(source_attributes.normalized_name)
+            if is_meaningful_query_token(token)
+        ][:6]
+        if source_name_tokens:
+            source_all_tokens_query = Q()
+            for token in source_name_tokens:
+                source_all_tokens_query &= build_token_candidate_query(token)
+            _extend_candidates(
+                candidates,
+                seen_ids,
+                queryset.filter(source_all_tokens_query),
+                candidate_limit,
+            )
+            for token in source_name_tokens:
+                broad_query |= build_token_candidate_query(token)
 
     if source_attributes.brand:
         broad_query |= Q(product__normalized_brand=source_attributes.brand) | Q(search_text__icontains=source_attributes.brand)
@@ -178,7 +221,7 @@ def _retrieve_candidates(normalized_query, source_offer, source_attributes, cand
         broad_query |= Q(search_text__icontains=dimension)
 
     for token in meaningful_tokens:
-        broad_query |= _token_candidate_query(token)
+        broad_query |= build_token_candidate_query(token)
 
     if broad_query and len(candidates) < candidate_limit:
         _extend_candidates(candidates, seen_ids, queryset.filter(broad_query), candidate_limit)
@@ -186,16 +229,22 @@ def _retrieve_candidates(normalized_query, source_offer, source_attributes, cand
     return candidates
 
 
-def _token_candidate_query(token: str) -> Q:
+def build_token_candidate_query(token: str) -> Q:
     dimensions = parse_dimension_token(token)
     if dimensions:
-        dimension = "x".join(re.escape(value) for value in dimensions)
+        dimension = "x".join(_number_regex(value) for value in dimensions)
         suffix = r"(x[0-9]|[^0-9.]|$)" if len(dimensions) < 3 else r"([^0-9.]|$)"
         pattern = rf"(^|[^0-9.]){dimension}{suffix}"
         return Q(search_text__regex=pattern) | Q(normalized_name__regex=pattern)
 
+    measure = parse_measure_token(token)
+    if measure:
+        number, unit = measure
+        pattern = rf"(^|[^0-9.]){_number_regex(number)}\s*{re.escape(unit)}([^a-z0-9]|$)"
+        return Q(search_text__iregex=pattern) | Q(normalized_name__iregex=pattern)
+
     if is_number_token(token):
-        pattern = rf"(^|[^0-9.]){re.escape(token)}([^0-9.]|$)"
+        pattern = rf"(^|[^0-9.]){_number_regex(token)}([^0-9.]|$)"
         return Q(search_text__regex=pattern) | Q(normalized_name__regex=pattern)
 
     escaped_token = re.escape(token)
@@ -204,6 +253,13 @@ def _token_candidate_query(token: str) -> Q:
     else:
         pattern = rf"(^|[^\w])\w*{escaped_token}([^\w]|$)"
     return Q(search_text__iregex=pattern) | Q(normalized_name__iregex=pattern)
+
+
+def _number_regex(value: str) -> str:
+    integer, separator, fraction = value.partition(".")
+    if separator:
+        return rf"{re.escape(integer)}[.]{re.escape(fraction)}0*"
+    return rf"{re.escape(integer)}(?:[.]0+)?"
 
 
 def _extend_candidates(candidates, seen_ids, queryset, candidate_limit):
@@ -227,16 +283,27 @@ def _append_match(results: SearchResults, match: MatchResult):
         results.similar_products.append(match)
 
 
-def _match_sort_key(match: MatchResult):
+def _match_sort_key(match: MatchResult, *, identifier_search: bool):
     price = _effective_price(match.offer)
+    stable_tail = (
+        match.offer.original_name.casefold(),
+        match.offer.shop.name.casefold(),
+        match.offer.pk,
+    )
+    if not identifier_search:
+        return (
+            price is None,
+            price if price is not None else Decimal("0"),
+            -match.ranking_tier,
+            -match.score,
+            *stable_tail,
+        )
     return (
         match.match_type != MATCH_EXACT,
         -match.ranking_tier,
         price is None,
         price if price is not None else Decimal("0"),
-        match.offer.original_name.casefold(),
-        match.offer.shop.name.casefold(),
-        match.offer.pk,
+        *stable_tail,
     )
 
 

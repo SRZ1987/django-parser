@@ -13,12 +13,17 @@ _NUMBER_UNIT_RE = re.compile(
     r"\b(\d+(?:\.\d+)?)\s*(mm|мм|cm|см|m|м|kg|кг|g|г|l|л|ml|мл|v|в|w|вт|ah|ач)\b",
     re.IGNORECASE,
 )
+_ADJACENT_MEASURES_RE = re.compile(
+    r"(\d+(?:\.\d+)?(?:mm|cm|kg|ml|ah|m|g|l|v|w))(?=\d)",
+    re.IGNORECASE,
+)
 _UNWANTED_CHARS_RE = re.compile(r"[^\w\s.]+", re.UNICODE)
 _SPACES_RE = re.compile(r"\s+")
 _NUMBER_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)?$")
 _DIMENSION_TOKEN_RE = re.compile(
     r"^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:x(\d+(?:\.\d+)?))?(?:mm|cm|m)?$"
 )
+_MEASURE_TOKEN_RE = re.compile(r"^(\d+(?:\.\d+)?)(mm|cm|m|kg|g|l|ml|v|w|ah)$")
 _MODEL_PREFIX_VOWELS = frozenset("aeiouyõäöü")
 COMPOUND_PREFIX_MIN_LENGTH = 7
 _UNIT_ALIASES = {
@@ -39,8 +44,15 @@ def _normalize_unit(unit: str) -> str:
     return _UNIT_ALIASES.get(unit.lower(), unit.lower())
 
 
+def _normalize_number(value: str) -> str:
+    integer, separator, fraction = value.partition(".")
+    integer = integer.lstrip("0") or "0"
+    fraction = fraction.rstrip("0")
+    return f"{integer}.{fraction}" if separator and fraction else integer
+
+
 def _normalize_dimension(match) -> str:
-    values = [value for value in match.groups()[:3] if value]
+    values = [_normalize_number(value) for value in match.groups()[:3] if value]
     unit = _normalize_unit(match.group(4)) if match.group(4) else ""
     return "x".join(values) + unit
 
@@ -56,7 +68,10 @@ def _normalize_split_model(match) -> str:
 
 
 def _compact_number_units(text: str) -> str:
-    return _NUMBER_UNIT_RE.sub(lambda match: f"{match.group(1)}{_normalize_unit(match.group(2))}", text)
+    return _NUMBER_UNIT_RE.sub(
+        lambda match: f"{_normalize_number(match.group(1))}{_normalize_unit(match.group(2))}",
+        text,
+    )
 
 
 def normalize_text(value: str) -> str:
@@ -70,6 +85,7 @@ def normalize_text(value: str) -> str:
     text = _DASHES_RE.sub(" ", text)
     text = _UNWANTED_CHARS_RE.sub(" ", text)
     text = _SPACES_RE.sub(" ", text)
+    text = _ADJACENT_MEASURES_RE.sub(r"\1 ", text)
     text = _MODEL_SPLIT_RE.sub(_normalize_split_model, text)
     text = _DIMENSION_RE.sub(_normalize_dimension, text)
     text = _SPACES_RE.sub(" ", text)
@@ -100,7 +116,14 @@ def parse_dimension_token(value: str) -> tuple[str, ...]:
     match = _DIMENSION_TOKEN_RE.fullmatch(value or "")
     if not match:
         return ()
-    return tuple(part for part in match.groups() if part)
+    return tuple(_normalize_number(part) for part in match.groups() if part)
+
+
+def parse_measure_token(value: str) -> tuple[str, str] | tuple[()]:
+    match = _MEASURE_TOKEN_RE.fullmatch(value or "")
+    if not match:
+        return ()
+    return _normalize_number(match.group(1)), match.group(2)
 
 
 def is_meaningful_query_token(value: str) -> bool:
@@ -108,6 +131,7 @@ def is_meaningful_query_token(value: str) -> bool:
         len(value) >= 2
         or is_number_token(value)
         or bool(parse_dimension_token(value))
+        or bool(parse_measure_token(value))
     )
 
 

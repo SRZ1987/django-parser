@@ -12,6 +12,7 @@ from .normalization import (
     normalize_product_name,
     normalize_text,
     parse_dimension_token,
+    parse_measure_token,
     text_token_matches,
     tokenize,
 )
@@ -88,7 +89,7 @@ def score_offer_against_query(
     structured_tokens = {
         token
         for token in effective_query_tokens
-        if is_number_token(token) or parse_dimension_token(token)
+        if is_number_token(token) or parse_dimension_token(token) or parse_measure_token(token)
     }
     text_tokens = effective_query_tokens - structured_tokens
     text_match_kinds = {
@@ -370,6 +371,9 @@ def _token_matches(query_token: str, offer_tokens: set[str]) -> bool:
             for offer_token in offer_tokens
             if (candidate_dimensions := parse_dimension_token(offer_token))
         )
+    query_measure = parse_measure_token(query_token)
+    if query_measure:
+        return any(parse_measure_token(offer_token) == query_measure for offer_token in offer_tokens)
     if is_number_token(query_token):
         number_pattern = re.compile(rf"(?<![\d.]){re.escape(query_token)}(?![\d.])")
         return any(number_pattern.search(offer_token) for offer_token in offer_tokens)
@@ -414,6 +418,9 @@ def _structured_tokens_match_dimensions(
     for token in structured_tokens:
         if parse_dimension_token(token):
             if not _dimensions_match(source, candidate):
+                return False
+        elif parse_measure_token(token):
+            if not _token_matches(token, candidate.tokens):
                 return False
         elif is_number_token(token) and not _number_matches_dimension(token, candidate):
             return False

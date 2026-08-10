@@ -19,8 +19,14 @@ class NormalizationTests(SimpleTestCase):
     def test_preserves_model_numbers_and_units(self):
         self.assertEqual(
             normalize_product_name("Bosch GSR 18V-50 2.0Ah 125mm 10kg 500W 50x100"),
-            "bosch gsr 18v 50 2.0ah 125mm 10kg 500w 50x100",
+            "bosch gsr 18v 50 2ah 125mm 10kg 500w 50x100",
         )
+
+    def test_equivalent_decimal_measurements_have_one_normalized_form(self):
+        self.assertEqual(normalize_product_name("Trimmerijõhv 2mm"), "trimmerijõhv 2mm")
+        self.assertEqual(normalize_product_name("Trimmerijõhv 2.0mm"), "trimmerijõhv 2mm")
+        self.assertEqual(normalize_product_name("Trimmerijõhv 2,00 mm"), "trimmerijõhv 2mm")
+        self.assertEqual(normalize_product_name("Trimmerijõhv 15m2,0mm"), "trimmerijõhv 15m 2mm")
 
     def test_handles_empty_values(self):
         self.assertEqual(normalize_text(None), "")
