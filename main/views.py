@@ -364,6 +364,19 @@ def replace_with_best_offer(request, item_pk):
     return redirect("shopping_list")
 
 
+@login_required
+@require_POST
+def toggle_shopping_list_item(request, item_pk):
+    item = get_object_or_404(
+        ShoppingListItem,
+        pk=item_pk,
+        shopping_list__user=request.user,
+    )
+    item.is_purchased = not item.is_purchased
+    item.save(update_fields=["is_purchased"])
+    return redirect("shopping_list")
+
+
 def get_list_offer_ids(user):
     if not user.is_authenticated:
         return set()

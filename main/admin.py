@@ -23,7 +23,8 @@ class ShoppingListAdmin(admin.ModelAdmin):
 
 @admin.register(ShoppingListItem)
 class ShoppingListItemAdmin(admin.ModelAdmin):
-    list_display = ["name", "shopping_list", "source_offer", "created_at"]
+    list_display = ["name", "shopping_list", "source_offer", "is_purchased", "created_at"]
+    list_filter = ["is_purchased"]
     search_fields = ["name", "shopping_list__user__username", "source_offer__original_name"]
     autocomplete_fields = ["shopping_list", "product", "source_offer"]
     readonly_fields = ["created_at"]

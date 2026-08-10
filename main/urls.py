@@ -11,6 +11,7 @@ urlpatterns = [
     path('my-list/', views.shopping_list, name='shopping_list'),
     path('my-list/add/<int:offer_pk>/', views.add_to_shopping_list, name='add_to_shopping_list'),
     path('my-list/replace/<int:item_pk>/', views.replace_with_best_offer, name='replace_with_best_offer'),
+    path('my-list/toggle/<int:item_pk>/', views.toggle_shopping_list_item, name='toggle_shopping_list_item'),
     path('my-list/remove/<int:item_pk>/', views.remove_from_shopping_list, name='remove_from_shopping_list'),
     path('search/', views.product_search_view, name='product_search'),
     path('products/', views.product_search_view, name='products'),

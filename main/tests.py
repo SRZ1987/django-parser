@@ -50,6 +50,8 @@ class MainCatalogTests(TestCase):
         quantity_price=None,
         quantity_price_min_quantity=None,
         description="Compact drill for home projects.",
+        image_url="https://example.com/image.jpg",
+        product_url="https://example.com/product",
         is_active=True,
         is_available=True,
     ):
@@ -75,8 +77,8 @@ class MainCatalogTests(TestCase):
             quantity_price=quantity_price,
             quantity_price_min_quantity=quantity_price_min_quantity,
             currency="EUR",
-            image_url="https://example.com/image.jpg",
-            product_url="https://example.com/product",
+            image_url=image_url,
+            product_url=product_url,
             is_active=is_active,
             is_available=is_available,
         )
@@ -287,6 +289,7 @@ class MainCatalogTests(TestCase):
             brand="Makita",
             model="DDF482Z",
             price=Decimal("120.00"),
+            product_url="https://espak.example/makita-ddf482z",
         )
         cheaper = self.create_offer(
             name="Akutrell Makita DDF482Z",
@@ -298,18 +301,118 @@ class MainCatalogTests(TestCase):
             brand="Makita",
             model="DDF482Z",
             price=Decimal("105.00"),
+            product_url="https://depo.example/makita-ddf482z",
         )
         item = add_offer_to_shopping_list(user, source)
         self.client.force_login(user)
 
         response = self.client.get(reverse("shopping_list"))
 
-        self.assertContains(response, "Добавлено из")
-        self.assertContains(response, "<strong>ESPAK</strong>", html=True)
+        self.assertContains(response, "Выбрано в ESPAK")
         self.assertContains(response, "В DEPO дешевле на 15.00 EUR")
-        self.assertContains(response, "Лучше купить в DEPO — 105.00 EUR")
+        self.assertContains(response, "Открыть в ESPAK")
+        self.assertContains(response, "Открыть в DEPO")
         self.assertContains(response, reverse("replace_with_best_offer", args=[item.pk]))
-        self.assertContains(response, cheaper.product_url)
+        self.assertContains(response, source.product_url, count=2)
+        self.assertContains(response, cheaper.product_url, count=2)
+
+    def test_purchase_plan_groups_selected_items_by_source_shop(self):
+        user = self.create_user()
+        first_espak = self.create_offer(
+            name="Makita drill",
+            sku="ESPAK-GROUP-1",
+            barcode="GROUP-EAN-1",
+            external_id="espak-group-1",
+            price=Decimal("10.00"),
+        )
+        second_espak = self.create_offer(
+            name="Bosch saw",
+            sku="ESPAK-GROUP-2",
+            barcode="GROUP-EAN-2",
+            external_id="espak-group-2",
+            price=Decimal("20.00"),
+        )
+        depo = self.create_offer(
+            name="Garden hose",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-GROUP-1",
+            barcode="GROUP-EAN-3",
+            external_id="depo-group-1",
+            price=Decimal("5.00"),
+        )
+        for offer in (first_espak, second_espak, depo):
+            add_offer_to_shopping_list(user, offer)
+
+        plan = build_purchase_plan(user.shopping_list)
+        groups = {group.shop.code: group for group in plan.groups}
+
+        self.assertEqual([group.shop.code for group in plan.groups], ["depo", "espak"])
+        self.assertEqual(len(groups["espak"].rows), 2)
+        self.assertEqual(groups["espak"].selected_total, Decimal("30.00"))
+        self.assertEqual(len(groups["depo"].rows), 1)
+        self.assertEqual(groups["depo"].selected_total, Decimal("5.00"))
+
+    def test_user_can_toggle_purchased_state(self):
+        user = self.create_user()
+        item = add_offer_to_shopping_list(user, self.create_offer(name="Makita drill"))
+        self.client.force_login(user)
+
+        response = self.client.post(reverse("toggle_shopping_list_item", args=[item.pk]))
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        item.refresh_from_db()
+        self.assertTrue(item.is_purchased)
+
+        self.client.post(reverse("toggle_shopping_list_item", args=[item.pk]))
+        item.refresh_from_db()
+        self.assertFalse(item.is_purchased)
+
+    def test_user_cannot_toggle_another_users_item(self):
+        owner = self.create_user("purchase-owner")
+        other = self.create_user("purchase-other")
+        item = add_offer_to_shopping_list(owner, self.create_offer(name="Private drill"))
+        self.client.force_login(other)
+
+        response = self.client.post(reverse("toggle_shopping_list_item", args=[item.pk]))
+
+        self.assertEqual(response.status_code, 404)
+        item.refresh_from_db()
+        self.assertFalse(item.is_purchased)
+
+    def test_purchase_plan_remaining_total_excludes_purchased_items(self):
+        user = self.create_user()
+        purchased = add_offer_to_shopping_list(
+            user,
+            self.create_offer(
+                name="Purchased drill",
+                sku="PURCHASED-1",
+                barcode="PURCHASED-EAN-1",
+                external_id="purchased-1",
+                brand="Makita",
+                model="PURCHASED-MODEL",
+                price=Decimal("10.00"),
+            ),
+        )
+        add_offer_to_shopping_list(
+            user,
+            self.create_offer(
+                name="Pending saw",
+                sku="PENDING-1",
+                barcode="PENDING-EAN-1",
+                external_id="pending-1",
+                brand="Bosch",
+                model="PENDING-MODEL",
+                price=Decimal("20.00"),
+            ),
+        )
+        purchased.is_purchased = True
+        purchased.save(update_fields=["is_purchased"])
+
+        plan = build_purchase_plan(user.shopping_list)
+
+        self.assertEqual(plan.total_best_cost, Decimal("30.00"))
+        self.assertEqual(plan.remaining_best_cost, Decimal("20.00"))
 
     def test_user_can_replace_item_with_current_best_offer(self):
         user = self.create_user()

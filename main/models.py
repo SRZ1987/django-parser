@@ -35,6 +35,7 @@ class ShoppingListItem(models.Model):
         on_delete=models.CASCADE,
     )
     name = models.CharField(max_length=500)
+    is_purchased = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

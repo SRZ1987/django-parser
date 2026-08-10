@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.db import transaction
 
-from catalog.models import ProductOffer
+from catalog.models import ProductOffer, Shop
 from catalog.services.product_matching import offers_are_comparable
 from catalog.services.product_search import find_matches
 
@@ -23,10 +23,19 @@ class BestOfferResult:
 
 
 @dataclass(frozen=True)
+class PurchaseShopGroup:
+    shop: Shop
+    rows: list[BestOfferResult]
+    selected_total: Decimal
+
+
+@dataclass(frozen=True)
 class PurchasePlan:
     rows: list[BestOfferResult]
+    groups: list[PurchaseShopGroup]
     total_best_cost: Decimal
     total_source_cost: Decimal
+    remaining_best_cost: Decimal
     potential_saving: Decimal
 
 
@@ -57,6 +66,9 @@ def replace_shopping_list_offer(item, offer):
         .first()
     )
     if existing_item:
+        if item.is_purchased and not existing_item.is_purchased:
+            existing_item.is_purchased = True
+            existing_item.save(update_fields=["is_purchased"])
         item.delete()
         return existing_item
 
@@ -115,21 +127,41 @@ def build_purchase_plan(shopping_list):
             "source_offer__category",
             "source_offer__product",
         )
-        .order_by("name", "id")
+        .order_by("source_offer__shop__name", "name", "id")
     )
     rows = [get_best_offer(item) for item in items]
     total_best_cost = Decimal("0.00")
     total_source_cost = Decimal("0.00")
+    remaining_best_cost = Decimal("0.00")
+    grouped_rows = {}
 
     for row in rows:
+        grouped_rows.setdefault(row.item.source_offer.shop, []).append(row)
         if row.best_offer is None or row.best_price is None:
             continue
         total_best_cost += row.best_price
         total_source_cost += row.source_price or row.best_price
+        if not row.item.is_purchased:
+            remaining_best_cost += row.best_price
+
+    groups = []
+    for shop, shop_rows in grouped_rows.items():
+        groups.append(
+            PurchaseShopGroup(
+                shop=shop,
+                rows=shop_rows,
+                selected_total=sum(
+                    (row.source_price or row.best_price or Decimal("0.00") for row in shop_rows),
+                    Decimal("0.00"),
+                ),
+            )
+        )
 
     return PurchasePlan(
         rows=rows,
+        groups=groups,
         total_best_cost=total_best_cost,
         total_source_cost=total_source_cost,
+        remaining_best_cost=remaining_best_cost,
         potential_saving=sum((row.potential_saving for row in rows), Decimal("0.00")),
     )

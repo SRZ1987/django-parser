@@ -7,125 +7,215 @@
     <section class="catalog-head" aria-labelledby="list-title">
         <p class="eyebrow">Мой список</p>
         <h1 id="list-title">Что выгоднее купить сейчас</h1>
-        <p>Список пересчитывается по свежим предложениям из каталога. После ночного обновления цены и рекомендации обновятся автоматически.</p>
+        <p>Товары собраны по магазинам, в которых вы их выбрали. Более выгодное предложение показано рядом и не заменяет товар без вашего решения.</p>
     </section>
 
     {% if plan.rows %}
-        <section class="purchase-plan">
+        <section class="purchase-plan" aria-labelledby="purchase-plan-title">
             <div class="purchase-plan-summary">
-                <h2>Ваш оптимальный план покупки</h2>
-                <p>Итого по лучшим ценам: <strong>{{ plan.total_best_cost }} EUR</strong></p>
-                <p>Потенциальная экономия: <strong>{{ plan.potential_saving }} EUR</strong></p>
+                <h2 id="purchase-plan-title">План покупки по магазинам</h2>
+                <p>Отмечайте купленные позиции, открывайте выбранный товар или заменяйте его более выгодным предложением.</p>
             </div>
-            <div class="purchase-plan-list" role="list">
+
+            <div class="purchase-shop-groups">
+                {% for group in plan.groups %}
+                    <section class="purchase-shop-group" aria-labelledby="shop-group-{{ group.shop.pk }}">
+                        <header class="purchase-shop-header">
+                            <h3 id="shop-group-{{ group.shop.pk }}">{{ group.shop.name }}</h3>
+                            <span>Позиций: {{ group.rows|length }}</span>
+                        </header>
+
+                        <ol class="purchase-shop-list">
+                            {% for row in group.rows %}
+                                {% with item=row.item offer=row.best_offer source=row.item.source_offer %}
+                                    <li class="purchase-product-row{% if item.is_purchased %} is-purchased{% endif %}">
+                                        <span class="purchase-row-number" aria-hidden="true">{{ forloop.counter }}</span>
+
+                                        <article class="plan-offer plan-source-offer">
+                                            <a class="plan-offer-image" href="{% url 'offer_detail' source.pk %}" aria-label="Подробнее: {{ item.name }}">
+                                                {% if source.image_url %}
+                                                    <img src="{{ source.image_url }}" alt="" loading="lazy">
+                                                {% else %}
+                                                    <span>Нет фото</span>
+                                                {% endif %}
+                                            </a>
+                                            <div class="plan-offer-info">
+                                                <span class="plan-offer-label">Выбрано в {{ source.shop.name }}</span>
+                                                <h4>{{ item.name }}</h4>
+                                                {% if row.source_price %}
+                                                    <strong class="plan-offer-price">{{ row.source_price }} {{ source.currency }}</strong>
+                                                {% else %}
+                                                    <span class="plan-price-missing">Цена не указана</span>
+                                                {% endif %}
+                                                {% if source.product_url %}
+                                                    <a class="plan-text-link" href="{{ source.product_url }}" target="_blank" rel="noopener noreferrer">Открыть в {{ source.shop.name }}</a>
+                                                {% else %}
+                                                    <a class="plan-text-link" href="{% url 'offer_detail' source.pk %}">Открыть выбранный товар</a>
+                                                {% endif %}
+                                            </div>
+                                        </article>
+
+                                        {% if offer and row.potential_saving %}
+                                            <article class="plan-offer plan-cheaper-offer">
+                                                <a class="plan-offer-image" href="{% url 'offer_detail' offer.pk %}" aria-label="Подробнее: {{ offer.original_name }}">
+                                                    {% if offer.image_url %}
+                                                        <img src="{{ offer.image_url }}" alt="" loading="lazy">
+                                                    {% else %}
+                                                        <span>Нет фото</span>
+                                                    {% endif %}
+                                                </a>
+                                                <div class="plan-offer-info">
+                                                    <span class="plan-offer-label">В {{ offer.shop.name }} дешевле на {{ row.potential_saving }} {{ offer.currency }}</span>
+                                                    <h4>{{ offer.original_name }}</h4>
+                                                    <strong class="plan-offer-price">{{ row.best_price }} {{ offer.currency }}</strong>
+                                                    <div class="plan-offer-actions">
+                                                        {% if offer.product_url %}
+                                                            <a class="plan-text-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">Открыть в {{ offer.shop.name }}</a>
+                                                        {% else %}
+                                                            <a class="plan-text-link" href="{% url 'offer_detail' offer.pk %}">Открыть дешёвый товар</a>
+                                                        {% endif %}
+                                                        <form method="post" action="{% url 'replace_with_best_offer' item.pk %}">
+                                                            {% csrf_token %}
+                                                            <button class="plan-replace-button" type="submit">Заменить</button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </article>
+                                        {% else %}
+                                            <div class="plan-best-state">
+                                                <strong>Замена не нужна</strong>
+                                                {% if offer %}
+                                                    <span>Лучшая цена уже в {{ source.shop.name }}</span>
+                                                {% else %}
+                                                    <span>Других доступных предложений нет</span>
+                                                {% endif %}
+                                            </div>
+                                        {% endif %}
+
+                                        <div class="purchase-row-total">
+                                            <span>Сейчас</span>
+                                            {% if row.source_price %}
+                                                <strong>{{ row.source_price }} {{ source.currency }}</strong>
+                                            {% else %}
+                                                <strong>—</strong>
+                                            {% endif %}
+                                            {% if offer and row.potential_saving %}
+                                                <small>После замены {{ row.best_price }} {{ offer.currency }}</small>
+                                            {% endif %}
+                                            <form method="post" action="{% url 'toggle_shopping_list_item' item.pk %}">
+                                                {% csrf_token %}
+                                                <button class="purchase-toggle" type="submit" aria-pressed="{% if item.is_purchased %}true{% else %}false{% endif %}">
+                                                    <span aria-hidden="true">✓</span>
+                                                    {% if item.is_purchased %}Куплено{% else %}Отметить купленным{% endif %}
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </li>
+                                {% endwith %}
+                            {% endfor %}
+                        </ol>
+
+                        <footer class="purchase-shop-total">
+                            <span>Сейчас выбрано в {{ group.shop.name }}</span>
+                            <strong>{{ group.selected_total }} EUR</strong>
+                        </footer>
+                    </section>
+                {% endfor %}
+            </div>
+
+            <footer class="purchase-plan-total">
+                <div>
+                    <span>Итого сейчас</span>
+                    <strong>{{ plan.total_source_cost }} EUR</strong>
+                </div>
+                <div>
+                    <span>После замен</span>
+                    <strong>{{ plan.total_best_cost }} EUR</strong>
+                </div>
+                <div>
+                    <span>Осталось купить</span>
+                    <strong>{{ plan.remaining_best_cost }} EUR</strong>
+                </div>
+                <div class="purchase-saving-total">
+                    <span>Можно сэкономить</span>
+                    <strong>{{ plan.potential_saving }} EUR</strong>
+                </div>
+            </footer>
+        </section>
+
+        <section class="selected-list-section" aria-labelledby="selected-list-title">
+            <div class="selected-list-heading">
+                <h2 id="selected-list-title">Выбранные товары</h2>
+                <p>Здесь всегда показан магазин, из которого товар был добавлен.</p>
+            </div>
+            <div class="list-items">
                 {% for row in plan.rows %}
                     {% with item=row.item offer=row.best_offer source=row.item.source_offer %}
-                    <article class="purchase-plan-row" role="listitem">
-                        <div class="plan-source">
-                            <span class="plan-store">{{ source.shop.name }}</span>
-                            <a href="{% url 'offer_detail' source.pk %}">{{ item.name }}</a>
-                            {% if row.source_price %}
-                                <span>Выбрано за {{ row.source_price }} {{ source.currency }}</span>
-                            {% else %}
-                                <span>Цена выбранного товара не указана</span>
-                            {% endif %}
-                        </div>
-
-                        <div class="plan-result">
-                            {% if offer and row.potential_saving %}
-                                <strong>В {{ offer.shop.name }} дешевле на {{ row.potential_saving }} {{ offer.currency }}</strong>
-                                <span>{{ offer.original_name }} — {{ row.best_price }} {{ offer.currency }}</span>
-                            {% elif offer %}
-                                <strong>Лучшая цена уже в {{ source.shop.name }}</strong>
-                                <span>{{ row.best_price }} {{ offer.currency }}</span>
-                            {% else %}
-                                <strong>Нет доступных предложений</strong>
-                            {% endif %}
-                        </div>
-
-                        {% if offer %}
-                            <div class="plan-row-actions">
-                                {% if offer.product_url %}
-                                    <a class="plan-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">Открыть товар</a>
+                        <article class="list-item-card{% if item.is_purchased %} is-purchased{% endif %}">
+                            <a class="product-image" href="{% url 'offer_detail' source.pk %}">
+                                {% if source.image_url %}
+                                    <img src="{{ source.image_url }}" alt="{{ item.name }}" loading="lazy">
                                 {% else %}
-                                    <a class="plan-link" href="{% url 'offer_detail' offer.pk %}">Открыть товар</a>
+                                    <span>Нет фото</span>
                                 {% endif %}
-                                {% if row.potential_saving %}
-                                    <form method="post" action="{% url 'replace_with_best_offer' item.pk %}">
-                                        {% csrf_token %}
-                                        <button class="plan-replace-button" type="submit">Заменить</button>
-                                    </form>
+                            </a>
+
+                            <div class="list-item-main">
+                                <h2>{{ item.name }}</h2>
+                                <p class="source-offer-line">
+                                    Добавлено из <strong>{{ source.shop.name }}</strong>
+                                    {% if row.source_price %} — {{ row.source_price }} {{ source.currency }}{% endif %}
+                                </p>
+                                {% if offer %}
+                                    {% if row.potential_saving %}
+                                        <p class="recommendation">Дешевле в {{ offer.shop.name }} — {{ row.best_price }} {{ offer.currency }}</p>
+                                        <p class="saving-line">Экономия после замены: {{ row.potential_saving }} {{ offer.currency }}</p>
+                                    {% elif row.other_offers %}
+                                        <p class="recommendation">Выбранное предложение уже по минимальной цене.</p>
+                                    {% else %}
+                                        <p class="recommendation">Текущая цена — {{ row.best_price }} {{ offer.currency }}</p>
+                                    {% endif %}
+                                    {% if row.other_offers %}
+                                        <div class="other-offers">
+                                            <span>Другие магазины:</span>
+                                            {% for other in row.other_offers|slice:":4" %}
+                                                <span>{{ other.shop.name }} — {{ other.current_price }} {{ other.currency }}</span>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                {% else %}
+                                    <p class="recommendation">Сейчас нет доступных предложений</p>
                                 {% endif %}
                             </div>
-                        {% endif %}
-                    </article>
+
+                            <div class="list-item-actions">
+                                <div class="list-item-primary-actions">
+                                    {% if source.product_url %}
+                                        <a class="store-link" href="{{ source.product_url }}" target="_blank" rel="noopener noreferrer">Открыть в {{ source.shop.name }}</a>
+                                    {% else %}
+                                        <a class="store-link" href="{% url 'offer_detail' source.pk %}">Открыть выбранный товар</a>
+                                    {% endif %}
+                                    {% if offer and row.potential_saving %}
+                                        {% if offer.product_url %}
+                                            <a class="list-alternative-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">Открыть дешевле в {{ offer.shop.name }}</a>
+                                        {% else %}
+                                            <a class="list-alternative-link" href="{% url 'offer_detail' offer.pk %}">Открыть дешёвый товар</a>
+                                        {% endif %}
+                                        <form method="post" action="{% url 'replace_with_best_offer' item.pk %}">
+                                            {% csrf_token %}
+                                            <button class="list-button" type="submit">Заменить товар</button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                                <form method="post" action="{% url 'remove_from_shopping_list' item.pk %}">
+                                    {% csrf_token %}
+                                    <button class="list-button list-button-muted" type="submit">Удалить</button>
+                                </form>
+                            </div>
+                        </article>
                     {% endwith %}
                 {% endfor %}
             </div>
-        </section>
-
-        <section class="list-items" aria-label="Товары в списке">
-            {% for row in plan.rows %}
-                {% with item=row.item offer=row.best_offer %}
-                    <article class="list-item-card">
-                        <a class="product-image" href="{% url 'offer_detail' item.source_offer.pk %}">
-                            {% if item.source_offer.image_url %}
-                                <img src="{{ item.source_offer.image_url }}" alt="{{ item.name }}" loading="lazy">
-                            {% else %}
-                                <span>Нет фото</span>
-                            {% endif %}
-                        </a>
-
-                        <div class="list-item-main">
-                            <h2>{{ item.name }}</h2>
-                            <p class="source-offer-line">
-                                Добавлено из <strong>{{ item.source_offer.shop.name }}</strong>
-                                {% if row.source_price %} — {{ row.source_price }} {{ item.source_offer.currency }}{% endif %}
-                            </p>
-                            {% if offer %}
-                                {% if row.potential_saving %}
-                                    <p class="recommendation">Лучше купить в {{ offer.shop.name }} — {{ row.best_price }} {{ offer.currency }}</p>
-                                    <p class="saving-line">Экономия после замены: {{ row.potential_saving }} {{ offer.currency }}</p>
-                                {% elif row.other_offers %}
-                                    <p class="recommendation">Выбранное предложение уже по минимальной цене.</p>
-                                {% else %}
-                                    <p class="recommendation">Текущая цена — {{ row.best_price }} {{ offer.currency }}</p>
-                                {% endif %}
-                                {% if row.other_offers %}
-                                    <div class="other-offers">
-                                        <span>Другие магазины:</span>
-                                        {% for other in row.other_offers|slice:":4" %}
-                                            <span>{{ other.shop.name }} — {{ other.current_price }} {{ other.currency }}</span>
-                                        {% endfor %}
-                                    </div>
-                                {% endif %}
-                            {% else %}
-                                <p class="recommendation">Сейчас нет доступных предложений</p>
-                            {% endif %}
-                        </div>
-
-                        <div class="list-item-actions">
-                            <div class="list-item-primary-actions">
-                                {% if offer and offer.product_url %}
-                                    <a class="store-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">Перейти в {{ offer.shop.name }}</a>
-                                {% elif offer %}
-                                    <a class="store-link" href="{% url 'offer_detail' offer.pk %}">Открыть товар</a>
-                                {% endif %}
-                                {% if offer and row.potential_saving %}
-                                    <form method="post" action="{% url 'replace_with_best_offer' item.pk %}">
-                                        {% csrf_token %}
-                                        <button class="list-button" type="submit">Заменить товар</button>
-                                    </form>
-                                {% endif %}
-                            </div>
-                            <form method="post" action="{% url 'remove_from_shopping_list' item.pk %}">
-                                {% csrf_token %}
-                                <button class="list-button list-button-muted" type="submit">Удалить</button>
-                            </form>
-                        </div>
-                    </article>
-                {% endwith %}
-            {% endfor %}
         </section>
     {% else %}
         <section class="empty-state">
