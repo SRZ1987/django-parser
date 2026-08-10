@@ -1,5 +1,6 @@
 import uuid
 from decimal import Decimal
+from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -382,6 +383,37 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, f"http://127.0.0.1{shared_path}")
         self.assertContains(response, f"http://127.0.0.1{print_path}")
         self.assertContains(response, "Печать / PDF")
+
+    def test_shopping_list_contains_popular_messenger_share_links(self):
+        user = self.create_user()
+        offer = self.create_offer(name="Makita drill")
+        add_offer_to_shopping_list(user, offer)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("shopping_list"), HTTP_HOST="127.0.0.1")
+        shared_path = reverse("shared_shopping_list", args=[user.shopping_list.share_token])
+        shared_url = f"http://127.0.0.1{shared_path}"
+        links = {
+            messenger["name"]: messenger["url"]
+            for messenger in response.context["messenger_share_links"]
+        }
+
+        self.assertEqual(
+            set(links),
+            {"WhatsApp", "Telegram", "Messenger", "Viber", "SMS / iMessage"},
+        )
+        self.assertIn(shared_url, parse_qs(urlparse(links["WhatsApp"]).query)["text"][0])
+        self.assertEqual(
+            parse_qs(urlparse(links["Telegram"]).query)["url"][0],
+            shared_url,
+        )
+        self.assertEqual(
+            parse_qs(urlparse(links["Messenger"]).query)["link"][0],
+            shared_url,
+        )
+        self.assertIn(shared_url, parse_qs(urlparse(links["Viber"]).query)["text"][0])
+        self.assertIn(shared_url, parse_qs(urlparse(links["SMS / iMessage"]).query)["body"][0])
+        self.assertContains(response, "Мессенджеры")
 
     def test_user_can_clear_entire_own_list(self):
         user = self.create_user("list-owner")

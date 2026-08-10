@@ -546,11 +546,40 @@ def build_shopping_list_context(request, user_list, *, editable):
     print_url = request.build_absolute_uri(
         reverse("print_shopping_list", args=[user_list.share_token])
     )
+    share_title = "План покупок Tannenberg"
+    share_message = f"{share_title}\n{shared_url}"
     email_query = urlencode(
         {
-            "subject": "План покупок Tannenberg",
+            "subject": share_title,
             "body": f"План покупок по магазинам:\n{shared_url}",
         }
+    )
+    messenger_share_links = (
+        {
+            "name": "WhatsApp",
+            "url": f"https://wa.me/?{urlencode({'text': share_message})}",
+            "opens_new_tab": True,
+        },
+        {
+            "name": "Telegram",
+            "url": f"https://t.me/share/url?{urlencode({'url': shared_url, 'text': share_title})}",
+            "opens_new_tab": True,
+        },
+        {
+            "name": "Messenger",
+            "url": f"fb-messenger://share/?{urlencode({'link': shared_url})}",
+            "opens_new_tab": False,
+        },
+        {
+            "name": "Viber",
+            "url": f"viber://forward?{urlencode({'text': share_message})}",
+            "opens_new_tab": False,
+        },
+        {
+            "name": "SMS / iMessage",
+            "url": f"sms:?{urlencode({'body': share_message})}",
+            "opens_new_tab": False,
+        },
     )
     return {
         "shopping_list": user_list,
@@ -559,6 +588,7 @@ def build_shopping_list_context(request, user_list, *, editable):
         "shared_url": shared_url,
         "print_url": print_url,
         "email_share_url": f"mailto:?{email_query}",
+        "messenger_share_links": messenger_share_links,
     }
 
 
