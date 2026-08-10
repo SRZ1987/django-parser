@@ -7,6 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
 
 from catalog.models import Category, ProductOffer, Shop
 from catalog.services.normalization import normalize_product_name, tokenize
@@ -18,7 +19,13 @@ from catalog.services.product_search import (
 )
 
 from .models import ShoppingListItem
-from .services import add_offer_to_shopping_list, build_purchase_plan, get_or_create_shopping_list
+from .services import (
+    add_offer_to_shopping_list,
+    build_purchase_plan,
+    get_best_offer,
+    get_or_create_shopping_list,
+    replace_shopping_list_offer,
+)
 
 
 CATALOG_PAGE_SIZE = 24
@@ -334,6 +341,26 @@ def remove_from_shopping_list(request, item_pk):
     if request.method == "POST":
         item = get_object_or_404(ShoppingListItem, pk=item_pk, shopping_list__user=request.user)
         item.delete()
+    return redirect("shopping_list")
+
+
+@login_required
+@require_POST
+def replace_with_best_offer(request, item_pk):
+    item = get_object_or_404(
+        ShoppingListItem.objects.select_related(
+            "shopping_list",
+            "source_offer",
+            "source_offer__shop",
+            "source_offer__category",
+            "source_offer__product",
+        ),
+        pk=item_pk,
+        shopping_list__user=request.user,
+    )
+    result = get_best_offer(item)
+    if result.best_offer and result.best_offer.pk != item.source_offer_id and result.potential_saving > 0:
+        replace_shopping_list_offer(item, result.best_offer)
     return redirect("shopping_list")
 
 

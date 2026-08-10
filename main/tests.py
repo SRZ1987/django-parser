@@ -279,6 +279,119 @@ class MainCatalogTests(TestCase):
         self.assertRedirects(response, reverse("shopping_list"))
         self.assertFalse(ShoppingListItem.objects.filter(pk=item.pk).exists())
 
+    def test_shopping_list_shows_source_store_and_cheaper_offer_actions(self):
+        user = self.create_user()
+        source = self.create_offer(
+            name="Makita DDF482Z",
+            barcode="4000000000101",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("120.00"),
+        )
+        cheaper = self.create_offer(
+            name="Akutrell Makita DDF482Z",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-DDF482-LIST",
+            barcode="4000000000101",
+            external_id="depo-ddf482-list",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("105.00"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("shopping_list"))
+
+        self.assertContains(response, "Добавлено из")
+        self.assertContains(response, "<strong>ESPAK</strong>", html=True)
+        self.assertContains(response, "В DEPO дешевле на 15.00 EUR")
+        self.assertContains(response, "Лучше купить в DEPO — 105.00 EUR")
+        self.assertContains(response, reverse("replace_with_best_offer", args=[item.pk]))
+        self.assertContains(response, cheaper.product_url)
+
+    def test_user_can_replace_item_with_current_best_offer(self):
+        user = self.create_user()
+        source = self.create_offer(
+            name="Makita DDF482Z",
+            barcode="4000000000102",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("120.00"),
+        )
+        cheaper = self.create_offer(
+            name="Akutrell Makita DDF482Z",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-DDF482-REPLACE",
+            barcode="4000000000102",
+            external_id="depo-ddf482-replace",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("105.00"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+        self.client.force_login(user)
+
+        response = self.client.post(reverse("replace_with_best_offer", args=[item.pk]))
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        item.refresh_from_db()
+        self.assertEqual(item.source_offer, cheaper)
+        self.assertEqual(item.product, cheaper.product)
+        self.assertEqual(item.name, cheaper.original_name)
+
+    def test_user_cannot_replace_another_users_item(self):
+        owner = self.create_user("replace-owner")
+        other = self.create_user("replace-other")
+        source = self.create_offer(
+            name="Makita DDF482Z",
+            barcode="4000000000103",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("120.00"),
+        )
+        item = add_offer_to_shopping_list(owner, source)
+        self.client.force_login(other)
+
+        response = self.client.post(reverse("replace_with_best_offer", args=[item.pk]))
+
+        self.assertEqual(response.status_code, 404)
+        item.refresh_from_db()
+        self.assertEqual(item.source_offer, source)
+
+    def test_replacing_with_existing_list_offer_does_not_create_duplicate(self):
+        user = self.create_user()
+        source = self.create_offer(
+            name="Makita DDF482Z",
+            barcode="4000000000104",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("120.00"),
+        )
+        cheaper = self.create_offer(
+            name="Akutrell Makita DDF482Z",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-DDF482-EXISTING",
+            barcode="4000000000104",
+            external_id="depo-ddf482-existing",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("105.00"),
+        )
+        source_item = add_offer_to_shopping_list(user, source)
+        existing_item = add_offer_to_shopping_list(user, cheaper)
+        self.client.force_login(user)
+
+        response = self.client.post(reverse("replace_with_best_offer", args=[source_item.pk]))
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        self.assertFalse(ShoppingListItem.objects.filter(pk=source_item.pk).exists())
+        self.assertTrue(ShoppingListItem.objects.filter(pk=existing_item.pk).exists())
+        self.assertEqual(ShoppingListItem.objects.filter(shopping_list__user=user).count(), 1)
+
     def test_catalog_page_opens(self):
         response = self.client.get(reverse("catalog"), HTTP_HOST="127.0.0.1")
 
@@ -870,7 +983,7 @@ class MainCatalogTests(TestCase):
         self.assertEqual(ShoppingListItem.objects.get(pk=item.pk).source_offer, source)
         self.assertEqual(result.best_price, Decimal("99.00"))
 
-    def test_purchase_plan_groups_items_by_cheapest_shop_and_counts_saving(self):
+    def test_purchase_plan_selects_cheapest_shops_and_counts_saving(self):
         user = self.create_user()
         bauhof = Shop.objects.create(name="Bauhof", code="bauhof")
         first = self.create_offer(name="Makita DDF482Z", barcode="4000000000001", brand="Makita", model="DDF482Z", price=Decimal("120.00"))
@@ -910,8 +1023,10 @@ class MainCatalogTests(TestCase):
 
         plan = build_purchase_plan(user.shopping_list)
 
-        self.assertIn(first_cheapest.shop, plan.grouped_by_shop)
-        self.assertIn(second_cheapest.shop, plan.grouped_by_shop)
+        self.assertEqual(
+            {row.best_offer.shop for row in plan.rows},
+            {first_cheapest.shop, second_cheapest.shop},
+        )
         self.assertEqual(plan.total_best_cost, Decimal("140.00"))
         self.assertEqual(plan.total_source_cost, Decimal("170.00"))
         self.assertEqual(plan.potential_saving, Decimal("30.00"))
