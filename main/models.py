@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 
@@ -8,6 +10,7 @@ class ShoppingList(models.Model):
         related_name="shopping_list",
         on_delete=models.CASCADE,
     )
+    share_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

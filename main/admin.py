@@ -14,7 +14,7 @@ class ShoppingListItemInline(admin.TabularInline):
 class ShoppingListAdmin(admin.ModelAdmin):
     list_display = ["user", "items_count", "updated_at"]
     search_fields = ["user__username", "user__email"]
-    readonly_fields = ["created_at", "updated_at"]
+    readonly_fields = ["share_token", "created_at", "updated_at"]
     inlines = [ShoppingListItemInline]
 
     def items_count(self, obj):

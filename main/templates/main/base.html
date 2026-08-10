@@ -5,13 +5,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Price Compare{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'main/css/style.css' %}?v=7">
+    <link rel="stylesheet" href="{% static 'main/css/style.css' %}?v=8">
     <link rel="stylesheet" href="{% static 'main/css/barcode-scanner.css' %}?v=1">
     <script src="{% static 'main/js/menu.js' %}?v=1" defer></script>
     <script src="{% static 'main/js/search-suggestions.js' %}?v=2" defer></script>
     <script src="{% static 'main/js/barcode-scanner.js' %}?v=1" type="module"></script>
+    {% block extra_scripts %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
     <header class="site-header">
         <div class="header-container">
             <a class="brand" href="{% url 'home' %}" aria-label="Price Compare">

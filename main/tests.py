@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -313,8 +314,93 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, "Открыть в ESPAK")
         self.assertContains(response, "Открыть в DEPO")
         self.assertContains(response, reverse("replace_with_best_offer", args=[item.pk]))
-        self.assertContains(response, source.product_url, count=2)
-        self.assertContains(response, cheaper.product_url, count=2)
+        self.assertContains(response, reverse("remove_from_shopping_list", args=[item.pk]))
+        self.assertContains(response, source.product_url, count=1)
+        self.assertContains(response, cheaper.product_url, count=1)
+        self.assertNotContains(response, "Выбранные товары")
+
+    def test_shopping_list_contains_email_share_copy_and_print_actions(self):
+        user = self.create_user()
+        offer = self.create_offer(name="Makita drill")
+        add_offer_to_shopping_list(user, offer)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("shopping_list"), HTTP_HOST="127.0.0.1")
+        shared_path = reverse("shared_shopping_list", args=[user.shopping_list.share_token])
+        print_path = reverse("print_shopping_list", args=[user.shopping_list.share_token])
+
+        self.assertContains(response, "mailto:?")
+        self.assertContains(response, "data-share-plan")
+        self.assertContains(response, "data-copy-plan")
+        self.assertContains(response, f"http://127.0.0.1{shared_path}")
+        self.assertContains(response, f"http://127.0.0.1{print_path}")
+        self.assertContains(response, "Печать / PDF")
+
+    def test_shared_shopping_list_is_public_and_read_only(self):
+        user = self.create_user("private-share-owner")
+        offer = self.create_offer(name="Shared Makita drill")
+        item = add_offer_to_shopping_list(user, offer)
+
+        response = self.client.get(
+            reverse("shared_shopping_list", args=[user.shopping_list.share_token]),
+            HTTP_HOST="127.0.0.1",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Shared Makita drill")
+        self.assertNotContains(response, "private-share-owner")
+        self.assertNotContains(response, reverse("remove_from_shopping_list", args=[item.pk]))
+        self.assertNotContains(response, reverse("toggle_shopping_list_item", args=[item.pk]))
+        self.assertNotContains(response, reverse("replace_with_best_offer", args=[item.pk]))
+
+    def test_unknown_shared_shopping_list_returns_404(self):
+        response = self.client.get(
+            reverse("shared_shopping_list", args=[uuid.uuid4()]),
+            HTTP_HOST="127.0.0.1",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_print_shopping_list_contains_required_product_fields(self):
+        user = self.create_user()
+        offer = self.create_offer(
+            name="Printable Makita drill",
+            sku="PRINT-SKU-42",
+            barcode="4006381333931",
+            price=Decimal("42.50"),
+            image_url="https://example.com/print-image.jpg",
+        )
+        add_offer_to_shopping_list(user, offer)
+
+        response = self.client.get(
+            reverse("print_shopping_list", args=[user.shopping_list.share_token]),
+            HTTP_HOST="127.0.0.1",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Printable Makita drill")
+        self.assertContains(response, "PRINT-SKU-42")
+        self.assertContains(response, "4006381333931")
+        self.assertContains(response, "42.50 EUR")
+        self.assertContains(response, "https://example.com/print-image.jpg")
+        self.assertContains(response, "shopping-list-print.css")
+        self.assertContains(response, "print-shopping-list.js")
+
+    def test_shopping_lists_receive_distinct_share_tokens(self):
+        first_user = self.create_user("share-first")
+        second_user = self.create_user("share-second")
+        add_offer_to_shopping_list(first_user, self.create_offer(name="First shared product"))
+        add_offer_to_shopping_list(
+            second_user,
+            self.create_offer(
+                name="Second shared product",
+                sku="SHARE-2",
+                barcode="SHARE-EAN-2",
+                external_id="share-2",
+            ),
+        )
+
+        self.assertNotEqual(first_user.shopping_list.share_token, second_user.shopping_list.share_token)
 
     def test_purchase_plan_groups_selected_items_by_source_shop(self):
         user = self.create_user()

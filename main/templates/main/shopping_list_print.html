@@ -1,0 +1,74 @@
+{% load static %}
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>План покупок</title>
+    <link rel="stylesheet" href="{% static 'main/css/shopping-list-print.css' %}?v=1">
+    <script src="{% static 'main/js/print-shopping-list.js' %}?v=1" defer></script>
+</head>
+<body>
+    <main class="print-plan">
+        <header class="print-header">
+            <div>
+                <span class="print-brand">Price Compare</span>
+                <h1>План покупок</h1>
+            </div>
+            <div class="print-overall-total">
+                <span>Общая сумма</span>
+                <strong>{{ plan.total_source_cost }} EUR</strong>
+            </div>
+        </header>
+
+        {% for group in plan.groups %}
+            <section class="print-shop">
+                <header class="print-shop-header">
+                    <h2>{{ group.shop.name }}</h2>
+                    <strong>{{ group.selected_total }} EUR</strong>
+                </header>
+                <ol class="print-product-list">
+                    {% for row in group.rows %}
+                        {% with item=row.item source=row.item.source_offer offer=row.best_offer %}
+                            <li class="print-product{% if item.is_purchased %} is-purchased{% endif %}">
+                                <span class="print-number">{{ forloop.counter }}</span>
+                                <div class="print-image">
+                                    {% if source.image_url %}
+                                        <img src="{{ source.image_url }}" alt="">
+                                    {% else %}
+                                        <span>Нет фото</span>
+                                    {% endif %}
+                                </div>
+                                <div class="print-product-main">
+                                    <h3>{{ item.name }}</h3>
+                                    <dl>
+                                        <div><dt>SKU</dt><dd>{{ source.sku|default:"—" }}</dd></div>
+                                        <div><dt>Штрихкод</dt><dd>{{ source.barcode|default:"—" }}</dd></div>
+                                    </dl>
+                                    {% if offer and row.potential_saving %}
+                                        <p>Дешевле в {{ offer.shop.name }}: {{ row.best_price }} {{ offer.currency }} (−{{ row.potential_saving }} {{ offer.currency }})</p>
+                                    {% endif %}
+                                </div>
+                                <div class="print-price">
+                                    {% if row.source_price %}
+                                        <strong>{{ row.source_price }} {{ source.currency }}</strong>
+                                    {% else %}
+                                        <span>Цена не указана</span>
+                                    {% endif %}
+                                    {% if item.is_purchased %}<small>Куплено</small>{% endif %}
+                                </div>
+                            </li>
+                        {% endwith %}
+                    {% endfor %}
+                </ol>
+            </section>
+        {% endfor %}
+
+        <footer class="print-summary">
+            <div><span>Итого сейчас</span><strong>{{ plan.total_source_cost }} EUR</strong></div>
+            <div><span>После замен</span><strong>{{ plan.total_best_cost }} EUR</strong></div>
+            <div><span>Экономия</span><strong>{{ plan.potential_saving }} EUR</strong></div>
+        </footer>
+    </main>
+</body>
+</html>

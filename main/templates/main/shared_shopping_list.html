@@ -1,0 +1,25 @@
+{% extends 'main/base.html' %}
+{% load static %}
+
+{% block title %}План покупок{% endblock %}
+{% block body_class %}shopping-list-page{% endblock %}
+{% block extra_scripts %}<script src="{% static 'main/js/shopping-list-share.js' %}?v=1" type="module"></script>{% endblock %}
+
+{% block content %}
+<main class="page-shell list-shell">
+    <section class="catalog-head" aria-labelledby="list-title">
+        <p class="eyebrow">Price Compare</p>
+        <h1 id="list-title">План покупок</h1>
+        <p>Товары и актуальные цены сгруппированы по магазинам.</p>
+    </section>
+
+    {% if plan.rows %}
+        {% include 'main/includes/shopping_list_actions.html' %}
+        {% include 'main/includes/purchase_plan.html' %}
+    {% else %}
+        <section class="empty-state">
+            <h2>Список пуст</h2>
+        </section>
+    {% endif %}
+</main>
+{% endblock %}

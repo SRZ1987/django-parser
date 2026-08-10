@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
@@ -18,7 +20,7 @@ from catalog.services.product_search import (
     search_products,
 )
 
-from .models import ShoppingListItem
+from .models import ShoppingList, ShoppingListItem
 from .services import (
     add_offer_to_shopping_list,
     build_purchase_plan,
@@ -321,8 +323,32 @@ def offer_detail(request, pk):
 @login_required
 def shopping_list(request):
     user_list = get_or_create_shopping_list(request.user)
-    plan = build_purchase_plan(user_list)
-    return render(request, "main/shopping_list.html", {"shopping_list": user_list, "plan": plan})
+    return render(
+        request,
+        "main/shopping_list.html",
+        build_shopping_list_context(request, user_list, editable=True),
+    )
+
+
+def shared_shopping_list(request, share_token):
+    user_list = get_object_or_404(ShoppingList, share_token=share_token)
+    return render(
+        request,
+        "main/shared_shopping_list.html",
+        build_shopping_list_context(request, user_list, editable=False),
+    )
+
+
+def print_shopping_list(request, share_token):
+    user_list = get_object_or_404(ShoppingList, share_token=share_token)
+    return render(
+        request,
+        "main/shopping_list_print.html",
+        {
+            "shopping_list": user_list,
+            "plan": build_purchase_plan(user_list),
+        },
+    )
 
 
 @login_required
@@ -383,6 +409,29 @@ def get_list_offer_ids(user):
     return set(
         ShoppingListItem.objects.filter(shopping_list__user=user).values_list("source_offer_id", flat=True)
     )
+
+
+def build_shopping_list_context(request, user_list, *, editable):
+    shared_url = request.build_absolute_uri(
+        reverse("shared_shopping_list", args=[user_list.share_token])
+    )
+    print_url = request.build_absolute_uri(
+        reverse("print_shopping_list", args=[user_list.share_token])
+    )
+    email_query = urlencode(
+        {
+            "subject": "План покупок Price Compare",
+            "body": f"План покупок по магазинам:\n{shared_url}",
+        }
+    )
+    return {
+        "shopping_list": user_list,
+        "plan": build_purchase_plan(user_list),
+        "editable": editable,
+        "shared_url": shared_url,
+        "print_url": print_url,
+        "email_share_url": f"mailto:?{email_query}",
+    }
 
 
 def get_safe_next_url(request, next_url):
