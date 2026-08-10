@@ -136,7 +136,7 @@
                                 {% endif %}
                                 <a class="store-link" href="{% url 'offer_detail' offer.pk %}">Подробнее</a>
                                 {% if offer.product_url %}
-                                    <a class="external-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">
+                                    <a class="external-link" href="{% url 'store_click' offer.pk %}" target="_blank" rel="noopener noreferrer">
                                         В магазин
                                     </a>
                                 {% endif %}

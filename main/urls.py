@@ -8,7 +8,10 @@ urlpatterns = [
     path('accounts/login/', LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('accounts/logout/', LogoutView.as_view(), name='logout'),
     path('accounts/register/', views.register, name='register'),
+    path('accounts/confirm-email/<uidb64>/<token>/', views.confirm_email, name='confirm_email'),
+    path('accounts/resend-confirmation/', views.resend_confirmation, name='resend_confirmation'),
     path('my-list/', views.shopping_list, name='shopping_list'),
+    path('my-list/clear/', views.clear_shopping_list, name='clear_shopping_list'),
     path('my-list/add/<int:offer_pk>/', views.add_to_shopping_list, name='add_to_shopping_list'),
     path('my-list/replace/<int:item_pk>/', views.replace_with_best_offer, name='replace_with_best_offer'),
     path('my-list/toggle/<int:item_pk>/', views.toggle_shopping_list_item, name='toggle_shopping_list_item'),
@@ -19,5 +22,7 @@ urlpatterns = [
     path('products/', views.product_search_view, name='products'),
     path('catalog/', views.catalog_view, name='catalog'),
     path('offer/<int:pk>/', views.offer_detail, name='offer_detail'),
+    path('out/<int:offer_pk>/', views.store_click, name='store_click'),
+    path('statistics/', views.statistics_dashboard, name='statistics_dashboard'),
     path('search/suggestions/', views.search_suggestions, name='search_suggestions'),
 ]

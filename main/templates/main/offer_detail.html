@@ -77,7 +77,7 @@
             {% endif %}
 
             {% if offer.product_url %}
-                <a class="store-link detail-store-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">
+                <a class="store-link detail-store-link" href="{% url 'store_click' offer.pk %}" target="_blank" rel="noopener noreferrer">
                     Открыть в магазине
                 </a>
             {% endif %}

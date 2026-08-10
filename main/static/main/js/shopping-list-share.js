@@ -33,7 +33,7 @@ export class ShoppingListShareController {
 
         try {
             await this.navigator.share({
-            title: "План покупок Tannenberg",
+                title: "План покупок Tannenberg",
                 text: "План покупок по магазинам",
                 url,
             });
@@ -63,6 +63,13 @@ export function initializeShoppingListShare(documentRef = globalThis.document, n
     }
     for (const button of documentRef.querySelectorAll("[data-copy-plan]")) {
         button.addEventListener("click", () => controller.copy(button.dataset.shareUrl));
+    }
+    for (const form of documentRef.querySelectorAll("[data-clear-list-form]")) {
+        form.addEventListener("submit", (event) => {
+            if (!globalThis.confirm("Удалить все товары из списка?")) {
+                event.preventDefault();
+            }
+        });
     }
 
     return controller;

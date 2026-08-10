@@ -7,7 +7,7 @@ from catalog.models import ProductOffer, Shop
 from catalog.services.product_matching import offers_are_comparable
 from catalog.services.product_search import find_matches
 
-from .models import ShoppingList, ShoppingListItem
+from .models import ShoppingList, ShoppingListEvent, ShoppingListItem
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ def get_or_create_shopping_list(user):
 
 def add_offer_to_shopping_list(user, offer):
     shopping_list = get_or_create_shopping_list(user)
-    item, _created = ShoppingListItem.objects.get_or_create(
+    item, created = ShoppingListItem.objects.get_or_create(
         shopping_list=shopping_list,
         source_offer=offer,
         defaults={
@@ -54,11 +54,24 @@ def add_offer_to_shopping_list(user, offer):
             "name": offer.original_name,
         },
     )
+    if created:
+        record_shopping_list_event(user, offer, ShoppingListEvent.EventType.ADDED, item.name)
     return item
+
+
+def record_shopping_list_event(user, offer, event_type, item_name):
+    return ShoppingListEvent.objects.create(
+        user=user,
+        shop=offer.shop if offer else None,
+        offer=offer,
+        event_type=event_type,
+        item_name=item_name,
+    )
 
 
 @transaction.atomic
 def replace_shopping_list_offer(item, offer):
+    user = item.shopping_list.user
     existing_item = (
         ShoppingListItem.objects.select_for_update()
         .filter(shopping_list=item.shopping_list, source_offer=offer)
@@ -70,12 +83,24 @@ def replace_shopping_list_offer(item, offer):
             existing_item.is_purchased = True
             existing_item.save(update_fields=["is_purchased"])
         item.delete()
+        record_shopping_list_event(
+            user,
+            offer,
+            ShoppingListEvent.EventType.REPLACED,
+            existing_item.name,
+        )
         return existing_item
 
     item.source_offer = offer
     item.product = offer.product
     item.name = offer.original_name
     item.save(update_fields=["source_offer", "product", "name"])
+    record_shopping_list_event(
+        user,
+        offer,
+        ShoppingListEvent.EventType.REPLACED,
+        item.name,
+    )
     return item
 
 

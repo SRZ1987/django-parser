@@ -1,0 +1,114 @@
+{% extends 'main/base.html' %}
+
+{% block title %}Статистика — Tannenberg{% endblock %}
+
+{% block content %}
+<main class="page-shell statistics-shell">
+    <header class="compact-page-head statistics-head">
+        <div>
+            <h1>Статистика</h1>
+            <p>Посещения, регистрации, переходы в магазины и списки покупок.</p>
+        </div>
+        <a class="list-action-button" href="{% url 'admin:index' %}">Django Admin</a>
+    </header>
+
+    <section class="statistics-summary" aria-label="Общая статистика">
+        <article><span>Посетителей сегодня</span><strong>{{ today.visitors }}</strong><small>{{ today.pageviews }} просмотров</small></article>
+        <article><span>Уникальных посетителей</span><strong>{{ visit_totals.unique_visitors }}</strong><small>{{ visit_totals.pageviews }} просмотров всего</small></article>
+        <article><span>Пользователей</span><strong>{{ registered_users }}</strong><small>{{ confirmed_users }} с подтверждённым email</small></article>
+        <article><span>Регистраций за 30 дней</span><strong>{{ registrations_30d }}</strong><small>новых аккаунтов</small></article>
+        <article><span>Переходов в магазины</span><strong>{{ click_totals.total }}</strong><small>{{ click_totals.unique_visitors }} посетителей</small></article>
+        <article><span>Товаров в списках</span><strong>{{ current_list_items }}</strong><small>{{ active_offers }} активных предложений</small></article>
+    </section>
+
+    <section class="statistics-section" aria-labelledby="shops-statistics-title">
+        <div class="statistics-section-head">
+            <h2 id="shops-statistics-title">Магазины</h2>
+            <span>Клики и товары в пользовательских списках</span>
+        </div>
+        <div class="statistics-table-wrap">
+            <table class="statistics-table">
+                <thead>
+                    <tr>
+                        <th>Магазин</th>
+                        <th>Активных товаров</th>
+                        <th>Кликов всего</th>
+                        <th>Кликов за 30 дней</th>
+                        <th>Сейчас в списках</th>
+                        <th>Пользователей со списком</th>
+                        <th>Добавлений за всё время</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for shop in shops %}
+                        <tr>
+                            <th>{{ shop.name }}</th>
+                            <td>{{ shop.active_offers_count }}</td>
+                            <td>{{ shop.clicks_count }}</td>
+                            <td>{{ shop.clicks_30d_count }}</td>
+                            <td>{{ shop.current_list_items_count }}</td>
+                            <td>{{ shop.list_users_count }}</td>
+                            <td>{{ shop.added_events_count }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="7">Данных пока нет</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="statistics-section" aria-labelledby="daily-statistics-title">
+        <div class="statistics-section-head">
+            <h2 id="daily-statistics-title">Последние {{ period_days }} дней</h2>
+            <span>Динамика активности</span>
+        </div>
+        <div class="statistics-table-wrap">
+            <table class="statistics-table statistics-daily-table">
+                <thead>
+                    <tr><th>Дата</th><th>Посетители</th><th>Просмотры</th><th>Регистрации</th><th>Переходы</th><th>Добавлено в списки</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in daily_rows %}
+                        <tr>
+                            <th>{{ row.date|date:"d.m.Y" }}</th>
+                            <td>{{ row.visitors }}</td>
+                            <td>{{ row.pageviews }}</td>
+                            <td>{{ row.registrations }}</td>
+                            <td>{{ row.clicks }}</td>
+                            <td>{{ row.additions }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="statistics-columns">
+        <section class="statistics-section" aria-labelledby="top-clicked-title">
+            <div class="statistics-section-head"><h2 id="top-clicked-title">Чаще открывают</h2></div>
+            <ol class="statistics-ranking">
+                {% for offer in top_clicked_offers %}
+                    <li><span>{{ offer.original_name }} <small>{{ offer.shop.name }}</small></span><strong>{{ offer.clicks_count }}</strong></li>
+                {% empty %}
+                    <li>Переходов пока нет</li>
+                {% endfor %}
+            </ol>
+        </section>
+
+        <section class="statistics-section" aria-labelledby="top-listed-title">
+            <div class="statistics-section-head"><h2 id="top-listed-title">Чаще добавляют</h2></div>
+            <ol class="statistics-ranking">
+                {% for offer in top_listed_offers %}
+                    <li>
+                        <span>{{ offer.original_name }} <small>{{ offer.shop.name }}</small></span>
+                        <strong>{{ offer.list_items_count }} / {{ offer.list_users_count }}</strong>
+                    </li>
+                {% empty %}
+                    <li>Списков пока нет</li>
+                {% endfor %}
+            </ol>
+        </section>
+    </div>
+</main>
+{% endblock %}

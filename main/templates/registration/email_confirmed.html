@@ -1,0 +1,21 @@
+{% extends 'main/base.html' %}
+
+{% block title %}Подтверждение email — Tannenberg{% endblock %}
+
+{% block content %}
+<main class="page-shell auth-shell">
+    <section class="auth-card auth-message">
+        {% if confirmed %}
+            <p class="eyebrow">Email подтверждён</p>
+            <h1>Аккаунт активирован</h1>
+            <p>Теперь можно войти и пользоваться списком покупок.</p>
+            <a class="store-link" href="{% url 'login' %}">Войти</a>
+        {% else %}
+            <p class="eyebrow">Ссылка недействительна</p>
+            <h1>Не удалось подтвердить email</h1>
+            <p>Ссылка могла устареть или уже была использована.</p>
+            <a class="store-link" href="{% url 'resend_confirmation' %}">Отправить письмо повторно</a>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

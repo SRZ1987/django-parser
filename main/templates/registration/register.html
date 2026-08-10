@@ -17,6 +17,11 @@
                 {{ form.username.errors }}
             </label>
             <label>
+                <span>Email</span>
+                {{ form.email }}
+                {{ form.email.errors }}
+            </label>
+            <label>
                 <span>Пароль</span>
                 {{ form.password1 }}
                 {{ form.password1.errors }}
@@ -28,6 +33,7 @@
             </label>
             <button type="submit">Создать аккаунт</button>
         </form>
+        <p class="auth-note">После регистрации мы отправим ссылку для подтверждения email.</p>
         <p class="auth-note">Уже есть аккаунт? <a href="{% url 'login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Войти</a></p>
     </section>
 </main>

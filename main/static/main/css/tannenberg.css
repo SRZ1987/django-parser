@@ -308,6 +308,163 @@ body::before {
     color: #1a1a19;
 }
 
+.shopping-list-clear-form {
+    margin: 0 0 0 auto;
+}
+
+.list-action-button.list-action-danger {
+    color: #f0dada;
+    border-color: rgba(220, 145, 145, 0.38);
+    background: #211818;
+}
+
+.list-action-button.list-action-danger:hover,
+.list-action-button.list-action-danger:focus-visible {
+    color: #fff;
+    border-color: rgba(235, 175, 175, 0.75);
+    background: #322020;
+}
+
+.auth-message {
+    text-align: center;
+}
+
+.auth-message .store-link {
+    margin-top: 8px;
+}
+
+.statistics-shell {
+    padding-bottom: 96px;
+}
+
+.statistics-head > div {
+    display: grid;
+    gap: 6px;
+}
+
+.statistics-summary {
+    margin: 24px 0 30px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+}
+
+.statistics-summary article {
+    min-width: 0;
+    padding: 22px;
+    display: grid;
+    gap: 7px;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: #121212;
+}
+
+.statistics-summary span,
+.statistics-summary small,
+.statistics-section-head span,
+.statistics-ranking small {
+    color: var(--muted);
+}
+
+.statistics-summary strong {
+    color: #f5f5f2;
+    font-size: 1.8rem;
+}
+
+.statistics-section {
+    margin-top: 26px;
+    border-top: 1px solid var(--border);
+}
+
+.statistics-section-head {
+    padding: 18px 0 12px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.statistics-section-head h2 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.statistics-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.statistics-table {
+    width: 100%;
+    border-collapse: collapse;
+    white-space: nowrap;
+}
+
+.statistics-table th,
+.statistics-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: right;
+}
+
+.statistics-table thead th {
+    color: var(--muted);
+    background: #111;
+    font-size: 0.75rem;
+    font-weight: 650;
+    text-transform: uppercase;
+}
+
+.statistics-table tbody th,
+.statistics-table thead th:first-child {
+    text-align: left;
+}
+
+.statistics-table tbody tr:last-child > * {
+    border-bottom: 0;
+}
+
+.statistics-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+}
+
+.statistics-ranking {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.statistics-ranking li {
+    padding: 12px 14px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.statistics-ranking li:last-child {
+    border-bottom: 0;
+}
+
+.statistics-ranking span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.statistics-ranking small {
+    margin-left: 6px;
+}
+
 @media (max-width: 760px) {
     .site-header {
         top: 0;
@@ -345,5 +502,25 @@ body::before {
 
     .purchase-plan {
         padding: 16px;
+    }
+
+    .shopping-list-clear-form {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .shopping-list-clear-form .list-action-button {
+        width: 100%;
+    }
+
+    .statistics-summary,
+    .statistics-columns {
+        grid-template-columns: 1fr;
+    }
+
+    .statistics-section-head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
     }
 }

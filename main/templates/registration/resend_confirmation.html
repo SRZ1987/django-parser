@@ -1,0 +1,22 @@
+{% extends 'main/base.html' %}
+
+{% block title %}Повторное подтверждение — Tannenberg{% endblock %}
+
+{% block content %}
+<main class="page-shell auth-shell">
+    <section class="auth-card">
+        <p class="eyebrow">Подтверждение email</p>
+        <h1>Отправить письмо ещё раз</h1>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+            <label>
+                <span>Email</span>
+                {{ form.email }}
+                {{ form.email.errors }}
+            </label>
+            <button type="submit">Отправить</button>
+        </form>
+    </section>
+</main>
+{% endblock %}

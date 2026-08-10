@@ -3,5 +3,11 @@
     <button class="list-action-button" type="button" data-share-plan data-share-url="{{ shared_url }}">Поделиться</button>
     <button class="list-action-button" type="button" data-copy-plan data-share-url="{{ shared_url }}">Скопировать ссылку</button>
     <a class="list-action-button list-action-primary" href="{{ print_url }}" target="_blank" rel="noopener">Печать / PDF</a>
+    {% if editable %}
+        <form class="shopping-list-clear-form" method="post" action="{% url 'clear_shopping_list' %}" data-clear-list-form>
+            {% csrf_token %}
+            <button class="list-action-button list-action-danger" type="submit">Удалить весь список</button>
+        </form>
+    {% endif %}
     <span class="share-action-status" role="status" aria-live="polite" data-share-status></span>
 </div>

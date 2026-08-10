@@ -52,3 +52,105 @@ class ShoppingListItem(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class DailySiteVisit(models.Model):
+    date = models.DateField(db_index=True)
+    visitor_hash = models.CharField(max_length=64, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name="daily_site_visits",
+        on_delete=models.SET_NULL,
+    )
+    first_path = models.CharField(max_length=500, blank=True)
+    last_path = models.CharField(max_length=500, blank=True)
+    pageviews = models.PositiveIntegerField(default=1)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["date", "visitor_hash"],
+                name="unique_daily_site_visitor",
+            ),
+        ]
+        ordering = ["-date", "-last_seen_at"]
+
+    def __str__(self):
+        return f"{self.date}: {self.visitor_hash[:10]} ({self.pageviews})"
+
+
+class StoreClick(models.Model):
+    shop = models.ForeignKey(
+        "catalog.Shop",
+        null=True,
+        related_name="store_clicks",
+        on_delete=models.SET_NULL,
+    )
+    offer = models.ForeignKey(
+        "catalog.ProductOffer",
+        null=True,
+        blank=True,
+        related_name="store_clicks",
+        on_delete=models.SET_NULL,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name="store_clicks",
+        on_delete=models.SET_NULL,
+    )
+    visitor_hash = models.CharField(max_length=64, db_index=True)
+    source_path = models.CharField(max_length=500, blank=True)
+    clicked_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-clicked_at"]
+
+    def __str__(self):
+        return f"{self.shop or 'Unknown shop'} at {self.clicked_at:%Y-%m-%d %H:%M}"
+
+
+class ShoppingListEvent(models.Model):
+    class EventType(models.TextChoices):
+        ADDED = "added", "Добавлено"
+        REMOVED = "removed", "Удалено"
+        REPLACED = "replaced", "Заменено"
+        PURCHASED = "purchased", "Куплено"
+        UNPURCHASED = "unpurchased", "Снята отметка"
+        CLEARED = "cleared", "Список очищен"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name="shopping_list_events",
+        on_delete=models.SET_NULL,
+    )
+    shop = models.ForeignKey(
+        "catalog.Shop",
+        null=True,
+        blank=True,
+        related_name="shopping_list_events",
+        on_delete=models.SET_NULL,
+    )
+    offer = models.ForeignKey(
+        "catalog.ProductOffer",
+        null=True,
+        blank=True,
+        related_name="shopping_list_events",
+        on_delete=models.SET_NULL,
+    )
+    event_type = models.CharField(max_length=20, choices=EventType.choices, db_index=True)
+    item_name = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.get_event_type_display()}: {self.item_name}"

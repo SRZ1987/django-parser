@@ -24,6 +24,7 @@
             <button type="submit">Войти</button>
         </form>
         <p class="auth-note">Нет аккаунта? <a href="{% url 'register' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Зарегистрироваться</a></p>
+        <p class="auth-note"><a href="{% url 'resend_confirmation' %}">Не пришло письмо с подтверждением?</a></p>
     </section>
 </main>
 {% endblock %}

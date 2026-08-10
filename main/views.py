@@ -1,13 +1,16 @@
+import logging
 from urllib.parse import urlencode
 
-from django.contrib.auth import login
+from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import UserCreationForm
 from django.core.paginator import Paginator
 from django.db.models import Case, DecimalField, F, IntegerField, Q, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
@@ -20,17 +23,22 @@ from catalog.services.product_search import (
     search_products,
 )
 
-from .models import ShoppingList, ShoppingListItem
+from .analytics import build_analytics_dashboard, record_store_click
+from .email_verification import email_verification_token, send_verification_email
+from .forms import EmailRequiredUserCreationForm, ResendConfirmationForm
+from .models import ShoppingList, ShoppingListEvent, ShoppingListItem
 from .services import (
     add_offer_to_shopping_list,
     build_purchase_plan,
     get_best_offer,
     get_or_create_shopping_list,
+    record_shopping_list_event,
     replace_shopping_list_offer,
 )
 
 
 CATALOG_PAGE_SIZE = 24
+logger = logging.getLogger(__name__)
 CATALOG_SORT_OPTIONS = {
     "relevance",
     "name_asc",
@@ -95,13 +103,28 @@ def register(request):
         return redirect("shopping_list")
 
     if request.method == "POST":
-        form = UserCreationForm(request.POST)
+        form = EmailRequiredUserCreationForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            login(request, user)
-            return redirect(get_safe_next_url(request, request.POST.get("next")) or "shopping_list")
+            user = form.save(commit=False)
+            user.is_active = False
+            user.save()
+            try:
+                send_verification_email(request, user)
+            except Exception:
+                logger.exception("Could not send verification email to user %s", user.pk)
+                user.delete()
+                form.add_error(
+                    None,
+                    "Не удалось отправить письмо. Проверьте адрес или попробуйте позже.",
+                )
+            else:
+                return render(
+                    request,
+                    "registration/email_confirmation_sent.html",
+                    {"email": user.email},
+                )
     else:
-        form = UserCreationForm()
+        form = EmailRequiredUserCreationForm()
 
     return render(
         request,
@@ -111,6 +134,50 @@ def register(request):
             "next": request.GET.get("next", ""),
         },
     )
+
+
+def confirm_email(request, uidb64, token):
+    user_model = get_user_model()
+    try:
+        user_id = force_str(urlsafe_base64_decode(uidb64))
+        user = user_model.objects.get(pk=user_id)
+    except (TypeError, ValueError, OverflowError, user_model.DoesNotExist):
+        user = None
+
+    confirmed = bool(user and email_verification_token.check_token(user, token))
+    if confirmed:
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+
+    return render(
+        request,
+        "registration/email_confirmed.html",
+        {"confirmed": confirmed},
+        status=200 if confirmed else 400,
+    )
+
+
+def resend_confirmation(request):
+    form = ResendConfirmationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = (
+            get_user_model()
+            .objects.filter(email__iexact=form.cleaned_data["email"], is_active=False)
+            .first()
+        )
+        if user:
+            try:
+                send_verification_email(request, user)
+            except Exception:
+                logger.exception("Could not resend verification email to user %s", user.pk)
+                form.add_error(None, "Не удалось отправить письмо. Попробуйте позже.")
+                return render(request, "registration/resend_confirmation.html", {"form": form})
+        return render(
+            request,
+            "registration/email_confirmation_sent.html",
+            {"email": form.cleaned_data["email"]},
+        )
+    return render(request, "registration/resend_confirmation.html", {"form": form})
 
 
 def product_search_view(request):
@@ -320,6 +387,26 @@ def offer_detail(request, pk):
     )
 
 
+def store_click(request, offer_pk):
+    offer = get_object_or_404(
+        ProductOffer.objects.select_related("shop"),
+        pk=offer_pk,
+    )
+    if not offer.product_url:
+        return redirect("offer_detail", pk=offer.pk)
+    record_store_click(request, offer)
+    return redirect(offer.product_url)
+
+
+@staff_member_required(login_url="admin:login")
+def statistics_dashboard(request):
+    return render(
+        request,
+        "main/statistics_dashboard.html",
+        build_analytics_dashboard(),
+    )
+
+
 @login_required
 def shopping_list(request):
     user_list = get_or_create_shopping_list(request.user)
@@ -366,7 +453,38 @@ def add_to_shopping_list(request, offer_pk):
 def remove_from_shopping_list(request, item_pk):
     if request.method == "POST":
         item = get_object_or_404(ShoppingListItem, pk=item_pk, shopping_list__user=request.user)
+        record_shopping_list_event(
+            request.user,
+            item.source_offer,
+            ShoppingListEvent.EventType.REMOVED,
+            item.name,
+        )
         item.delete()
+    return redirect("shopping_list")
+
+
+@login_required
+@require_POST
+def clear_shopping_list(request):
+    items = list(
+        ShoppingListItem.objects.filter(shopping_list__user=request.user).select_related(
+            "source_offer",
+            "source_offer__shop",
+        )
+    )
+    ShoppingListEvent.objects.bulk_create(
+        [
+            ShoppingListEvent(
+                user=request.user,
+                shop=item.source_offer.shop,
+                offer=item.source_offer,
+                event_type=ShoppingListEvent.EventType.CLEARED,
+                item_name=item.name,
+            )
+            for item in items
+        ]
+    )
+    ShoppingListItem.objects.filter(pk__in=[item.pk for item in items]).delete()
     return redirect("shopping_list")
 
 
@@ -400,6 +518,16 @@ def toggle_shopping_list_item(request, item_pk):
     )
     item.is_purchased = not item.is_purchased
     item.save(update_fields=["is_purchased"])
+    record_shopping_list_event(
+        request.user,
+        item.source_offer,
+        (
+            ShoppingListEvent.EventType.PURCHASED
+            if item.is_purchased
+            else ShoppingListEvent.EventType.UNPURCHASED
+        ),
+        item.name,
+    )
     return redirect("shopping_list")
 
 

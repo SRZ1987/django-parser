@@ -2,11 +2,15 @@ import uuid
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 
 from catalog.models import Category, Product, ProductOffer, Shop
-from main.models import ShoppingListItem
+from main.email_verification import email_verification_token
+from main.models import DailySiteVisit, ShoppingListEvent, ShoppingListItem, StoreClick
 from main.services import add_offer_to_shopping_list, build_purchase_plan, get_best_offer
 
 
@@ -184,7 +188,7 @@ class MainCatalogTests(TestCase):
         self.assertEqual(second_ids, repeated_second_ids)
         self.assertFalse(set(first_ids) & set(second_ids))
 
-    def test_registration_creates_and_logs_in_user(self):
+    def test_registration_requires_email(self):
         response = self.client.post(
             reverse("register"),
             {
@@ -194,9 +198,50 @@ class MainCatalogTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("shopping_list"))
-        self.assertTrue(get_user_model().objects.filter(username="newuser").exists())
-        self.assertIn("_auth_user_id", self.client.session)
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(response.context["form"], "email", "This field is required.")
+        self.assertFalse(get_user_model().objects.filter(username="newuser").exists())
+
+    def test_registration_creates_inactive_user_and_sends_confirmation(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "newuser",
+                "email": "NewUser@example.com",
+                "password1": "StrongPass123",
+                "password2": "StrongPass123",
+            },
+            HTTP_HOST="127.0.0.1",
+        )
+
+        user = get_user_model().objects.get(username="newuser")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "registration/email_confirmation_sent.html")
+        self.assertEqual(user.email, "newuser@example.com")
+        self.assertFalse(user.is_active)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("/accounts/confirm-email/", mail.outbox[0].body)
+
+    def test_email_confirmation_activates_user(self):
+        user = get_user_model().objects.create_user(
+            username="pending-user",
+            email="pending@example.com",
+            password="StrongPass123",
+            is_active=False,
+        )
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = email_verification_token.make_token(user)
+
+        response = self.client.get(
+            reverse("confirm_email", kwargs={"uidb64": uid, "token": token}),
+            HTTP_HOST="127.0.0.1",
+        )
+
+        user.refresh_from_db()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(user.is_active)
+        self.assertContains(response, "Email подтверждён")
 
     def test_login_uses_django_auth(self):
         self.create_user(username="login-user", password="StrongPass123")
@@ -316,8 +361,8 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, "Открыть в DEPO")
         self.assertContains(response, reverse("replace_with_best_offer", args=[item.pk]))
         self.assertContains(response, reverse("remove_from_shopping_list", args=[item.pk]))
-        self.assertContains(response, source.product_url, count=1)
-        self.assertContains(response, cheaper.product_url, count=1)
+        self.assertContains(response, reverse("store_click", args=[source.pk]), count=1)
+        self.assertContains(response, reverse("store_click", args=[cheaper.pk]), count=1)
         self.assertNotContains(response, "Выбранные товары")
 
     def test_shopping_list_contains_email_share_copy_and_print_actions(self):
@@ -333,9 +378,81 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, "mailto:?")
         self.assertContains(response, "data-share-plan")
         self.assertContains(response, "data-copy-plan")
+        self.assertContains(response, reverse("clear_shopping_list"))
         self.assertContains(response, f"http://127.0.0.1{shared_path}")
         self.assertContains(response, f"http://127.0.0.1{print_path}")
         self.assertContains(response, "Печать / PDF")
+
+    def test_user_can_clear_entire_own_list(self):
+        user = self.create_user("list-owner")
+        other = self.create_user("other-owner")
+        own_offer = self.create_offer(name="Own item", external_id="own-list-item")
+        other_offer = self.create_offer(
+            name="Other item",
+            external_id="other-list-item",
+            sku="OTHER-LIST",
+        )
+        add_offer_to_shopping_list(user, own_offer)
+        add_offer_to_shopping_list(other, other_offer)
+        self.client.force_login(user)
+
+        response = self.client.post(reverse("clear_shopping_list"))
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        self.assertFalse(ShoppingListItem.objects.filter(shopping_list__user=user).exists())
+        self.assertTrue(ShoppingListItem.objects.filter(shopping_list__user=other).exists())
+        self.assertTrue(
+            ShoppingListEvent.objects.filter(
+                user=user,
+                offer=own_offer,
+                event_type=ShoppingListEvent.EventType.CLEARED,
+            ).exists()
+        )
+
+    def test_store_click_is_recorded_before_redirect(self):
+        offer = self.create_offer(name="Tracked offer")
+
+        response = self.client.get(
+            reverse("store_click", args=[offer.pk]),
+            HTTP_REFERER="http://127.0.0.1/search/?q=tracked",
+            HTTP_HOST="127.0.0.1",
+        )
+
+        click = StoreClick.objects.get()
+        self.assertRedirects(response, offer.product_url, fetch_redirect_response=False)
+        self.assertEqual(click.shop, offer.shop)
+        self.assertEqual(click.offer, offer)
+        self.assertIn("/search/", click.source_path)
+
+    def test_site_visit_middleware_aggregates_pageviews_per_session(self):
+        self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
+        self.client.get(reverse("catalog"), HTTP_HOST="127.0.0.1")
+
+        visit = DailySiteVisit.objects.get()
+        self.assertEqual(visit.pageviews, 2)
+        self.assertEqual(visit.first_path, reverse("home"))
+        self.assertEqual(visit.last_path, reverse("catalog"))
+
+    def test_statistics_are_visible_only_to_staff(self):
+        regular_user = self.create_user("regular")
+        self.client.force_login(regular_user)
+
+        regular_response = self.client.get(reverse("statistics_dashboard"))
+        regular_home = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(regular_response.status_code, 302)
+        self.assertNotContains(regular_home, reverse("statistics_dashboard"))
+
+        staff_user = self.create_user("staff")
+        staff_user.is_staff = True
+        staff_user.save(update_fields=["is_staff"])
+        self.client.force_login(staff_user)
+        staff_response = self.client.get(reverse("statistics_dashboard"), HTTP_HOST="127.0.0.1")
+        staff_home = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(staff_response.status_code, 200)
+        self.assertTemplateUsed(staff_response, "main/statistics_dashboard.html")
+        self.assertContains(staff_home, reverse("statistics_dashboard"))
 
     def test_shared_shopping_list_is_public_and_read_only(self):
         user = self.create_user("private-share-owner")
@@ -353,6 +470,7 @@ class MainCatalogTests(TestCase):
         self.assertNotContains(response, reverse("remove_from_shopping_list", args=[item.pk]))
         self.assertNotContains(response, reverse("toggle_shopping_list_item", args=[item.pk]))
         self.assertNotContains(response, reverse("replace_with_best_offer", args=[item.pk]))
+        self.assertNotContains(response, reverse("clear_shopping_list"))
 
     def test_unknown_shared_shopping_list_returns_404(self):
         response = self.client.get(
@@ -872,7 +990,10 @@ class MainCatalogTests(TestCase):
 
         self.assertContains(response, "9.99 EUR")
         self.assertContains(response, "12.99 EUR")
-        self.assertContains(response, 'href="https://example.com/product"')
+        self.assertContains(
+            response,
+            f'href="{reverse("store_click", args=[ProductOffer.objects.get().pk])}"',
+        )
         self.assertContains(response, 'rel="noopener noreferrer"')
 
     def test_suggestions_short_query_returns_empty_list(self):

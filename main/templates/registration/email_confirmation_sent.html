@@ -1,0 +1,15 @@
+{% extends 'main/base.html' %}
+
+{% block title %}Подтвердите email — Tannenberg{% endblock %}
+
+{% block content %}
+<main class="page-shell auth-shell">
+    <section class="auth-card auth-message">
+        <p class="eyebrow">Почти готово</p>
+        <h1>Проверьте почту</h1>
+        <p>Ссылка для подтверждения отправлена на <strong>{{ email }}</strong>.</p>
+        <p>После подтверждения вы сможете войти в аккаунт.</p>
+        <a class="store-link" href="{% url 'login' %}">Перейти ко входу</a>
+    </section>
+</main>
+{% endblock %}

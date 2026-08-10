@@ -37,7 +37,7 @@
                                             <span class="plan-price-missing">Цена не указана</span>
                                         {% endif %}
                                         {% if source.product_url %}
-                                            <a class="plan-text-link" href="{{ source.product_url }}" target="_blank" rel="noopener noreferrer">Открыть в {{ source.shop.name }}</a>
+                                            <a class="plan-text-link" href="{% url 'store_click' source.pk %}" target="_blank" rel="noopener noreferrer">Открыть в {{ source.shop.name }}</a>
                                         {% else %}
                                             <a class="plan-text-link" href="{% url 'offer_detail' source.pk %}">Открыть выбранный товар</a>
                                         {% endif %}
@@ -59,7 +59,7 @@
                                             <strong class="plan-offer-price">{{ row.best_price }} {{ offer.currency }}</strong>
                                             <div class="plan-offer-actions">
                                                 {% if offer.product_url %}
-                                                    <a class="plan-text-link" href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">Открыть в {{ offer.shop.name }}</a>
+                                                    <a class="plan-text-link" href="{% url 'store_click' offer.pk %}" target="_blank" rel="noopener noreferrer">Открыть в {{ offer.shop.name }}</a>
                                                 {% else %}
                                                     <a class="plan-text-link" href="{% url 'offer_detail' offer.pk %}">Открыть дешёвый товар</a>
                                                 {% endif %}

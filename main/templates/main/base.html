@@ -28,6 +28,9 @@
                 <a class="nav-link" href="{% url 'catalog' %}">Каталог</a>
                 {% if user.is_authenticated %}
                     <a class="nav-link" href="{% url 'shopping_list' %}">Мой список{% if user.shopping_list %} ({{ user.shopping_list.items.count }}){% endif %}</a>
+                    {% if user.is_staff %}
+                        <a class="nav-link" href="{% url 'statistics_dashboard' %}">Статистика</a>
+                    {% endif %}
                     <span class="nav-user">{{ user.get_short_name|default:user.username }}</span>
                     <form class="logout-form" method="post" action="{% url 'logout' %}">
                         {% csrf_token %}
