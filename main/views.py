@@ -201,7 +201,6 @@ def product_search_view(request):
             "results": results,
             "results_page": results_page,
             "page_params": page_params.urlencode(),
-            "debug_scores": request.user.is_staff if request.user.is_authenticated else False,
             "list_offer_ids": list_offer_ids,
         },
     )

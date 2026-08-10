@@ -1106,17 +1106,6 @@ select {
     border-color: rgba(53, 231, 208, 0.18);
 }
 
-.match-debug {
-    margin-top: 14px;
-    padding: 10px 12px;
-    display: grid;
-    gap: 4px;
-    border-radius: 14px;
-    color: #0f172a;
-    background: #eafbf8;
-    font-size: 0.82rem;
-}
-
 .external-link {
     color: var(--card-muted);
     font-size: 0.88rem;

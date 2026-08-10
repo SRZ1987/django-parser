@@ -152,6 +152,22 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, exact.original_name)
         self.assertContains(response, same.original_name)
 
+    def test_product_search_does_not_expose_internal_ranking_details_to_staff(self):
+        offer = self.create_offer(name="Höövelpruss 50x50x3000 mm")
+        staff_user = self.create_user("search-staff")
+        staff_user.is_staff = True
+        staff_user.save(update_fields=["is_staff"])
+        self.client.force_login(staff_user)
+
+        response = self.client.get(reverse("product_search"), {"q": "pruss"}, HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, offer.original_name)
+        self.assertNotContains(response, "match-debug")
+        self.assertNotContains(response, "name tokens overlap")
+        self.assertNotContains(response, "query tokens covered")
+        self.assertNotContains(response, "compound word")
+
     def test_product_search_paginates_after_complete_stable_sorting(self):
         offers_by_price = {}
         for index in range(30):

@@ -37,12 +37,6 @@
                                 <dd>{% firstof offer.barcode offer.product.barcode "-" %}</dd>
                             </div>
                         </dl>
-                        {% if debug_scores %}
-                            <div class="match-debug">
-                                <strong>{{ match.confidence }} / {{ match.score }}</strong>
-                                <span>{{ match.reasons|join:", " }}</span>
-                            </div>
-                        {% endif %}
                     </div>
 
                     <div class="product-side">

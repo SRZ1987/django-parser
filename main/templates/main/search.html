@@ -42,7 +42,7 @@
             {% endif %}
         </section>
 
-        {% include "main/search_section.html" with title="Результаты поиска" matches=results_page.object_list debug_scores=debug_scores list_offer_ids=list_offer_ids %}
+        {% include "main/search_section.html" with title="Результаты поиска" matches=results_page.object_list list_offer_ids=list_offer_ids %}
 
         {% if results_page.paginator.num_pages > 1 %}
             <nav class="pagination" aria-label="Результаты поиска">
