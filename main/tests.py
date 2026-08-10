@@ -606,13 +606,47 @@ class MainCatalogTests(TestCase):
         self.assertIn("/search/", click.source_path)
 
     def test_site_visit_middleware_aggregates_pageviews_per_session(self):
-        self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
-        self.client.get(reverse("catalog"), HTTP_HOST="127.0.0.1")
+        browser_headers = {
+            "HTTP_HOST": "127.0.0.1",
+            "HTTP_USER_AGENT": "Mozilla/5.0 Test Browser",
+        }
+        self.client.get(reverse("home"), **browser_headers)
+        self.client.get(reverse("catalog"), **browser_headers)
 
         visit = DailySiteVisit.objects.get()
         self.assertEqual(visit.pageviews, 2)
         self.assertEqual(visit.first_path, reverse("home"))
         self.assertEqual(visit.last_path, reverse("catalog"))
+
+    def test_site_visit_middleware_ignores_bots_and_health_checks(self):
+        self.client.get(
+            reverse("home"),
+            HTTP_HOST="127.0.0.1",
+            HTTP_USER_AGENT="RailwayHealthCheck/1.0",
+        )
+        self.client.get(
+            reverse("home"),
+            HTTP_HOST="127.0.0.1",
+            HTTP_USER_AGENT="Googlebot/2.1",
+        )
+
+        self.assertFalse(DailySiteVisit.objects.exists())
+
+    def test_cookie_less_requests_from_same_browser_share_visitor(self):
+        request_headers = {
+            "HTTP_HOST": "127.0.0.1",
+            "HTTP_USER_AGENT": "Mozilla/5.0 Cookie-less Browser",
+            "HTTP_ACCEPT_LANGUAGE": "et-EE,et;q=0.9",
+            "REMOTE_ADDR": "203.0.113.10",
+        }
+        first_client = self.client_class()
+        second_client = self.client_class()
+
+        first_client.get(reverse("home"), **request_headers)
+        second_client.get(reverse("home"), **request_headers)
+
+        visit = DailySiteVisit.objects.get()
+        self.assertEqual(visit.pageviews, 2)
 
     def test_statistics_are_visible_only_to_staff(self):
         regular_user = self.create_user("regular")

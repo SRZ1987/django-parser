@@ -7,14 +7,14 @@
     <header class="compact-page-head statistics-head">
         <div>
             <h1>Статистика</h1>
-            <p>Посещения, регистрации, переходы в магазины и списки покупок.</p>
+            <p>Посещения, регистрации, переходы в магазины и списки покупок.{% if visit_totals.tracking_started %} Сбор с {{ visit_totals.tracking_started|date:"d.m.Y" }}.{% endif %}</p>
         </div>
         <a class="list-action-button" href="{% url 'admin:index' %}">Django Admin</a>
     </header>
 
     <section class="statistics-summary" aria-label="Общая статистика">
-        <article><span>Посетителей сегодня</span><strong>{{ today.visitors }}</strong><small>{{ today.pageviews }} просмотров</small></article>
-        <article><span>Уникальных посетителей</span><strong>{{ visit_totals.unique_visitors }}</strong><small>{{ visit_totals.pageviews }} просмотров всего</small></article>
+        <article><span>Браузеров сегодня</span><strong>{{ today.visitors }}</strong><small>{{ today.pageviews }} просмотров</small></article>
+        <article><span>Браузеров за всё время</span><strong>{{ visit_totals.unique_visitors }}</strong><small>{{ visit_totals.pageviews }} просмотров всего</small></article>
         <article><span>Пользователей</span><strong>{{ registered_users }}</strong><small>{{ confirmed_users }} активных аккаунтов с email</small></article>
         <article><span>Регистраций за 30 дней</span><strong>{{ registrations_30d }}</strong><small>новых аккаунтов</small></article>
         <article><span>Переходов в магазины</span><strong>{{ click_totals.total }}</strong><small>{{ click_totals.unique_visitors }} посетителей</small></article>

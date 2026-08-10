@@ -1,12 +1,11 @@
 import hashlib
 import logging
-import uuid
 from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import DatabaseError
-from django.db.models import Count, F, Q, Sum
+from django.db.models import Count, F, Min, Q, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -21,9 +20,18 @@ logger = logging.getLogger(__name__)
 def visitor_hash_for_request(request):
     visitor_id = request.session.get("_analytics_visitor_id")
     if not visitor_id:
-        visitor_id = uuid.uuid4().hex
+        visitor_id = _anonymous_visitor_id(request)
         request.session["_analytics_visitor_id"] = visitor_id
     value = f"{settings.SECRET_KEY}:{visitor_id}".encode("utf-8")
+    return hashlib.sha256(value).hexdigest()
+
+
+def _anonymous_visitor_id(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    client_ip = forwarded_for.split(",", 1)[0].strip() or request.META.get("REMOTE_ADDR", "")
+    user_agent = request.META.get("HTTP_USER_AGENT", "").strip().lower()
+    language = request.META.get("HTTP_ACCEPT_LANGUAGE", "").split(",", 1)[0].strip().lower()
+    value = f"{settings.SECRET_KEY}:{client_ip}:{user_agent}:{language}".encode("utf-8")
     return hashlib.sha256(value).hexdigest()
 
 
@@ -75,6 +83,7 @@ def build_analytics_dashboard(days=30):
         unique_visitors=Count("visitor_hash", distinct=True),
         visitor_days=Count("id"),
         pageviews=Coalesce(Sum("pageviews"), 0),
+        tracking_started=Min("date"),
     )
     today_visits = DailySiteVisit.objects.filter(date=today).aggregate(
         visitors=Count("id"),
