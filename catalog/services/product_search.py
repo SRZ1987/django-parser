@@ -92,8 +92,8 @@ def search_products(
     for match in ranked:
         _append_match(results, match)
 
-    same_product_for_price = results.exact_matches + results.same_product
-    results.price_summary = build_price_summary(same_product_for_price) if same_product_for_price else None
+    price_matches = results.exact_matches + results.same_product if source_offer else results.matches
+    results.price_summary = build_price_summary(price_matches) if price_matches else None
     results.total_count = len(ranked)
     return results
 

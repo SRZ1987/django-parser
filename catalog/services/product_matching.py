@@ -322,7 +322,11 @@ def score_offer_against_offer(candidate: ProductOffer, source: ProductOffer) -> 
 
 
 def build_price_summary(matches: list[MatchResult]) -> PriceSummary:
-    priced = [(match.offer.current_price, match.offer.shop.name) for match in matches if match.offer.current_price is not None]
+    priced = [
+        (price, match.offer.shop.name)
+        for match in matches
+        if (price := _effective_offer_price(match.offer)) is not None
+    ]
     if not priced:
         return PriceSummary(None, None, None, "", len(matches))
 
@@ -335,6 +339,12 @@ def build_price_summary(matches: list[MatchResult]) -> PriceSummary:
         cheapest_shop=cheapest_shop,
         offers_count=len(matches),
     )
+
+
+def _effective_offer_price(offer: ProductOffer) -> Decimal | None:
+    if offer.sale_price is not None and (offer.price is None or offer.sale_price < offer.price):
+        return offer.sale_price
+    return offer.price
 
 
 def _identifier_matches(offer: ProductOffer, normalized_query: str) -> bool:

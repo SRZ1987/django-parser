@@ -422,6 +422,22 @@ class ProductSearchTests(TestCase):
 
         self.assertLess(result_ids.index(discounted.pk), result_ids.index(regular.pk))
 
+    def test_text_search_price_summary_matches_the_cheapest_visible_result(self):
+        self.offer("Trimmerijõhv Oregon 2mm", sku="SUMMARY-REGULAR", price="8.00")
+        cheapest = self.offer(
+            "Varutrimmerijõhv Makita 2mm",
+            shop=self.depo,
+            sku="SUMMARY-CHEAPEST",
+            price="10.00",
+            sale_price="1.19",
+        )
+
+        results = search_products("trimmerijõhv")
+
+        self.assertEqual(results.matches[0].offer.pk, cheapest.pk)
+        self.assertEqual(results.price_summary.min_price, Decimal("1.19"))
+        self.assertEqual(results.price_summary.cheapest_shop, self.depo.name)
+
     def test_offer_without_price_is_last_within_relevance_level(self):
         missing_price = self.offer("Pruss 45x45x3000 mm", sku="NO-PRICE", price=None)
         priced = self.offer(
