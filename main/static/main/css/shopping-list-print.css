@@ -1,6 +1,6 @@
 @page {
     size: A4 portrait;
-    margin: 12mm;
+    margin: 10mm 0;
 }
 
 * {
@@ -229,7 +229,7 @@ h1 {
     }
 
     .print-plan {
-        width: min(186mm, 100%);
+        width: min(210mm, 100%);
         min-height: 297mm;
         margin: 0 auto;
         padding: 12mm;
@@ -241,15 +241,15 @@ h1 {
 @media print {
     html,
     body {
-        width: auto;
-        max-width: 100%;
+        width: 210mm;
+        max-width: 210mm;
         overflow: visible;
     }
 
     .print-plan {
-        width: 100%;
-        max-width: 100%;
+        width: 210mm;
+        max-width: 210mm;
         margin: 0;
-        padding: 0;
+        padding: 0 12mm;
     }
 }

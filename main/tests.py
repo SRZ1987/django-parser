@@ -535,7 +535,7 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, "42.50 EUR")
         self.assertContains(response, "https://example.com/print-image.jpg")
         self.assertContains(response, "Tannenberg")
-        self.assertContains(response, "shopping-list-print.css")
+        self.assertContains(response, "shopping-list-print.css?v=3", html=False)
         self.assertContains(response, "print-shopping-list.js")
 
     def test_shopping_lists_receive_distinct_share_tokens(self):
