@@ -125,6 +125,13 @@ class PublicCommerceNormalizationTests(SimpleTestCase):
             public_commerce_parser.normalize_woocommerce_product(woo_product(in_stock=False))
         )
 
+    def test_woocommerce_product_without_positive_price_is_skipped(self):
+        self.assertIsNone(
+            public_commerce_parser.normalize_woocommerce_product(
+                woo_product(price="0", regular_price="0", sale_price="0")
+            )
+        )
+
     def test_shopify_variant_has_stable_id_prices_and_barcode(self):
         rows = public_commerce_parser.normalize_shopify_product(
             shopify_product(),

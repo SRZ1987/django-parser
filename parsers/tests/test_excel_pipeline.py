@@ -1171,6 +1171,9 @@ class AdapterRegistryTests(TestCase):
             self.existing_production_codes | enabled_public_codes | self.custom_retail_codes,
         )
         self.assertFalse(configs.get(code="horden").is_enabled)
+        for code in ("bestor", "katusemaailm"):
+            self.assertFalse(configs.get(code=code).is_enabled)
+            self.assertFalse(configs.get(code=code).shop.is_active)
         self.assertEqual(
             list(configs.values_list("run_order", flat=True)),
             list(range(1, len(self.expected_production_codes) + 1)),

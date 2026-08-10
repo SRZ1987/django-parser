@@ -82,14 +82,24 @@ PUBLIC_COMMERCE_STORES = {
         CommerceStore("vannitoapood", "Vannitoapood", "https://vannitoapood.ee/"),
         CommerceStore("tetko", "Tetko", "https://tetko.ee/"),
         CommerceStore("fastenerest", "FastenerEst", "https://www.fastenerest.ee/"),
-        CommerceStore("bestor", "Bestor", "https://bestor.ee/"),
+        CommerceStore(
+            "bestor",
+            "Bestor",
+            "https://bestor.ee/",
+            enabled_by_default=False,
+        ),
         CommerceStore("tooriistapood", "Tööriistapood", "https://www.tooriistapood.ee/"),
         CommerceStore("katus24", "Katus24", "https://katus24.ee/"),
         CommerceStore("ehitusoutlet", "Ehitusoutlet", "https://ehitusoutlet.ee/"),
         CommerceStore("hutton", "Hutton", "https://hutton.ee/"),
         CommerceStore("aquel", "Aquel", "https://aquel.ee/"),
         CommerceStore("ehitaks", "Ehitaks", "https://www.ehitaks.ee/"),
-        CommerceStore("katusemaailm", "Katusemaailm", "https://www.katusemaailm.ee/"),
+        CommerceStore(
+            "katusemaailm",
+            "Katusemaailm",
+            "https://www.katusemaailm.ee/",
+            enabled_by_default=False,
+        ),
         CommerceStore("interstudio", "Interstudio", "https://interstudio.ee/"),
         CommerceStore("plaat24", "Plaat24", "https://www.plaat24.ee/"),
         CommerceStore("katusematerjal", "Katusematerjal", "https://katusematerjal.ee/"),
@@ -223,6 +233,8 @@ def normalize_woocommerce_product(product: dict[str, Any]) -> list[Any] | None:
     category_name = clean_text(category.get("name"))
     category_id = clean_text(category.get("id"))
     price, sale_price = extract_woocommerce_prices(product)
+    if not any(value != "" and value > 0 for value in (price, sale_price)):
+        return None
     return [
         name,
         price,

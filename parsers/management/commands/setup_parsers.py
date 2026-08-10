@@ -80,6 +80,7 @@ class Command(BaseCommand):
                 parser_name=f"{store.name} parser",
                 run_order=run_order,
                 is_enabled=store.enabled_by_default,
+                shop_is_active=store.enabled_by_default,
             )
         next_run_order = 8 + len(PUBLIC_COMMERCE_STORES)
         self._setup_parser(
@@ -138,13 +139,14 @@ class Command(BaseCommand):
         parser_name,
         run_order,
         is_enabled=True,
+        shop_is_active=True,
     ):
         shop, shop_created = Shop.objects.update_or_create(
             code=shop_code,
             defaults={
                 "name": shop_name,
                 "website_url": website_url,
-                "is_active": True,
+                "is_active": shop_is_active,
             },
         )
         parser_config, config_created = ParserConfig.objects.update_or_create(
