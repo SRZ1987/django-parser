@@ -104,11 +104,20 @@ class ProductSearchTests(TestCase):
             sku="OREGON-NAME",
             price="3.00",
         )
+        brand_only = self.offer(
+            "Akrüülrull Oregon 15x70x4mm",
+            shop=self.depo,
+            barcode="",
+            sku="OREGON-BRAND-ONLY",
+            brand="Oregon",
+            price="1.00",
+        )
 
         result_ids = self.result_ids(search_products("4740000000025"))
 
         self.assertEqual(set(result_ids[:2]), {source.pk, same_barcode.pk})
         self.assertIn(similar_name.pk, result_ids[2:])
+        self.assertNotIn(brand_only.pk, result_ids)
 
     def test_sku_search_expands_through_barcode_and_normalized_name(self):
         source = self.offer(

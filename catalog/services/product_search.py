@@ -198,18 +198,21 @@ def _retrieve_candidates(normalized_query, source_offer, source_attributes, cand
             for token in tokenize(source_attributes.normalized_name)
             if is_meaningful_query_token(token)
         ][:6]
-        if source_name_tokens:
-            source_all_tokens_query = Q()
-            for token in source_name_tokens:
-                source_all_tokens_query &= build_token_candidate_query(token)
+
+        if source_attributes.model:
+            model_query = Q(product__normalized_model=source_attributes.model)
+            _extend_candidates(candidates, seen_ids, queryset.filter(model_query), candidate_limit)
+
+        source_anchor = _source_name_anchor(source_name_tokens, source_attributes)
+        if source_anchor:
             _extend_candidates(
                 candidates,
                 seen_ids,
-                queryset.filter(source_all_tokens_query),
+                queryset.filter(build_token_candidate_query(source_anchor)),
                 candidate_limit,
             )
-            for token in source_name_tokens:
-                broad_query |= build_token_candidate_query(token)
+
+        return candidates
 
     if source_attributes.brand:
         broad_query |= Q(product__normalized_brand=source_attributes.brand) | Q(search_text__icontains=source_attributes.brand)
@@ -260,6 +263,25 @@ def _number_regex(value: str) -> str:
     if separator:
         return rf"{re.escape(integer)}[.]{re.escape(fraction)}0*"
     return rf"{re.escape(integer)}(?:[.]0+)?"
+
+
+def _source_name_anchor(tokens, source_attributes):
+    if source_attributes.model and source_attributes.model in tokens:
+        return source_attributes.model
+
+    text_tokens = [
+        token
+        for token in tokens
+        if token != source_attributes.brand
+        and not is_number_token(token)
+        and not parse_dimension_token(token)
+        and not parse_measure_token(token)
+    ]
+    if text_tokens:
+        return max(text_tokens, key=lambda token: (len(token), token))
+
+    structured_tokens = [token for token in tokens if token != source_attributes.brand]
+    return max(structured_tokens, key=lambda token: (len(token), token), default="")
 
 
 def _extend_candidates(candidates, seen_ids, queryset, candidate_limit):
