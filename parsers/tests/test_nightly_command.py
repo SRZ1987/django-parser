@@ -30,6 +30,12 @@ class NightlyParsersCommandTests(TestCase):
         "lemona",
         *SITEMAP_RETAILERS,
         "motonet",
+        "hammerjack",
+        "stokker",
+        "torujyri",
+        "esvika",
+        "arcade",
+        "elektrikaup",
     ]
 
     def setUp(self):

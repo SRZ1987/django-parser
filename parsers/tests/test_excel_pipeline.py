@@ -1092,7 +1092,19 @@ class DepoAdapterTests(TestCase):
 
 class AdapterRegistryTests(TestCase):
     existing_production_codes = {"espak", "depo", "bauhof", "ehituseabc", "fere", "bauhaus", "handymann"}
-    custom_retail_codes = {"oomipood", "lemona", "vipex", "effex", "motonet"}
+    custom_retail_codes = {
+        "oomipood",
+        "lemona",
+        "vipex",
+        "effex",
+        "motonet",
+        "hammerjack",
+        "stokker",
+        "torujyri",
+        "esvika",
+        "arcade",
+        "elektrikaup",
+    }
     expected_production_codes = existing_production_codes | set(PUBLIC_COMMERCE_STORES) | custom_retail_codes
 
     def test_registry_contains_exactly_all_production_parsers(self):

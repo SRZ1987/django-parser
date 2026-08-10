@@ -12,6 +12,9 @@ from parsers.standalone.handymann_parser import BASE_URL as HANDYMANN_WEBSITE_UR
 from parsers.standalone.lemona_parser import BASE_URL as LEMONA_WEBSITE_URL
 from parsers.standalone.motonet_parser import BASE_URL as MOTONET_WEBSITE_URL
 from parsers.standalone.oomipood_parser import BASE_URL as OOMIPOOD_WEBSITE_URL
+from parsers.standalone.catalog_api_retailers_parser import API_RETAILERS
+from parsers.standalone.catalog_listing_retailers_parser import LISTING_RETAILERS
+from parsers.standalone.catalog_sitemap_retailers_parser import CATALOG_SITEMAP_RETAILERS
 from parsers.standalone.public_commerce_parser import PUBLIC_COMMERCE_STORES
 from parsers.standalone.sitemap_retailers_parser import SITEMAP_RETAILERS
 
@@ -108,6 +111,23 @@ class Command(BaseCommand):
             parser_name="Motonet parser",
             run_order=next_run_order + 2 + len(SITEMAP_RETAILERS),
         )
+        additional_retailers = [
+            LISTING_RETAILERS["hammerjack"],
+            API_RETAILERS["stokker"],
+            CATALOG_SITEMAP_RETAILERS["torujyri"],
+            API_RETAILERS["esvika"],
+            CATALOG_SITEMAP_RETAILERS["arcade"],
+            LISTING_RETAILERS["elektrikaup"],
+        ]
+        first_additional_order = next_run_order + 3 + len(SITEMAP_RETAILERS)
+        for run_order, store in enumerate(additional_retailers, start=first_additional_order):
+            self._setup_parser(
+                shop_code=store.code,
+                shop_name=store.name,
+                website_url=store.base_url,
+                parser_name=f"{store.name} parser",
+                run_order=run_order,
+            )
 
     def _setup_parser(
         self,
