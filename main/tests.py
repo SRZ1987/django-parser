@@ -111,6 +111,7 @@ class MainCatalogTests(TestCase):
     def test_home_search_includes_accessible_barcode_scanner(self):
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
 
+        self.assertContains(response, "barcode-scanner.css?v=2", html=False)
         self.assertContains(response, 'data-barcode-scanner-trigger')
         self.assertContains(response, 'aria-label="Сканировать штрихкод камерой"')
         self.assertContains(response, 'data-barcode-scanner-modal')

@@ -211,12 +211,18 @@ body.is-barcode-scanner-open {
 
 @media (max-width: 560px) {
     .search-panel {
+        position: relative;
         display: grid;
         grid-template-columns: 50px minmax(0, 1fr);
     }
 
     .search-panel .search-input-wrap {
+        position: static;
         grid-column: 1 / -1;
+    }
+
+    .search-panel .suggestions-panel {
+        top: calc(100% + 10px);
     }
 
     .search-panel .barcode-scan-trigger {
