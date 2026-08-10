@@ -158,6 +158,19 @@ class PublicCommerceNormalizationTests(SimpleTestCase):
             public_commerce_parser.normalize_klevu_product(klevu_product(in_stock="no"))
         )
 
+    def test_klevu_placeholder_image_path_is_normalized(self):
+        product = klevu_product()
+        product["imageUrl"] = (
+            "https://www.decora.ee/needtochange/media/klevu_images/200X200/product.jpg"
+        )
+
+        row = public_commerce_parser.normalize_klevu_product(product)
+
+        self.assertEqual(
+            row[6],
+            "https://www.decora.ee/media/klevu_images/200X200/product.jpg",
+        )
+
 
 class PublicCommerceDownloadTests(SimpleTestCase):
     def test_woocommerce_fetches_every_page(self):

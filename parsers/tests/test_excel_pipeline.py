@@ -875,6 +875,38 @@ class BauhausAdapterTests(TestCase):
 
 
 class BauhofAdapterTests(TestCase):
+    def test_out_of_stock_product_is_not_exported(self):
+        item = {
+            "sku": "SKU-BH-OUT",
+            "name": "Unavailable Bauhof product",
+            "stock_status": "OUT_OF_STOCK",
+        }
+
+        self.assertIsNone(
+            bauhof_parser.product_to_row(item, "https://www.bauhof.ee/et/p/SKU-BH-OUT/item")
+        )
+
+    def test_in_stock_product_is_exported(self):
+        item = {
+            "sku": "SKU-BH-IN",
+            "name": "Available Bauhof product",
+            "stock_status": "IN_STOCK",
+            "price_range": {
+                "minimum_price": {
+                    "regular_price": {"value": 12.5},
+                    "final_price": {"value": 12.5},
+                }
+            },
+        }
+
+        row = bauhof_parser.product_to_row(
+            item,
+            "https://www.bauhof.ee/et/p/SKU-BH-IN/item",
+        )
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row[bauhof_parser.COLUMNS[5]], "SKU-BH-IN")
+
     def test_standalone_wrapper_creates_excel(self):
         products = {
             "SKU-BH-1": {

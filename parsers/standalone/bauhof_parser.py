@@ -304,7 +304,10 @@ def build_url(item: dict[str, Any], sitemap_url: str) -> str:
     return ""
 
 
-def product_to_row(item: dict[str, Any], sitemap_url: str) -> dict[str, Any]:
+def product_to_row(item: dict[str, Any], sitemap_url: str) -> dict[str, Any] | None:
+    if clean_text(item.get("stock_status")).upper() != "IN_STOCK":
+        return None
+
     regular_price = get_price(item, "regular_price")
     final_price = get_price(item, "final_price")
 
@@ -337,9 +340,10 @@ async def collect_products(
     products: dict[str, dict[str, Any]] = {}
     lock = asyncio.Lock()
     completed = 0
+    skipped_unavailable = 0
 
     async def worker(number: int) -> None:
-        nonlocal completed
+        nonlocal completed, skipped_unavailable
 
         while True:
             task = await queue.get()
@@ -352,19 +356,26 @@ async def collect_products(
             try:
                 response = await request_json(session, build_payload(batch))
                 rows: dict[str, dict[str, Any]] = {}
+                local_skipped_unavailable = 0
 
                 for item in extract_items(response):
                     sku = clean_text(item.get("sku"))
                     if sku:
-                        rows[sku] = product_to_row(item, sku_map.get(sku, ""))
+                        row = product_to_row(item, sku_map.get(sku, ""))
+                        if row is None:
+                            local_skipped_unavailable += 1
+                        else:
+                            rows[sku] = row
 
                 async with lock:
                     products.update(rows)
+                    skipped_unavailable += local_skipped_unavailable
                     completed += 1
                     if completed % 10 == 0 or completed == len(all_batches):
                         print(
                             f"Пачек {completed}/{len(all_batches)} | "
-                            f"товаров {len(products)}"
+                            f"товаров {len(products)} | "
+                            f"нет в наличии {skipped_unavailable}"
                         )
 
             except Exception as error:

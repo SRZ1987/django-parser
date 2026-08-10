@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
 
 import aiohttp
 from openpyxl import Workbook
@@ -195,6 +196,16 @@ def parse_decimal_money(value: Any) -> float | str:
     return price if price >= 0 else ""
 
 
+def normalize_klevu_image_url(value: Any, base_url: str = "https://www.decora.ee/") -> str:
+    image_url = clean_text(value)
+    if not image_url:
+        return ""
+    image_url = image_url.replace("/needtochange/", "/", 1)
+    if image_url.startswith("//"):
+        return f"https:{image_url}"
+    return urljoin(base_url, image_url)
+
+
 def normalize_woocommerce_product(product: dict[str, Any]) -> list[Any] | None:
     if product.get("is_in_stock") is False:
         return None
@@ -320,7 +331,7 @@ def normalize_klevu_product(product: dict[str, Any]) -> list[Any] | None:
         "",
         extract_barcode(product),
         f"klevu-{product_id}",
-        clean_text(product.get("imageUrl") or product.get("image")),
+        normalize_klevu_image_url(product.get("imageUrl") or product.get("image")),
         product_url,
         clean_text(product.get("sku")),
         category_name,
