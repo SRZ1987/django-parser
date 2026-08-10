@@ -224,7 +224,7 @@ class MainCatalogTests(TestCase):
         self.assertFormError(response.context["form"], "email", "This field is required.")
         self.assertFalse(get_user_model().objects.filter(username="newuser").exists())
 
-    def test_registration_creates_inactive_user_and_sends_confirmation(self):
+    def test_registration_creates_active_user_without_email_confirmation(self):
         response = self.client.post(
             reverse("register"),
             {
@@ -237,13 +237,11 @@ class MainCatalogTests(TestCase):
         )
 
         user = get_user_model().objects.get(username="newuser")
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "registration/email_confirmation_sent.html")
+        self.assertRedirects(response, reverse("shopping_list"))
         self.assertEqual(user.email, "newuser@example.com")
-        self.assertFalse(user.is_active)
-        self.assertNotIn("_auth_user_id", self.client.session)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("/accounts/confirm-email/", mail.outbox[0].body)
+        self.assertTrue(user.is_active)
+        self.assertEqual(int(self.client.session["_auth_user_id"]), user.pk)
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_email_confirmation_activates_user(self):
         user = get_user_model().objects.create_user(

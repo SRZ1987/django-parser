@@ -33,7 +33,7 @@
             </label>
             <button type="submit">Создать аккаунт</button>
         </form>
-        <p class="auth-note">После регистрации мы отправим ссылку для подтверждения email.</p>
+        <p class="auth-note">Email сохраняется для уведомлений об изменении цен.</p>
         <p class="auth-note">Уже есть аккаунт? <a href="{% url 'login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Войти</a></p>
     </section>
 </main>

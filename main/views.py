@@ -2,7 +2,7 @@ import logging
 from urllib.parse import urlencode
 
 from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Case, DecimalField, F, IntegerField, Q, Value, When
@@ -106,24 +106,15 @@ def register(request):
     if request.method == "POST":
         form = EmailRequiredUserCreationForm(request.POST)
         if form.is_valid():
-            user = form.save(commit=False)
-            user.is_active = False
-            user.save()
-            try:
-                send_verification_email(request, user)
-            except Exception:
-                logger.exception("Could not send verification email to user %s", user.pk)
-                user.delete()
-                form.add_error(
-                    None,
-                    "Не удалось отправить письмо. Проверьте адрес или попробуйте позже.",
-                )
-            else:
-                return render(
-                    request,
-                    "registration/email_confirmation_sent.html",
-                    {"email": user.email},
-                )
+            user = form.save()
+            login(request, user)
+            next_url = request.POST.get("next", "")
+            if next_url and url_has_allowed_host_and_scheme(
+                next_url,
+                allowed_hosts={request.get_host()},
+            ):
+                return redirect(next_url)
+            return redirect("shopping_list")
     else:
         form = EmailRequiredUserCreationForm()
 
