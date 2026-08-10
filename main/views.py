@@ -27,6 +27,7 @@ from .analytics import build_analytics_dashboard, record_store_click
 from .email_verification import email_verification_token, send_verification_email
 from .forms import EmailRequiredUserCreationForm, ResendConfirmationForm
 from .models import ShoppingList, ShoppingListEvent, ShoppingListItem
+from .price_alerts import set_shopping_list_price_alerts
 from .services import (
     add_offer_to_shopping_list,
     build_purchase_plan,
@@ -414,6 +415,14 @@ def shopping_list(request):
         "main/shopping_list.html",
         build_shopping_list_context(request, user_list, editable=True),
     )
+
+
+@login_required
+@require_POST
+def update_shopping_list_price_alerts(request):
+    user_list = get_or_create_shopping_list(request.user)
+    set_shopping_list_price_alerts(user_list, request.POST.get("enabled") == "1")
+    return redirect("shopping_list")
 
 
 def shared_shopping_list(request, share_token):

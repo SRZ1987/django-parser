@@ -20,14 +20,21 @@ class ShoppingListItemInline(admin.TabularInline):
     model = ShoppingListItem
     extra = 0
     autocomplete_fields = ["product", "source_offer"]
-    readonly_fields = ["created_at"]
+    readonly_fields = [
+        "price_alert_source_price",
+        "price_alert_best_price",
+        "price_alert_best_offer",
+        "price_alert_checked_at",
+        "created_at",
+    ]
 
 
 @admin.register(ShoppingList)
 class ShoppingListAdmin(admin.ModelAdmin):
-    list_display = ["user", "items_count", "updated_at"]
+    list_display = ["user", "items_count", "price_alerts_enabled", "price_alerts_last_sent_at", "updated_at"]
+    list_filter = ["price_alerts_enabled"]
     search_fields = ["user__username", "user__email"]
-    readonly_fields = ["share_token", "created_at", "updated_at"]
+    readonly_fields = ["share_token", "price_alerts_enabled_at", "price_alerts_last_sent_at", "created_at", "updated_at"]
     inlines = [ShoppingListItemInline]
 
     def items_count(self, obj):
@@ -40,7 +47,13 @@ class ShoppingListItemAdmin(admin.ModelAdmin):
     list_filter = ["is_purchased"]
     search_fields = ["name", "shopping_list__user__username", "source_offer__original_name"]
     autocomplete_fields = ["shopping_list", "product", "source_offer"]
-    readonly_fields = ["created_at"]
+    readonly_fields = [
+        "price_alert_source_price",
+        "price_alert_best_price",
+        "price_alert_best_offer",
+        "price_alert_checked_at",
+        "created_at",
+    ]
 
 
 @admin.register(DailySiteVisit)

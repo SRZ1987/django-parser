@@ -11,6 +11,7 @@ urlpatterns = [
     path('accounts/confirm-email/<uidb64>/<token>/', views.confirm_email, name='confirm_email'),
     path('accounts/resend-confirmation/', views.resend_confirmation, name='resend_confirmation'),
     path('my-list/', views.shopping_list, name='shopping_list'),
+    path('my-list/price-alerts/', views.update_shopping_list_price_alerts, name='update_shopping_list_price_alerts'),
     path('my-list/clear/', views.clear_shopping_list, name='clear_shopping_list'),
     path('my-list/add/<int:offer_pk>/', views.add_to_shopping_list, name='add_to_shopping_list'),
     path('my-list/replace/<int:item_pk>/', views.replace_with_best_offer, name='replace_with_best_offer'),

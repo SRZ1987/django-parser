@@ -152,6 +152,7 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
 EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False").lower() == "true"
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Tannenberg <no-reply@localhost>")
+SITE_URL = os.getenv("SITE_URL", "").rstrip("/")
 PARSER_EXPORT_RETENTION_DAYS = int(os.getenv("PARSER_EXPORT_RETENTION_DAYS", "30"))
 PARSER_EXPORT_WORK_DIR = Path(os.getenv("PARSER_EXPORT_WORK_DIR", MEDIA_ROOT / "parser_export_work"))
 PARSER_STALE_RUN_MINUTES = int(os.getenv("PARSER_STALE_RUN_MINUTES", "30"))

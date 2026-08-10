@@ -11,6 +11,9 @@ class ShoppingList(models.Model):
         on_delete=models.CASCADE,
     )
     share_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    price_alerts_enabled = models.BooleanField(default=False)
+    price_alerts_enabled_at = models.DateTimeField(null=True, blank=True)
+    price_alerts_last_sent_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -39,6 +42,26 @@ class ShoppingListItem(models.Model):
     )
     name = models.CharField(max_length=500)
     is_purchased = models.BooleanField(default=False)
+    price_alert_source_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    price_alert_best_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    price_alert_best_offer = models.ForeignKey(
+        "catalog.ProductOffer",
+        related_name="price_alert_snapshots",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+    )
+    price_alert_checked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

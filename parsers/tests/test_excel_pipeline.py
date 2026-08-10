@@ -1224,6 +1224,21 @@ class BatchRunnerTests(TestCase):
         self.assertEqual(calls, ["a", "b"])
         self.assertEqual(batch.status, ParserBatch.STATUS_PARTIAL)
 
+    def test_price_alert_failure_does_not_fail_completed_parser_batch(self):
+        def fake_run_excel_parser(parser_config, trigger):
+            return ParserRun.objects.create(parser=parser_config, trigger=trigger, status=ParserRun.STATUS_SUCCESS)
+
+        with patch("parsers.services.batch_runner.ADAPTERS", {"a": object, "b": object}):
+            with patch("parsers.services.batch_runner.run_excel_parser", fake_run_excel_parser):
+                with patch(
+                    "main.price_alerts.send_shopping_list_price_alerts",
+                    side_effect=RuntimeError("SMTP unavailable"),
+                ):
+                    batch = run_all_parsers()
+
+        self.assertEqual(batch.status, ParserBatch.STATUS_SUCCESS)
+        self.assertIn("WARNING: Shopping list price alerts failed", batch.log)
+
     def test_running_batch_blocks_second_batch(self):
         ParserBatch.objects.create(status=ParserBatch.STATUS_RUNNING)
 

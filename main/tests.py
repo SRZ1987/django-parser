@@ -1,9 +1,12 @@
 import uuid
 from decimal import Decimal
+from io import StringIO
 from urllib.parse import parse_qs, urlparse
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils.encoding import force_bytes
@@ -12,6 +15,7 @@ from django.utils.http import urlsafe_base64_encode
 from catalog.models import Category, Product, ProductOffer, Shop
 from main.email_verification import email_verification_token
 from main.models import DailySiteVisit, ShoppingListEvent, ShoppingListItem, StoreClick
+from main.price_alerts import send_shopping_list_price_alerts, set_shopping_list_price_alerts
 from main.services import add_offer_to_shopping_list, build_purchase_plan, get_best_offer
 
 
@@ -401,6 +405,131 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, f"http://127.0.0.1{print_path}")
         self.assertContains(response, "Печать / PDF")
 
+    def test_user_can_enable_and_disable_shopping_list_price_alerts(self):
+        user = self.create_user("price-alert-owner")
+        user.email = "price-alert-owner@example.com"
+        user.save(update_fields=["email"])
+        offer = self.create_offer(name="Makita price alert", price=Decimal("10.00"))
+        item = add_offer_to_shopping_list(user, offer)
+        self.client.force_login(user)
+
+        response = self.client.post(reverse("update_shopping_list_price_alerts"), {"enabled": "1"})
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        user.shopping_list.refresh_from_db()
+        item.refresh_from_db()
+        self.assertTrue(user.shopping_list.price_alerts_enabled)
+        self.assertIsNotNone(user.shopping_list.price_alerts_enabled_at)
+        self.assertEqual(item.price_alert_source_price, Decimal("10.00"))
+        self.assertIsNotNone(item.price_alert_checked_at)
+        list_page = self.client.get(reverse("shopping_list"))
+        self.assertContains(list_page, "Уведомления об изменении цен")
+        self.assertContains(list_page, user.email)
+        self.assertContains(list_page, 'role="switch"')
+
+        self.client.post(reverse("update_shopping_list_price_alerts"), {"enabled": "0"})
+        user.shopping_list.refresh_from_db()
+        item.refresh_from_db()
+        self.assertFalse(user.shopping_list.price_alerts_enabled)
+        self.assertIsNone(item.price_alert_checked_at)
+
+    @override_settings(SITE_URL="https://tannenberg.example")
+    def test_price_alert_email_reports_price_decrease_and_increase_without_duplicates(self):
+        user = self.create_user("price-change-user")
+        user.email = "price-change@example.com"
+        user.save(update_fields=["email"])
+        offer = self.create_offer(name="Tracked drill", price=Decimal("10.00"))
+        item = add_offer_to_shopping_list(user, offer)
+        set_shopping_list_price_alerts(user.shopping_list, True)
+
+        offer.price = Decimal("8.00")
+        offer.save(update_fields=["price"])
+        first_result = send_shopping_list_price_alerts()
+
+        self.assertEqual(first_result.emails_sent, 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Цена снизилась: 10.00 EUR → 8.00 EUR", mail.outbox[0].body)
+        self.assertIn("https://tannenberg.example/my-list/", mail.outbox[0].body)
+        send_shopping_list_price_alerts()
+        self.assertEqual(len(mail.outbox), 1)
+
+        offer.price = Decimal("11.00")
+        offer.save(update_fields=["price"])
+        second_result = send_shopping_list_price_alerts()
+
+        self.assertEqual(second_result.emails_sent, 1)
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertIn("Цена выросла: 8.00 EUR → 11.00 EUR", mail.outbox[1].body)
+        item.refresh_from_db()
+        self.assertEqual(item.price_alert_source_price, Decimal("11.00"))
+
+    def test_price_alert_email_reports_new_cheaper_store(self):
+        user = self.create_user("cheaper-store-user")
+        user.email = "cheaper-store@example.com"
+        user.save(update_fields=["email"])
+        source = self.create_offer(
+            name="Makita DDF482 drill",
+            barcode="4000000000001",
+            price=Decimal("10.00"),
+        )
+        add_offer_to_shopping_list(user, source)
+        set_shopping_list_price_alerts(user.shopping_list, True)
+        self.create_offer(
+            name="Makita DDF482 akutrell",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-DDF482-ALERT",
+            barcode="4000000000001",
+            external_id="depo-ddf482-alert",
+            price=Decimal("7.00"),
+        )
+
+        result = send_shopping_list_price_alerts()
+
+        self.assertEqual(result.emails_sent, 1)
+        self.assertIn("В DEPO теперь дешевле: 7.00 EUR", mail.outbox[0].body)
+        self.assertIn("Экономия: 3.00 EUR", mail.outbox[0].body)
+
+    def test_disabled_price_alerts_do_not_send_email(self):
+        user = self.create_user("disabled-alert-user")
+        user.email = "disabled-alert@example.com"
+        user.save(update_fields=["email"])
+        offer = self.create_offer(name="Untracked drill", price=Decimal("10.00"))
+        add_offer_to_shopping_list(user, offer)
+        offer.price = Decimal("5.00")
+        offer.save(update_fields=["price"])
+
+        result = send_shopping_list_price_alerts()
+
+        self.assertEqual(result.lists_checked, 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_failed_price_alert_email_keeps_previous_snapshot_for_retry(self):
+        user = self.create_user("retry-alert-user")
+        user.email = "retry-alert@example.com"
+        user.save(update_fields=["email"])
+        offer = self.create_offer(name="Retry tracked drill", price=Decimal("10.00"))
+        item = add_offer_to_shopping_list(user, offer)
+        set_shopping_list_price_alerts(user.shopping_list, True)
+        offer.price = Decimal("6.00")
+        offer.save(update_fields=["price"])
+
+        with patch("main.price_alerts.send_mail", side_effect=RuntimeError("SMTP unavailable")):
+            result = send_shopping_list_price_alerts()
+
+        item.refresh_from_db()
+        self.assertEqual(result.errors_count, 1)
+        self.assertEqual(result.emails_sent, 0)
+        self.assertEqual(item.price_alert_source_price, Decimal("10.00"))
+
+    def test_price_alert_management_command_outputs_statistics(self):
+        output = StringIO()
+
+        call_command("send_shopping_list_price_alerts", stdout=output)
+
+        self.assertIn("lists=0", output.getvalue())
+        self.assertIn("emails=0", output.getvalue())
+
     def test_shopping_list_contains_popular_messenger_share_links(self):
         user = self.create_user()
         offer = self.create_offer(name="Makita drill")
@@ -520,6 +649,7 @@ class MainCatalogTests(TestCase):
         self.assertNotContains(response, reverse("toggle_shopping_list_item", args=[item.pk]))
         self.assertNotContains(response, reverse("replace_with_best_offer", args=[item.pk]))
         self.assertNotContains(response, reverse("clear_shopping_list"))
+        self.assertNotContains(response, reverse("update_shopping_list_price_alerts"))
 
     def test_unknown_shared_shopping_list_returns_404(self):
         response = self.client.get(

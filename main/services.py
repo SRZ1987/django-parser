@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -8,6 +9,9 @@ from catalog.services.product_matching import offers_are_comparable
 from catalog.services.product_search import find_matches
 
 from .models import ShoppingList, ShoppingListEvent, ShoppingListItem
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,13 @@ def add_offer_to_shopping_list(user, offer):
     )
     if created:
         record_shopping_list_event(user, offer, ShoppingListEvent.EventType.ADDED, item.name)
+        if shopping_list.price_alerts_enabled:
+            try:
+                from .price_alerts import refresh_item_price_alert_baseline
+
+                refresh_item_price_alert_baseline(item)
+            except Exception:
+                logger.exception("Could not initialize price alert baseline for shopping list item %s", item.pk)
     return item
 
 
@@ -94,7 +105,28 @@ def replace_shopping_list_offer(item, offer):
     item.source_offer = offer
     item.product = offer.product
     item.name = offer.original_name
-    item.save(update_fields=["source_offer", "product", "name"])
+    item.price_alert_source_price = None
+    item.price_alert_best_price = None
+    item.price_alert_best_offer = None
+    item.price_alert_checked_at = None
+    item.save(
+        update_fields=[
+            "source_offer",
+            "product",
+            "name",
+            "price_alert_source_price",
+            "price_alert_best_price",
+            "price_alert_best_offer",
+            "price_alert_checked_at",
+        ]
+    )
+    if item.shopping_list.price_alerts_enabled:
+        try:
+            from .price_alerts import refresh_item_price_alert_baseline
+
+            refresh_item_price_alert_baseline(item)
+        except Exception:
+            logger.exception("Could not reset price alert baseline for shopping list item %s", item.pk)
     record_shopping_list_event(
         user,
         offer,

@@ -48,6 +48,7 @@ def run_all_parsers(trigger=ParserRun.TRIGGER_COMMAND, force=False):
                     any_failed = True
 
             batch.status = ParserBatch.STATUS_PARTIAL if any_failed else ParserBatch.STATUS_SUCCESS
+            _send_shopping_list_price_alerts(batch)
             return batch
         except Exception as exc:
             batch.status = ParserBatch.STATUS_FAILED
@@ -281,3 +282,17 @@ def _check_cancel_requested(parser_run):
     parser_run.refresh_from_db(fields=["cancel_requested"])
     if parser_run.cancel_requested:
         raise ParserCancelled("Parser run was cancelled before the next stage.")
+
+
+def _send_shopping_list_price_alerts(batch):
+    try:
+        from main.price_alerts import send_shopping_list_price_alerts
+
+        send_shopping_list_price_alerts(
+            log_callback=lambda message: setattr(batch, "log", append_log(batch.log, message))
+        )
+    except Exception as exc:
+        batch.log = append_log(
+            batch.log,
+            f"WARNING: Shopping list price alerts failed: {type(exc).__name__}: {exc}",
+        )

@@ -12,6 +12,29 @@
         <p>Товары и более выгодные предложения по магазинам.</p>
     </header>
 
+    <section class="price-alert-settings" aria-labelledby="price-alert-title">
+        <form method="post" action="{% url 'update_shopping_list_price_alerts' %}">
+            {% csrf_token %}
+            <input type="hidden" name="enabled" value="0">
+            <label class="price-alert-toggle" for="price-alert-enabled">
+                <input
+                    id="price-alert-enabled"
+                    name="enabled"
+                    type="checkbox"
+                    value="1"
+                    role="switch"
+                    {% if shopping_list.price_alerts_enabled %}checked{% endif %}
+                >
+                <span class="price-alert-switch" aria-hidden="true"></span>
+                <span class="price-alert-copy">
+                    <strong id="price-alert-title">Уведомления об изменении цен</strong>
+                    <small>{{ user.email }}</small>
+                </span>
+            </label>
+            <button class="list-action-button" type="submit">Сохранить</button>
+        </form>
+    </section>
+
     {% if plan.rows %}
         {% include 'main/includes/shopping_list_actions.html' %}
         {% include 'main/includes/purchase_plan.html' %}
