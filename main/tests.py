@@ -427,6 +427,8 @@ class MainCatalogTests(TestCase):
         self.assertContains(list_page, "Уведомления об изменении цен")
         self.assertContains(list_page, user.email)
         self.assertContains(list_page, 'role="switch"')
+        self.assertContains(list_page, "data-price-alert-form")
+        self.assertNotContains(list_page, ">Сохранить</button>")
 
         self.client.post(reverse("update_shopping_list_price_alerts"), {"enabled": "0"})
         user.shopping_list.refresh_from_db()
@@ -560,7 +562,9 @@ class MainCatalogTests(TestCase):
         )
         self.assertIn(shared_url, parse_qs(urlparse(links["Viber"]).query)["text"][0])
         self.assertIn(shared_url, parse_qs(urlparse(links["SMS / iMessage"]).query)["body"][0])
-        self.assertContains(response, "Мессенджеры")
+        self.assertContains(response, "data-share-menu")
+        self.assertContains(response, "Поделиться")
+        self.assertNotContains(response, ">Мессенджеры</summary>")
 
     def test_user_can_clear_entire_own_list(self):
         user = self.create_user("list-owner")

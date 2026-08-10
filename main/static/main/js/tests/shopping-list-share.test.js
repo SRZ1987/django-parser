@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ShoppingListShareController } from "../shopping-list-share.js";
+import { bindPriceAlertAutosave, ShoppingListShareController } from "../shopping-list-share.js";
 
 test("native share sends the public shopping list URL", async () => {
     let payload = null;
@@ -45,4 +45,24 @@ test("copy failure produces an accessible error state", async () => {
 
     assert.equal(result, false);
     assert.equal(statusElement.textContent, "Не удалось скопировать ссылку");
+});
+
+test("price alert switch submits its form immediately", () => {
+    let changeHandler = null;
+    let submissions = 0;
+    const toggle = {
+        addEventListener: (name, handler) => {
+            if (name === "change") {
+                changeHandler = handler;
+            }
+        },
+    };
+    const form = {
+        querySelector: () => toggle,
+        requestSubmit: () => { submissions += 1; },
+    };
+
+    assert.equal(bindPriceAlertAutosave(form), true);
+    changeHandler();
+    assert.equal(submissions, 1);
 });

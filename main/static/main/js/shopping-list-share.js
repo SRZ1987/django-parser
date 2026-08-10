@@ -48,6 +48,23 @@ export class ShoppingListShareController {
     }
 }
 
+export function bindPriceAlertAutosave(form) {
+    const toggle = form?.querySelector?.("[data-price-alert-toggle]");
+    if (!toggle || typeof form.requestSubmit !== "function") {
+        return false;
+    }
+
+    toggle.addEventListener("change", () => form.requestSubmit());
+    return true;
+}
+
+function closeShareMenu(control) {
+    const menu = control.closest?.("[data-share-menu]");
+    if (menu) {
+        menu.open = false;
+    }
+}
+
 export function initializeShoppingListShare(documentRef = globalThis.document, navigatorRef = globalThis.navigator) {
     if (!documentRef) {
         return null;
@@ -59,10 +76,22 @@ export function initializeShoppingListShare(documentRef = globalThis.document, n
     });
 
     for (const button of documentRef.querySelectorAll("[data-share-plan]")) {
-        button.addEventListener("click", () => controller.share(button.dataset.shareUrl));
+        button.addEventListener("click", async () => {
+            await controller.share(button.dataset.shareUrl);
+            closeShareMenu(button);
+        });
     }
     for (const button of documentRef.querySelectorAll("[data-copy-plan]")) {
-        button.addEventListener("click", () => controller.copy(button.dataset.shareUrl));
+        button.addEventListener("click", async () => {
+            await controller.copy(button.dataset.shareUrl);
+            closeShareMenu(button);
+        });
+    }
+    for (const link of documentRef.querySelectorAll("[data-share-menu] a")) {
+        link.addEventListener("click", () => closeShareMenu(link));
+    }
+    for (const form of documentRef.querySelectorAll("[data-price-alert-form]")) {
+        bindPriceAlertAutosave(form);
     }
     for (const form of documentRef.querySelectorAll("[data-clear-list-form]")) {
         form.addEventListener("submit", (event) => {

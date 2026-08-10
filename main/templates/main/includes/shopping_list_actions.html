@@ -1,20 +1,24 @@
 <div class="shopping-list-actions" aria-label="Отправить план покупок">
-    <a class="list-action-button" href="{{ email_share_url }}">Email</a>
-    <details class="messenger-share-menu">
-        <summary class="list-action-button">Мессенджеры</summary>
-        <div class="messenger-share-links" aria-label="Выберите мессенджер">
+    <details class="share-action-menu" data-share-menu>
+        <summary class="list-action-button list-action-primary">Поделиться</summary>
+        <div class="share-action-options" aria-label="Способы отправки плана покупок">
+            <button class="share-action-option" type="button" data-share-plan data-share-url="{{ shared_url }}">
+                Через приложения
+            </button>
+            <a class="share-action-option" href="{{ email_share_url }}">Email</a>
             {% for messenger in messenger_share_links %}
-                <a class="messenger-share-link"
+                <a class="share-action-option"
                    href="{{ messenger.url }}"
                    {% if messenger.opens_new_tab %}target="_blank" rel="noopener noreferrer"{% endif %}>
                     {{ messenger.name }}
                 </a>
             {% endfor %}
+            <button class="share-action-option" type="button" data-copy-plan data-share-url="{{ shared_url }}">
+                Скопировать ссылку
+            </button>
+            <a class="share-action-option" href="{{ print_url }}" target="_blank" rel="noopener">Печать / PDF</a>
         </div>
     </details>
-    <button class="list-action-button" type="button" data-share-plan data-share-url="{{ shared_url }}">Поделиться</button>
-    <button class="list-action-button" type="button" data-copy-plan data-share-url="{{ shared_url }}">Скопировать ссылку</button>
-    <a class="list-action-button list-action-primary" href="{{ print_url }}" target="_blank" rel="noopener">Печать / PDF</a>
     {% if editable %}
         <form class="shopping-list-clear-form" method="post" action="{% url 'clear_shopping_list' %}" data-clear-list-form>
             {% csrf_token %}

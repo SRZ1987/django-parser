@@ -3,7 +3,7 @@
 
 {% block title %}Мой список{% endblock %}
 {% block body_class %}shopping-list-page{% endblock %}
-{% block extra_scripts %}<script src="{% static 'main/js/shopping-list-share.js' %}?v=1" type="module"></script>{% endblock %}
+{% block extra_scripts %}<script src="{% static 'main/js/shopping-list-share.js' %}?v=2" type="module"></script>{% endblock %}
 
 {% block content %}
 <main class="page-shell list-shell">
@@ -13,7 +13,7 @@
     </header>
 
     <section class="price-alert-settings" aria-labelledby="price-alert-title">
-        <form method="post" action="{% url 'update_shopping_list_price_alerts' %}">
+        <form method="post" action="{% url 'update_shopping_list_price_alerts' %}" data-price-alert-form>
             {% csrf_token %}
             <input type="hidden" name="enabled" value="0">
             <label class="price-alert-toggle" for="price-alert-enabled">
@@ -23,6 +23,7 @@
                     type="checkbox"
                     value="1"
                     role="switch"
+                    data-price-alert-toggle
                     {% if shopping_list.price_alerts_enabled %}checked{% endif %}
                 >
                 <span class="price-alert-switch" aria-hidden="true"></span>
@@ -31,7 +32,6 @@
                     <small>{{ user.email }}</small>
                 </span>
             </label>
-            <button class="list-action-button" type="submit">Сохранить</button>
         </form>
     </section>
 
