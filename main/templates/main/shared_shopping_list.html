@@ -7,11 +7,10 @@
 
 {% block content %}
 <main class="page-shell list-shell">
-    <section class="catalog-head" aria-labelledby="list-title">
-        <p class="eyebrow">Price Compare</p>
+    <header class="compact-page-head">
         <h1 id="list-title">План покупок</h1>
-        <p>Товары и актуальные цены сгруппированы по магазинам.</p>
-    </section>
+        <p>Товары и актуальные цены по магазинам.</p>
+    </header>
 
     {% if plan.rows %}
         {% include 'main/includes/shopping_list_actions.html' %}

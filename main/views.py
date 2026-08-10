@@ -420,7 +420,7 @@ def build_shopping_list_context(request, user_list, *, editable):
     )
     email_query = urlencode(
         {
-            "subject": "План покупок Price Compare",
+            "subject": "План покупок Tannenberg",
             "body": f"План покупок по магазинам:\n{shared_url}",
         }
     )

@@ -1,16 +1,12 @@
 {% extends 'main/base.html' %}
 
-{% block title %}Price Compare{% endblock %}
+{% block title %}Поиск товаров — Tannenberg{% endblock %}
 
 {% block content %}
 <main>
-    <section class="hero-section simple-hero" aria-labelledby="page-title">
+    <section class="hero-section simple-hero search-workspace" aria-labelledby="page-title">
         <div class="hero-content">
-            <p class="hero-kicker">Сравнение цен между магазинами</p>
-            <h1 id="page-title">Найдите товар и выберите, где купить дешевле</h1>
-            <p class="hero-description">
-                Найдите товар, добавьте его в список — мы покажем, где купить дешевле после каждого обновления каталога.
-            </p>
+            <h1 id="page-title">Поиск товаров</h1>
 
             <form class="search-panel" method="get" action="{% url 'product_search' %}" role="search" data-search-form data-barcode-search-form>
                 <label class="visually-hidden" for="search-input">Поиск товара</label>

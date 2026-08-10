@@ -4,11 +4,7 @@
 
 {% block content %}
 <main class="page-shell search-results-shell">
-    <section class="catalog-head" aria-labelledby="search-title">
-        <p class="eyebrow">Поиск и сравнение</p>
-        <h1 id="search-title">Найдите лучшее предложение</h1>
-        <p>Введите название, SKU, модель или штрихкод. Мы покажем совпадения и похожие предложения из подключённых магазинов.</p>
-    </section>
+    <h1 id="search-title" class="compact-page-title">Поиск товаров</h1>
 
     <form class="catalog-filters search-page-form" method="get" action="{% url 'product_search' %}" data-barcode-search-form>
         <div class="catalog-search-control">

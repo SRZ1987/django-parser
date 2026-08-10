@@ -1,6 +1,6 @@
 @page {
-    size: A4;
-    margin: 14mm;
+    size: A4 portrait;
+    margin: 12mm;
 }
 
 * {
@@ -14,10 +14,13 @@ body {
     font-family: Arial, Helvetica, sans-serif;
     font-size: 10pt;
     line-height: 1.4;
+    overflow-wrap: anywhere;
 }
 
 .print-plan {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .print-header,
@@ -35,10 +38,18 @@ body {
 }
 
 .print-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 2mm;
     font-size: 8pt;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+}
+
+.print-brand img {
+    width: 8mm;
+    height: 8mm;
 }
 
 h1 {
@@ -69,8 +80,9 @@ h1 {
 }
 
 .print-shop {
-    margin-top: 8mm;
-    break-inside: avoid;
+    max-width: 100%;
+    margin-top: 7mm;
+    break-inside: auto;
 }
 
 .print-shop-header {
@@ -91,12 +103,15 @@ h1 {
 }
 
 .print-product {
-    min-height: 20mm;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 18mm;
     padding: 3mm 0;
     display: grid;
-    grid-template-columns: 7mm 16mm minmax(0, 1fr) 28mm;
+    grid-template-columns: 5mm 14mm minmax(0, 1fr) 24mm;
     align-items: center;
-    gap: 3mm;
+    gap: 2mm;
     border-bottom: 1px solid #ddd;
     break-inside: avoid;
 }
@@ -112,8 +127,8 @@ h1 {
 }
 
 .print-image {
-    width: 16mm;
-    height: 16mm;
+    width: 14mm;
+    height: 14mm;
     display: grid;
     place-items: center;
     overflow: hidden;
@@ -150,6 +165,7 @@ h1 {
 }
 
 .print-product dl div {
+    min-width: 0;
     display: flex;
     gap: 1.5mm;
 }
@@ -161,6 +177,7 @@ h1 {
 
 .print-product dd {
     margin: 0;
+    overflow-wrap: anywhere;
 }
 
 .print-product p {
@@ -169,6 +186,7 @@ h1 {
 }
 
 .print-price {
+    min-width: 0;
     display: grid;
     justify-items: end;
     gap: 2px;
@@ -177,6 +195,7 @@ h1 {
 
 .print-price strong {
     font-size: 11pt;
+    white-space: nowrap;
 }
 
 .print-price small {
@@ -188,6 +207,7 @@ h1 {
     margin-top: 9mm;
     padding-top: 4mm;
     border-top: 2px solid #111;
+    break-inside: avoid;
 }
 
 .print-summary div {
@@ -209,11 +229,27 @@ h1 {
     }
 
     .print-plan {
-        width: min(210mm, 100%);
+        width: min(186mm, 100%);
         min-height: 297mm;
         margin: 0 auto;
-        padding: 14mm;
+        padding: 12mm;
         background: #fff;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);
+    }
+}
+
+@media print {
+    html,
+    body {
+        width: auto;
+        max-width: 100%;
+        overflow: visible;
+    }
+
+    .print-plan {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
     }
 }

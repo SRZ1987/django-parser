@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title">
+  <title id="title">Ель на горе</title>
+  <path d="M5 38 18 25l5 5 8-10 12 18H5Z" fill="none" stroke="#f4f4f0" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="m25 8-7 10h4l-6 8h7v9h4v-9h7l-6-8h4L25 8Z" fill="#f4f4f0"/>
+  <path d="M5 40h38" fill="none" stroke="#f4f4f0" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

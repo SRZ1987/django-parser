@@ -7,11 +7,10 @@
 
 {% block content %}
 <main class="page-shell list-shell">
-    <section class="catalog-head" aria-labelledby="list-title">
-        <p class="eyebrow">Мой список</p>
-        <h1 id="list-title">Что купить сейчас</h1>
-        <p>Товары собраны по магазинам, в которых вы их выбрали. Более выгодное предложение показано рядом и не заменяет товар без вашего решения.</p>
-    </section>
+    <header class="compact-page-head">
+        <h1 id="list-title">Мой список</h1>
+        <p>Товары и более выгодные предложения по магазинам.</p>
+    </header>
 
     {% if plan.rows %}
         {% include 'main/includes/shopping_list_actions.html' %}

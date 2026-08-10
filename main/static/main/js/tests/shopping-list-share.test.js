@@ -15,7 +15,7 @@ test("native share sends the public shopping list URL", async () => {
 
     assert.equal(result, true);
     assert.equal(payload.url, "https://example.com/shared-list/token/");
-    assert.equal(payload.title, "План покупок Price Compare");
+    assert.equal(payload.title, "План покупок Tannenberg");
     assert.equal(statusElement.textContent, "План отправлен");
 });
 

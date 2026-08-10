@@ -5,14 +5,17 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>План покупок</title>
-    <link rel="stylesheet" href="{% static 'main/css/shopping-list-print.css' %}?v=1">
-    <script src="{% static 'main/js/print-shopping-list.js' %}?v=1" defer></script>
+    <link rel="stylesheet" href="{% static 'main/css/shopping-list-print.css' %}?v=2">
+    <script src="{% static 'main/js/print-shopping-list.js' %}?v=2" defer></script>
 </head>
 <body>
     <main class="print-plan">
         <header class="print-header">
             <div>
-                <span class="print-brand">Price Compare</span>
+                <span class="print-brand">
+                    <img src="{% static 'main/img/tannenberg-mark.svg' %}" alt="">
+                    Tannenberg
+                </span>
                 <h1>План покупок</h1>
             </div>
             <div class="print-overall-total">

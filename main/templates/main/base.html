@@ -4,8 +4,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Price Compare{% endblock %}</title>
+    <title>{% block title %}Tannenberg{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'main/css/style.css' %}?v=8">
+    <link rel="stylesheet" href="{% static 'main/css/tannenberg.css' %}?v=1">
     <link rel="stylesheet" href="{% static 'main/css/barcode-scanner.css' %}?v=1">
     <script src="{% static 'main/js/menu.js' %}?v=1" defer></script>
     <script src="{% static 'main/js/search-suggestions.js' %}?v=2" defer></script>
@@ -15,9 +16,11 @@
 <body class="{% block body_class %}{% endblock %}">
     <header class="site-header">
         <div class="header-container">
-            <a class="brand" href="{% url 'home' %}" aria-label="Price Compare">
-                <span class="brand-mark">PC</span>
-                <span class="brand-name">Price Compare</span>
+            <a class="brand" href="{% url 'home' %}" aria-label="Tannenberg">
+                <span class="brand-mark" aria-hidden="true">
+                    <img src="{% static 'main/img/tannenberg-mark.svg' %}" alt="">
+                </span>
+                <span class="brand-name">Tannenberg</span>
             </a>
 
             <nav class="header-nav" aria-label="Основная навигация" data-menu>

@@ -94,7 +94,8 @@ class MainCatalogTests(TestCase):
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Найдите товар и выберите")
+        self.assertContains(response, "Поиск товаров")
+        self.assertContains(response, "Tannenberg")
 
     def test_home_search_form_submits_to_product_search(self):
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
@@ -383,6 +384,7 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, "4006381333931")
         self.assertContains(response, "42.50 EUR")
         self.assertContains(response, "https://example.com/print-image.jpg")
+        self.assertContains(response, "Tannenberg")
         self.assertContains(response, "shopping-list-print.css")
         self.assertContains(response, "print-shopping-list.js")
 

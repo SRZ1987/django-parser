@@ -33,7 +33,7 @@ export class ShoppingListShareController {
 
         try {
             await this.navigator.share({
-                title: "План покупок Price Compare",
+            title: "План покупок Tannenberg",
                 text: "План покупок по магазинам",
                 url,
             });
