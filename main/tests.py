@@ -383,6 +383,7 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, "Открыть в DEPO")
         self.assertContains(response, reverse("replace_with_best_offer", args=[item.pk]))
         self.assertContains(response, reverse("remove_from_shopping_list", args=[item.pk]))
+        self.assertNotContains(response, reverse("toggle_shopping_list_item", args=[item.pk]))
         self.assertContains(response, reverse("store_click", args=[source.pk]), count=1)
         self.assertContains(response, reverse("store_click", args=[cheaper.pk]), count=1)
         self.assertNotContains(response, "Выбранные товары")

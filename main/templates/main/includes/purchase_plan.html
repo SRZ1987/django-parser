@@ -95,13 +95,6 @@
                                     {% endif %}
                                     {% if editable %}
                                         <div class="purchase-row-controls">
-                                            <form method="post" action="{% url 'toggle_shopping_list_item' item.pk %}">
-                                                {% csrf_token %}
-                                                <button class="purchase-toggle" type="submit" aria-pressed="{% if item.is_purchased %}true{% else %}false{% endif %}">
-                                                    <span aria-hidden="true">✓</span>
-                                                    {% if item.is_purchased %}Куплено{% else %}Купить{% endif %}
-                                                </button>
-                                            </form>
                                             <form method="post" action="{% url 'remove_from_shopping_list' item.pk %}">
                                                 {% csrf_token %}
                                                 <button class="purchase-delete" type="submit">Удалить</button>
