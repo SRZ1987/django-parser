@@ -1,15 +1,15 @@
 {% extends 'main/base.html' %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}План покупок{% endblock %}
+{% block title %}{% translate "Shopping plan" %}{% endblock %}
 {% block body_class %}shopping-list-page{% endblock %}
 {% block extra_scripts %}<script src="{% static 'main/js/shopping-list-share.js' %}?v=2" type="module"></script>{% endblock %}
 
 {% block content %}
 <main class="page-shell list-shell">
     <header class="compact-page-head">
-        <h1 id="list-title">План покупок</h1>
-        <p>Товары и актуальные цены по магазинам.</p>
+        <h1 id="list-title">{% translate "Shopping plan" %}</h1>
+        <p>{% translate "Products and current prices by store." %}</p>
     </header>
 
     {% if plan.rows %}
@@ -17,7 +17,7 @@
         {% include 'main/includes/purchase_plan.html' %}
     {% else %}
         <section class="empty-state">
-            <h2>Список пуст</h2>
+            <h2>{% translate "The list is empty" %}</h2>
         </section>
     {% endif %}
 </main>

@@ -1172,3 +1172,37 @@ body::before {
         gap: 4px;
     }
 }
+/* Language selector */
+.language-switcher {
+    display: inline-flex;
+    flex: 0 0 auto;
+    overflow: hidden;
+    border: 1px solid var(--line, #3a3a3a);
+    border-radius: 4px;
+}
+
+.language-option {
+    min-width: 34px;
+    min-height: 32px;
+    padding: 0 8px;
+    border: 0;
+    border-right: 1px solid var(--line, #3a3a3a);
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.language-option:last-child {
+    border-right: 0;
+}
+
+.language-option:hover,
+.language-option:focus-visible,
+.language-option.is-active {
+    background: #f1f1ef;
+    color: #111;
+}

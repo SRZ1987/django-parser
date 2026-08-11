@@ -1,0 +1,718 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Tannenberg\n"
+"Language: et\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "%(count)s active accounts with email"
+msgstr "%(count)s aktiivset e-postiga kontot"
+
+msgid "%(count)s active offers"
+msgstr "%(count)s aktiivset pakkumist"
+
+msgid "%(count)s page views"
+msgstr "%(count)s lehevaatamist"
+
+msgid "%(count)s total page views"
+msgstr "Kokku %(count)s lehevaatamist"
+
+msgid "%(count)s visitors"
+msgstr "%(count)s külastajat"
+
+msgid "%(current)s of %(target)s pcs."
+msgstr "%(current)s / %(target)s tk"
+
+msgid "%(saving)s %(currency)s cheaper at %(shop)s"
+msgstr "Poes %(shop)s %(saving)s %(currency)s soodsam"
+
+msgid "24 offers per page"
+msgstr "24 pakkumist lehel"
+
+msgid "A confirmation link was sent to <strong>%(email)s</strong>."
+msgstr "Kinnituslink saadeti aadressile <strong>%(email)s</strong>."
+
+msgid "A user with this email is already registered."
+msgstr "Selle e-posti aadressiga kasutaja on juba registreeritud."
+
+msgid "Account"
+msgstr "Konto"
+
+msgid "Account activated"
+msgstr "Konto on aktiveeritud"
+
+msgid "Active products"
+msgstr "Aktiivsed tooted"
+
+msgid "Activity trend"
+msgstr "Aktiivsuse muutus"
+
+msgid "Add a product with a quantity price to your list. It will appear here so other registered users can join."
+msgstr "Lisa kogusehinnaga toode oma nimekirja. See ilmub siia ja teised registreeritud kasutajad saavad liituda."
+
+msgid "Add and open chat"
+msgstr "Lisa ja ava vestlus"
+
+msgid "Add to list"
+msgstr "Lisa nimekirja"
+
+msgid "Added to lists"
+msgstr "Nimekirjadesse lisatud"
+
+msgid "After confirmation you will be able to log in."
+msgstr "Pärast kinnitamist saad sisse logida."
+
+msgid "After replacement %(price)s %(currency)s"
+msgstr "Pärast asendamist %(price)s %(currency)s"
+
+msgid "After replacements"
+msgstr "Pärast asendamisi"
+
+msgid "Agree on the time, place and way to make the purchase."
+msgstr "Leppige kokku ostu aeg, koht ja viis."
+
+msgid "All categories"
+msgstr "Kõik kategooriad"
+
+msgid "All clicks"
+msgstr "Kõik klikid"
+
+msgid "All stores"
+msgstr "Kõik kauplused"
+
+msgid "All-time additions"
+msgstr "Lisamisi kokku"
+
+msgid "All-time browsers"
+msgstr "Brausereid kokku"
+
+msgid "Almost done"
+msgstr "Peaaegu valmis"
+
+msgid "Already have an account?"
+msgstr "Konto on juba olemas?"
+
+msgid "Available group purchases"
+msgstr "Saadaval ühisostud"
+
+msgid "Back"
+msgstr "Tagasi"
+
+msgid "Back to catalog"
+msgstr "Tagasi kataloogi"
+
+msgid "Barcode"
+msgstr "Vöötkood"
+
+msgid "Barcode recognized"
+msgstr "Vöötkood tuvastatud"
+
+msgid "Barcode search"
+msgstr "Vöötkoodiotsing"
+
+msgid "Brand"
+msgstr "Kaubamärk"
+
+msgid "Browsers today"
+msgstr "Brausereid täna"
+
+msgid "By relevance"
+msgstr "Asjakohasuse järgi"
+
+msgid "Camera access denied"
+msgstr "Kaamerale puudub juurdepääs"
+
+msgid "Camera preview"
+msgstr "Kaamera eelvaade"
+
+msgid "Candidates checked: %(count)s"
+msgstr "Kontrollitud kandidaate: %(count)s"
+
+msgid "Catalog"
+msgstr "Kataloog"
+
+msgid "Catalog results"
+msgstr "Kataloogi tulemused"
+
+msgid "Category"
+msgstr "Kategooria"
+
+msgid "Cheaper at %(shop)s: %(price)s %(currency)s (−%(saving)s %(currency)s)"
+msgstr "Poes %(shop)s soodsam: %(price)s %(currency)s (−%(saving)s %(currency)s)"
+
+msgid "Cheapest now: %(shop)s"
+msgstr "Praegu soodsaim: %(shop)s"
+
+msgid "Check your email"
+msgstr "Kontrolli oma e-posti"
+
+msgid "Choose photo"
+msgstr "Vali foto"
+
+msgid "Clear entire list"
+msgstr "Tühjenda kogu nimekiri"
+
+msgid "Clicks"
+msgstr "Klikid"
+
+msgid "Clicks and products in user lists"
+msgstr "Klikid ja tooted kasutajate nimekirjades"
+
+msgid "Clicks in 30 days"
+msgstr "Klikid 30 päeva jooksul"
+
+msgid "Close"
+msgstr "Sulge"
+
+msgid "Close scanner"
+msgstr "Sulge skanner"
+
+msgid "Collected %(current)s of %(target)s pcs."
+msgstr "Kogutud %(current)s / %(target)s tk"
+
+msgid "Collected %(current)s of %(target)s pcs. · %(remaining)s more needed"
+msgstr "Kogutud %(current)s / %(target)s tk · vaja veel %(remaining)s"
+
+msgid "Collected since %(date)s."
+msgstr "Andmeid kogutakse alates %(date)s."
+
+msgid "Confirm email"
+msgstr "Kinnita e-post"
+
+msgid "Confirm the email for your Tannenberg account:"
+msgstr "Kinnita oma Tannenbergi konto e-post:"
+
+msgid "Confirm your email for Tannenberg"
+msgstr "Kinnita Tannenbergi konto e-post"
+
+msgid "Contact details are not published. Share them in the chat only if you choose to."
+msgstr "Kontaktandmeid ei avaldata. Jaga neid vestluses ainult omal soovil."
+
+msgid "Copy link"
+msgstr "Kopeeri link"
+
+msgid "Could not confirm email"
+msgstr "E-posti kinnitamine ebaõnnestus"
+
+msgid "Could not copy the link"
+msgstr "Lingi kopeerimine ebaõnnestus"
+
+msgid "Could not recognize the barcode"
+msgstr "Vöötkoodi ei õnnestunud tuvastada"
+
+msgid "Could not send the email. Please try again later."
+msgstr "E-kirja saatmine ebaõnnestus. Proovi hiljem uuesti."
+
+msgid "Could not share the plan"
+msgstr "Plaani jagamine ebaõnnestus"
+
+msgid "Create account"
+msgstr "Loo konto"
+
+msgid "Currency"
+msgstr "Valuuta"
+
+msgid "Currently in lists"
+msgstr "Praegu nimekirjades"
+
+msgid "Currently selected at %(shop)s"
+msgstr "Praegu valitud poes %(shop)s"
+
+msgid "Date"
+msgstr "Kuupäev"
+
+msgid "Description"
+msgstr "Kirjeldus"
+
+msgid "Details"
+msgstr "Täpsemalt"
+
+msgid "Details: %(name)s"
+msgstr "Täpsemalt: %(name)s"
+
+msgid "Difference: %(difference)s EUR"
+msgstr "Erinevus: %(difference)s EUR"
+
+msgid "Email confirmation"
+msgstr "E-posti kinnitamine"
+
+msgid "Email confirmed"
+msgstr "E-post kinnitatud"
+
+msgid "Email is stored for price change notifications."
+msgstr "E-posti aadress salvestatakse hinnamuutuste teadete saatmiseks."
+
+msgid "Enter a message."
+msgstr "Sisesta sõnum."
+
+msgid "Enter a product name, SKU or barcode"
+msgstr "Sisesta toote nimi, SKU või vöötkood"
+
+msgid "Find a product"
+msgstr "Leia toode"
+
+msgid "Find a product and add it to the list to see where it can be bought cheaper."
+msgstr "Leia toode ja lisa see nimekirja, et näha, kus seda saab soodsamalt osta."
+
+msgid "First"
+msgstr "Esimene"
+
+msgid "Found for “%(query)s”: %(count)s"
+msgstr "Päringule „%(query)s” leiti: %(count)s"
+
+msgid "From %(minimum)s EUR to %(maximum)s EUR"
+msgstr "%(minimum)s EUR kuni %(maximum)s EUR"
+
+msgid "From %(quantity)s pcs."
+msgstr "Alates %(quantity)s tk"
+
+msgid "From %(quantity)s pcs. — %(price)s %(currency)s/pc."
+msgstr "Alates %(quantity)s tk — %(price)s %(currency)s/tk"
+
+msgid "General statistics"
+msgstr "Üldstatistika"
+
+msgid "Go to login"
+msgstr "Mine sisselogimisele"
+
+msgid "Go to store"
+msgstr "Mine poodi"
+
+msgid "Group chat"
+msgstr "Ühisvestlus"
+
+msgid "Group chat · %(count)s"
+msgstr "Ühisvestlus · %(count)s"
+
+msgid "Group price"
+msgstr "Grupihind"
+
+msgid "Group purchase chat"
+msgstr "Ühisostu vestlus"
+
+msgid "Group purchase pages"
+msgstr "Ühisostude lehed"
+
+msgid "Group purchases"
+msgstr "Ühisostud"
+
+msgid "Hello, %(username)s!"
+msgstr "Tere, %(username)s!"
+
+msgid "Highest price first"
+msgstr "Kõrgeim hind enne"
+
+msgid "Home"
+msgstr "Avaleht"
+
+msgid "If you did not register on the site, simply ignore this email."
+msgstr "Kui sa ei registreerunud sellel saidil, eira seda kirja."
+
+msgid "In list"
+msgstr "Nimekirjas"
+
+msgid "Invalid link"
+msgstr "Kehtetu link"
+
+msgid "Items: %(count)s"
+msgstr "Tooteid: %(count)s"
+
+msgid "Language"
+msgstr "Keel"
+
+msgid "Last"
+msgstr "Viimane"
+
+msgid "Last %(count)s days"
+msgstr "Viimased %(count)s päeva"
+
+msgid "Link copied"
+msgstr "Link kopeeritud"
+
+msgid "Log in"
+msgstr "Logi sisse"
+
+msgid "Log out"
+msgstr "Logi välja"
+
+msgid "Looking for a participant"
+msgstr "Otsime osalejat"
+
+msgid "Lowest price first"
+msgstr "Madalaim hind enne"
+
+msgid "Main navigation"
+msgstr "Põhinavigatsioon"
+
+msgid "Message"
+msgstr "Sõnum"
+
+msgid "Model"
+msgstr "Mudel"
+
+msgid "Most added"
+msgstr "Enim lisatud"
+
+msgid "Most opened"
+msgstr "Enim avatud"
+
+msgid "My list"
+msgstr "Minu nimekiri"
+
+msgid "Name, SKU or barcode"
+msgstr "Nimi, SKU või vöötkood"
+
+msgid "Name: A–Z"
+msgstr "Nimi: A–Z"
+
+msgid "Name: Z–A"
+msgstr "Nimi: Z–A"
+
+msgid "New account"
+msgstr "Uus konto"
+
+msgid "Newest first"
+msgstr "Uusimad enne"
+
+msgid "Next"
+msgstr "Edasi"
+
+msgid "No account?"
+msgstr "Kontot pole?"
+
+msgid "No active group purchases yet"
+msgstr "Aktiivseid ühisoste veel pole"
+
+msgid "No clicks yet"
+msgstr "Klikke veel pole"
+
+msgid "No data yet"
+msgstr "Andmeid veel pole"
+
+msgid "No image"
+msgstr "Pilt puudub"
+
+msgid "No lists yet"
+msgstr "Nimekirju veel pole"
+
+msgid "No messages yet. Start discussing the purchase."
+msgstr "Sõnumeid veel pole. Alusta ostu arutamist."
+
+msgid "No other available offers"
+msgstr "Teisi saadaolevaid pakkumisi pole"
+
+msgid "No products found"
+msgstr "Tooteid ei leitud"
+
+msgid "No replacement needed"
+msgstr "Asendamist pole vaja"
+
+msgid "Nothing found"
+msgstr "Midagi ei leitud"
+
+msgid "Now"
+msgstr "Praegu"
+
+msgid "Now cheaper at %(shop)s: %(price)s EUR. Savings: %(saving)s EUR."
+msgstr "Nüüd poes %(shop)s soodsam: %(price)s EUR. Sääst: %(saving)s EUR."
+
+msgid "Offer catalog"
+msgstr "Pakkumiste kataloog"
+
+msgid "Open"
+msgstr "Ava"
+
+msgid "Open %(name)s"
+msgstr "Ava %(name)s"
+
+msgid "Open at %(shop)s"
+msgstr "Ava poes %(shop)s"
+
+msgid "Open catalog"
+msgstr "Ava kataloog"
+
+msgid "Open chat"
+msgstr "Ava vestlus"
+
+msgid "Open cheaper product"
+msgstr "Ava soodsam toode"
+
+msgid "Open in store"
+msgstr "Ava poes"
+
+msgid "Open list: %(url)s"
+msgstr "Ava nimekiri: %(url)s"
+
+msgid "Open menu"
+msgstr "Ava menüü"
+
+msgid "Open selected product"
+msgstr "Ava valitud toode"
+
+msgid "Open the selected product or replace it with a better offer."
+msgstr "Ava valitud toode või asenda see parema pakkumisega."
+
+msgid "Page views"
+msgstr "Lehevaatamised"
+
+msgid "Pagination"
+msgstr "Lehekülgede navigeerimine"
+
+msgid "Participants"
+msgstr "Osalejad"
+
+msgid "Password"
+msgstr "Parool"
+
+msgid "Plan shared"
+msgstr "Plaan jagatud"
+
+msgid "Point the camera at the barcode"
+msgstr "Suuna kaamera vöötkoodile"
+
+msgid "Potential savings"
+msgstr "Võimalik sääst"
+
+msgid "Price change notifications"
+msgstr "Hinnamuutuste teavitused"
+
+msgid "Price decreased: %(previous)s EUR → %(current)s EUR"
+msgstr "Hind langes: %(previous)s EUR → %(current)s EUR"
+
+msgid "Price increased: %(previous)s EUR → %(current)s EUR"
+msgstr "Hind tõusis: %(previous)s EUR → %(current)s EUR"
+
+msgid "Price not specified"
+msgstr "Hind pole märgitud"
+
+msgid "Prices in your Tannenberg list have changed"
+msgstr "Sinu Tannenbergi nimekirja hinnad on muutunud"
+
+msgid "Prices in your Tannenberg shopping list have changed:"
+msgstr "Sinu Tannenbergi ostunimekirja hinnad on muutunud:"
+
+msgid "Print / PDF"
+msgstr "Prindi / PDF"
+
+msgid "Product catalog"
+msgstr "Tootekataloog"
+
+msgid "Product image"
+msgstr "Toote pilt"
+
+msgid "Product name, SKU or barcode"
+msgstr "Toote nimi, SKU või vöötkood"
+
+msgid "Product search"
+msgstr "Tooteotsing"
+
+msgid "Product suggestions"
+msgstr "Tootesoovitused"
+
+msgid "Products and better offers from different stores."
+msgstr "Tooted ja soodsamad pakkumised eri kauplustest."
+
+msgid "Products and current prices by store."
+msgstr "Tooted ja kehtivad hinnad kaupluste kaupa."
+
+msgid "Products found: %(count)s"
+msgstr "Leitud tooteid: %(count)s"
+
+msgid "Products from user lists for which the store offers a quantity price."
+msgstr "Kasutajate nimekirjades olevad tooted, millele kauplus pakub kogusehinda."
+
+msgid "Products in lists"
+msgstr "Tooted nimekirjades"
+
+msgid "Purchased"
+msgstr "Ostetud"
+
+msgid "Register"
+msgstr "Registreeru"
+
+msgid "Registrations"
+msgstr "Registreerumised"
+
+msgid "Registrations in 30 days"
+msgstr "Registreerumised 30 päeva jooksul"
+
+msgid "Regular price"
+msgstr "Tavahind"
+
+msgid "Remaining to buy"
+msgstr "Jäänud osta"
+
+msgid "Remove"
+msgstr "Eemalda"
+
+msgid "Remove all products from the list?"
+msgstr "Kas eemaldada kõik tooted nimekirjast?"
+
+msgid "Repeat password"
+msgstr "Korda parooli"
+
+msgid "Replace"
+msgstr "Asenda"
+
+msgid "Resend confirmation"
+msgstr "Saada kinnitus uuesti"
+
+msgid "Resend email"
+msgstr "Saada kiri uuesti"
+
+msgid "Reset"
+msgstr "Lähtesta"
+
+msgid "Reset filters"
+msgstr "Lähtesta filtrid"
+
+msgid "Savings"
+msgstr "Sääst"
+
+msgid "Scan barcode with camera"
+msgstr "Skanni vöötkood kaameraga"
+
+msgid "Scan product"
+msgstr "Skanni toodet"
+
+msgid "Search"
+msgstr "Otsi"
+
+msgid "Search by product name, SKU or barcode and filter by store and category."
+msgstr "Otsi toote nime, SKU või vöötkoodi järgi ning filtreeri kaupluse ja kategooria alusel."
+
+msgid "Search for a product"
+msgstr "Otsi toodet"
+
+msgid "Search results"
+msgstr "Otsingutulemused"
+
+msgid "Selected at %(shop)s"
+msgstr "Valitud poes %(shop)s"
+
+msgid "Selected product store: %(shop)s"
+msgstr "Valitud toote kauplus: %(shop)s"
+
+msgid "Send"
+msgstr "Saada"
+
+msgid "Send the email again"
+msgstr "Saada e-kiri uuesti"
+
+msgid "Share"
+msgstr "Jaga"
+
+msgid "Share shopping plan"
+msgstr "Jaga ostuplaani"
+
+msgid "Shopping plan"
+msgstr "Ostuplaan"
+
+msgid "Shopping plan by store"
+msgstr "Ostuplaan kaupluste kaupa"
+
+msgid "Sort"
+msgstr "Sorteerimine"
+
+msgid "Statistics"
+msgstr "Statistika"
+
+msgid "Still needed: %(count)s"
+msgstr "Veel vaja: %(count)s"
+
+msgid "Store"
+msgstr "Kauplus"
+
+msgid "Store clicks"
+msgstr "Kauplustesse suunamised"
+
+msgid "Stores"
+msgstr "Kauplused"
+
+msgid "Tannenberg shopping plan"
+msgstr "Tannenbergi ostuplaan"
+
+msgid "Target quantity reached"
+msgstr "Vajalik kogus on koos"
+
+msgid "The best price is already at %(shop)s"
+msgstr "Parim hind on juba poes %(shop)s"
+
+msgid "The full catalog is not displayed without a query so the page stays fast."
+msgstr "Lehe kiiruse säilitamiseks ei kuvata kogu kataloogi ilma otsingupäringuta."
+
+msgid "The link may have expired or already been used."
+msgstr "Link võib olla aegunud või juba kasutatud."
+
+msgid "The list is empty"
+msgstr "Nimekiri on tühi"
+
+msgid "The message cannot be longer than 1000 characters."
+msgstr "Sõnum ei tohi olla pikem kui 1000 tähemärki."
+
+msgid "Total amount"
+msgstr "Kogusumma"
+
+msgid "Total now"
+msgstr "Kokku praegu"
+
+msgid "Try a shorter query, model, barcode or SKU."
+msgstr "Proovi lühemat päringut, mudelit, vöötkoodi või SKU-d."
+
+msgid "Try again"
+msgstr "Proovi uuesti"
+
+msgid "Try changing the query, choosing another store or resetting the filters."
+msgstr "Proovi muuta päringut, valida teine kauplus või lähtestada filtrid."
+
+msgid "Username"
+msgstr "Kasutajanimi"
+
+msgid "Users"
+msgstr "Kasutajad"
+
+msgid "Users with a list"
+msgstr "Nimekirjaga kasutajad"
+
+msgid "Via apps"
+msgstr "Rakenduste kaudu"
+
+msgid "Visitors"
+msgstr "Külastajad"
+
+msgid "Visits, registrations, store clicks and shopping lists."
+msgstr "Külastused, registreerumised, kauplustesse suunamised ja ostunimekirjad."
+
+msgid "Ways to share the shopping plan"
+msgstr "Ostuplaani jagamise viisid"
+
+msgid "When buying %(quantity)s pcs. or more — %(price)s %(currency)s per piece"
+msgstr "Ostes vähemalt %(quantity)s tk — %(price)s %(currency)s tükk"
+
+msgid "You can disable notifications on the “My list” page."
+msgstr "Teavitused saab välja lülitada lehel „Minu nimekiri”."
+
+msgid "You can now log in and use the shopping list."
+msgstr "Nüüd saad sisse logida ja ostunimekirja kasutada."
+
+msgid "Your list is empty"
+msgstr "Sinu nimekiri on tühi"
+
+msgid "and"
+msgstr "ja"
+
+msgid "new accounts"
+msgstr "uut kontot"
+
+msgid "pc."
+msgstr "tk"
+
+msgid "pcs."
+msgstr "tk"
+
+msgid "%(count)s participant"
+msgid_plural "%(count)s participants"
+msgstr[0] "%(count)s osaleja"
+msgstr[1] "%(count)s osalejat"

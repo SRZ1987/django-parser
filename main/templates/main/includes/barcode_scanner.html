@@ -1,4 +1,4 @@
-{% load static %}
+{% load static i18n %}
 <div
     class="barcode-scanner-modal"
     role="dialog"
@@ -7,27 +7,31 @@
     aria-describedby="barcode-scanner-status"
     data-barcode-scanner-modal
     data-zxing-url="{% static 'main/vendor/zxing-browser-0.2.1.min.js' %}?v=0.2.1"
+    data-status-scanning="{% translate 'Point the camera at the barcode' %}"
+    data-status-recognized="{% translate 'Barcode recognized' %}"
+    data-status-not-found="{% translate 'Could not recognize the barcode' %}"
+    data-status-camera-denied="{% translate 'Camera access denied' %}"
     hidden
 >
-    <button class="barcode-scanner-backdrop" type="button" aria-label="Закрыть сканер" data-barcode-scanner-close></button>
+    <button class="barcode-scanner-backdrop" type="button" aria-label="{% translate 'Close scanner' %}" data-barcode-scanner-close></button>
 
     <div class="barcode-scanner-dialog" role="document">
         <header class="barcode-scanner-header">
             <div>
-                <p>Поиск по штрихкоду</p>
-                <h2 id="barcode-scanner-title">Сканировать товар</h2>
+                <p>{% translate "Barcode search" %}</p>
+                <h2 id="barcode-scanner-title">{% translate "Scan product" %}</h2>
             </div>
         </header>
 
         <div class="barcode-scanner-viewport">
-            <video data-barcode-scanner-video autoplay muted playsinline aria-label="Изображение с камеры"></video>
+            <video data-barcode-scanner-video autoplay muted playsinline aria-label="{% translate 'Camera preview' %}"></video>
             <div class="barcode-scanner-frame" aria-hidden="true"></div>
         </div>
 
         <p class="barcode-scanner-status" id="barcode-scanner-status" role="status" aria-live="polite" data-barcode-scanner-status>
-            Наведите камеру на штрихкод
+            {% translate "Point the camera at the barcode" %}
         </p>
-        <p class="barcode-scanner-formats">EAN-8, EAN-13, UPC-A и UPC-E</p>
+        <p class="barcode-scanner-formats">EAN-8, EAN-13, UPC-A {% translate "and" %} UPC-E</p>
 
         <input
             class="visually-hidden"
@@ -40,13 +44,13 @@
 
         <div class="barcode-scanner-actions">
             <button class="scanner-action scanner-action-secondary" type="button" data-barcode-scanner-photo>
-                Выбрать фото
+                {% translate "Choose photo" %}
             </button>
             <button class="scanner-action scanner-action-secondary" type="button" data-barcode-scanner-retry>
-                Повторить
+                {% translate "Try again" %}
             </button>
             <button class="scanner-action scanner-action-primary" type="button" data-barcode-scanner-close>
-                Закрыть
+                {% translate "Close" %}
             </button>
         </div>
     </div>

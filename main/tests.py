@@ -5,6 +5,7 @@ from io import StringIO
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.management import call_command
@@ -231,7 +232,8 @@ class MainCatalogTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertFormError(response.context["form"], "email", "This field is required.")
+        form = response.context["form"]
+        self.assertFormError(form, "email", form.fields["email"].error_messages["required"])
         self.assertFalse(get_user_model().objects.filter(username="newuser").exists())
 
     def test_registration_creates_active_user_without_email_confirmation(self):
@@ -667,7 +669,7 @@ class MainCatalogTests(TestCase):
         response = self.client.get(reverse("shopping_list"))
 
         self.assertContains(response, "Выбрано в ESPAK")
-        self.assertContains(response, "В DEPO дешевле на 15.00 EUR")
+        self.assertContains(response, "В DEPO дешевле на 15,00 EUR")
         self.assertContains(response, "Открыть в ESPAK")
         self.assertContains(response, "Открыть в DEPO")
         self.assertContains(response, reverse("replace_with_best_offer", args=[item.pk]))
@@ -740,7 +742,7 @@ class MainCatalogTests(TestCase):
 
         self.assertEqual(first_result.emails_sent, 1)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("Цена снизилась: 10.00 EUR → 8.00 EUR", mail.outbox[0].body)
+        self.assertIn("Цена снизилась: 10,00 EUR → 8,00 EUR", mail.outbox[0].body)
         self.assertIn("https://tannenberg.example/my-list/", mail.outbox[0].body)
         send_shopping_list_price_alerts()
         self.assertEqual(len(mail.outbox), 1)
@@ -751,7 +753,7 @@ class MainCatalogTests(TestCase):
 
         self.assertEqual(second_result.emails_sent, 1)
         self.assertEqual(len(mail.outbox), 2)
-        self.assertIn("Цена выросла: 8.00 EUR → 11.00 EUR", mail.outbox[1].body)
+        self.assertIn("Цена выросла: 8,00 EUR → 11,00 EUR", mail.outbox[1].body)
         item.refresh_from_db()
         self.assertEqual(item.price_alert_source_price, Decimal("11.00"))
 
@@ -779,8 +781,8 @@ class MainCatalogTests(TestCase):
         result = send_shopping_list_price_alerts()
 
         self.assertEqual(result.emails_sent, 1)
-        self.assertIn("В DEPO теперь дешевле: 7.00 EUR", mail.outbox[0].body)
-        self.assertIn("Экономия: 3.00 EUR", mail.outbox[0].body)
+        self.assertIn("В DEPO теперь дешевле: 7,00 EUR", mail.outbox[0].body)
+        self.assertIn("Экономия: 3,00 EUR", mail.outbox[0].body)
 
     def test_disabled_price_alerts_do_not_send_email(self):
         user = self.create_user("disabled-alert-user")
@@ -1007,7 +1009,7 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, "Printable Makita drill")
         self.assertContains(response, "PRINT-SKU-42")
         self.assertContains(response, "4006381333931")
-        self.assertContains(response, "42.50 EUR")
+        self.assertContains(response, "42,50 EUR")
         self.assertContains(response, "https://example.com/print-image.jpg")
         self.assertContains(response, "Tannenberg")
         self.assertContains(response, "shopping-list-print.css?v=3", html=False)
@@ -1495,8 +1497,8 @@ class MainCatalogTests(TestCase):
 
         response = self.client.get(reverse("offer_detail", args=[ProductOffer.objects.get().pk]), HTTP_HOST="127.0.0.1")
 
-        self.assertContains(response, "9.99 EUR")
-        self.assertContains(response, "12.99 EUR")
+        self.assertContains(response, "9,99 EUR")
+        self.assertContains(response, "12,99 EUR")
         self.assertContains(
             response,
             f'href="{reverse("store_click", args=[ProductOffer.objects.get().pk])}"',
@@ -2177,3 +2179,69 @@ class MainCatalogTests(TestCase):
         self.assertEqual(plan.total_best_cost, Decimal("140.00"))
         self.assertEqual(plan.total_source_cost, Decimal("170.00"))
         self.assertEqual(plan.potential_saving, Decimal("30.00"))
+
+
+@override_settings(
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
+class MultilingualInterfaceTests(TestCase):
+    def setUp(self):
+        shop = Shop.objects.create(name="Eesti Testpood", code="eesti-testpood")
+        product = Product.objects.create(name="Murutrimmer Trolle 350W")
+        self.offer = ProductOffer.objects.create(
+            shop=shop,
+            product=product,
+            external_id="et-product-1",
+            sku="TRIMMER-350",
+            original_name="Murutrimmer Trolle 350W",
+            price=Decimal("14.99"),
+            currency="EUR",
+        )
+
+    def select_language(self, language):
+        response = self.client.post(
+            reverse("set_language"),
+            {"language": language, "next": reverse("home")},
+        )
+        self.assertRedirects(response, reverse("home"), fetch_redirect_response=False)
+        self.assertEqual(response.cookies[settings.LANGUAGE_COOKIE_NAME].value, language)
+        self.client.cookies[settings.LANGUAGE_COOKIE_NAME] = language
+
+    def test_language_switcher_supports_estonian_russian_and_english(self):
+        response = self.client.get(reverse("home"))
+
+        self.assertContains(response, 'name="language"', count=3)
+        self.assertContains(response, 'value="et"')
+        self.assertContains(response, 'value="ru"')
+        self.assertContains(response, 'value="en"')
+
+    def test_home_is_translated_in_all_supported_languages(self):
+        expected_headings = {
+            "et": "Tooteotsing",
+            "ru": "Поиск товаров",
+            "en": "Product search",
+        }
+
+        for language, heading in expected_headings.items():
+            with self.subTest(language=language):
+                self.select_language(language)
+                response = self.client.get(reverse("home"))
+                self.assertContains(response, f'<html lang="{language}">')
+                self.assertContains(response, heading)
+
+    def test_product_name_stays_estonian_in_every_interface_language(self):
+        translated_store_labels = {
+            "et": "Kauplus",
+            "ru": "Магазин",
+            "en": "Store",
+        }
+
+        for language, store_label in translated_store_labels.items():
+            with self.subTest(language=language):
+                self.select_language(language)
+                response = self.client.get(reverse("offer_detail", args=[self.offer.pk]))
+                self.assertContains(response, "Murutrimmer Trolle 350W")
+                self.assertContains(response, store_label)

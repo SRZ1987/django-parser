@@ -1,13 +1,13 @@
-Здравствуйте, {{ user.username }}!
+{% load i18n %}{% blocktranslate with username=user.username %}Hello, {{ username }}!{% endblocktranslate %}
 
-В вашем списке покупок Tannenberg изменились цены:
+{% translate "Prices in your Tannenberg shopping list have changed:" %}
 
 {% for change in changes %}{{ change.item.name }}
-Магазин выбранного товара: {{ change.item.source_offer.shop.name }}
-{% if change.source_price_direction == "up" %}Цена выросла: {{ change.previous_source_price }} EUR → {{ change.current_source_price }} EUR
-{% elif change.source_price_direction == "down" %}Цена снизилась: {{ change.previous_source_price }} EUR → {{ change.current_source_price }} EUR
-{% endif %}{% if change.cheaper_offer_improved %}В {{ change.best_offer.shop.name }} теперь дешевле: {{ change.best_price }} EUR. Экономия: {{ change.potential_saving }} EUR.
+{% blocktranslate with shop=change.item.source_offer.shop.name %}Selected product store: {{ shop }}{% endblocktranslate %}
+{% if change.source_price_direction == "up" %}{% blocktranslate with previous=change.previous_source_price current=change.current_source_price %}Price increased: {{ previous }} EUR → {{ current }} EUR{% endblocktranslate %}
+{% elif change.source_price_direction == "down" %}{% blocktranslate with previous=change.previous_source_price current=change.current_source_price %}Price decreased: {{ previous }} EUR → {{ current }} EUR{% endblocktranslate %}
+{% endif %}{% if change.cheaper_offer_improved %}{% blocktranslate with shop=change.best_offer.shop.name price=change.best_price saving=change.potential_saving %}Now cheaper at {{ shop }}: {{ price }} EUR. Savings: {{ saving }} EUR.{% endblocktranslate %}
 {% endif %}
-{% endfor %}Открыть список: {{ shopping_list_url }}
+{% endfor %}{% blocktranslate with url=shopping_list_url %}Open list: {{ url }}{% endblocktranslate %}
 
-Вы можете отключить уведомления на странице «Мой список».
+{% translate "You can disable notifications on the “My list” page." %}

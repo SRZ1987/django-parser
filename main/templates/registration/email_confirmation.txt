@@ -1,6 +1,6 @@
-Здравствуйте, {{ user.username }}!
+{% load i18n %}{% blocktranslate with username=user.username %}Hello, {{ username }}!{% endblocktranslate %}
 
-Подтвердите email для аккаунта Tannenberg:
+{% translate "Confirm the email for your Tannenberg account:" %}
 {{ confirmation_url }}
 
-Если вы не регистрировались на сайте, просто проигнорируйте это письмо.
+{% translate "If you did not register on the site, simply ignore this email." %}

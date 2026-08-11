@@ -1,29 +1,30 @@
 {% extends 'main/base.html' %}
+{% load i18n %}
 
-{% block title %}Войти{% endblock %}
+{% block title %}{% translate "Log in" %}{% endblock %}
 
 {% block content %}
 <main class="page-shell auth-shell">
     <section class="auth-card">
-        <p class="eyebrow">Аккаунт</p>
-        <h1>Войти</h1>
+        <p class="eyebrow">{% translate "Account" %}</p>
+        <h1>{% translate "Log in" %}</h1>
         <form method="post">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ next }}">
             {{ form.non_field_errors }}
             <label>
-                <span>Имя пользователя</span>
+                <span>{% translate "Username" %}</span>
                 {{ form.username }}
                 {{ form.username.errors }}
             </label>
             <label>
-                <span>Пароль</span>
+                <span>{% translate "Password" %}</span>
                 {{ form.password }}
                 {{ form.password.errors }}
             </label>
-            <button type="submit">Войти</button>
+            <button type="submit">{% translate "Log in" %}</button>
         </form>
-        <p class="auth-note">Нет аккаунта? <a href="{% url 'register' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Зарегистрироваться</a></p>
+        <p class="auth-note">{% translate "No account?" %} <a href="{% url 'register' %}{% if next %}?next={{ next|urlencode }}{% endif %}">{% translate "Register" %}</a></p>
     </section>
 </main>
 {% endblock %}

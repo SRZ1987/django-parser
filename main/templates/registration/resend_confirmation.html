@@ -1,12 +1,13 @@
 {% extends 'main/base.html' %}
+{% load i18n %}
 
-{% block title %}Повторное подтверждение — Tannenberg{% endblock %}
+{% block title %}{% translate "Resend confirmation" %} — Tannenberg{% endblock %}
 
 {% block content %}
 <main class="page-shell auth-shell">
     <section class="auth-card">
-        <p class="eyebrow">Подтверждение email</p>
-        <h1>Отправить письмо ещё раз</h1>
+        <p class="eyebrow">{% translate "Email confirmation" %}</p>
+        <h1>{% translate "Send the email again" %}</h1>
         <form method="post">
             {% csrf_token %}
             {{ form.non_field_errors }}
@@ -15,7 +16,7 @@
                 {{ form.email }}
                 {{ form.email.errors }}
             </label>
-            <button type="submit">Отправить</button>
+            <button type="submit">{% translate "Send" %}</button>
         </form>
     </section>
 </main>

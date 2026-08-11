@@ -1,0 +1,719 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Tannenberg\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "%(count)s active accounts with email"
+msgstr "Активных аккаунтов с email: %(count)s"
+
+msgid "%(count)s active offers"
+msgstr "Активных предложений: %(count)s"
+
+msgid "%(count)s page views"
+msgstr "Просмотров: %(count)s"
+
+msgid "%(count)s total page views"
+msgstr "Всего просмотров: %(count)s"
+
+msgid "%(count)s visitors"
+msgstr "Посетителей: %(count)s"
+
+msgid "%(current)s of %(target)s pcs."
+msgstr "%(current)s из %(target)s шт."
+
+msgid "%(saving)s %(currency)s cheaper at %(shop)s"
+msgstr "В %(shop)s дешевле на %(saving)s %(currency)s"
+
+msgid "24 offers per page"
+msgstr "По 24 предложения на странице"
+
+msgid "A confirmation link was sent to <strong>%(email)s</strong>."
+msgstr "Ссылка для подтверждения отправлена на <strong>%(email)s</strong>."
+
+msgid "A user with this email is already registered."
+msgstr "Пользователь с таким email уже зарегистрирован."
+
+msgid "Account"
+msgstr "Аккаунт"
+
+msgid "Account activated"
+msgstr "Аккаунт активирован"
+
+msgid "Active products"
+msgstr "Активных товаров"
+
+msgid "Activity trend"
+msgstr "Динамика активности"
+
+msgid "Add a product with a quantity price to your list. It will appear here so other registered users can join."
+msgstr "Добавьте в список товар с ценой за количество. Он появится здесь, и другие зарегистрированные пользователи смогут присоединиться."
+
+msgid "Add and open chat"
+msgstr "Добавить и открыть чат"
+
+msgid "Add to list"
+msgstr "В список"
+
+msgid "Added to lists"
+msgstr "Добавлено в списки"
+
+msgid "After confirmation you will be able to log in."
+msgstr "После подтверждения вы сможете войти в аккаунт."
+
+msgid "After replacement %(price)s %(currency)s"
+msgstr "После замены %(price)s %(currency)s"
+
+msgid "After replacements"
+msgstr "После замен"
+
+msgid "Agree on the time, place and way to make the purchase."
+msgstr "Договоритесь о времени, месте и способе покупки."
+
+msgid "All categories"
+msgstr "Все категории"
+
+msgid "All clicks"
+msgstr "Кликов всего"
+
+msgid "All stores"
+msgstr "Все магазины"
+
+msgid "All-time additions"
+msgstr "Добавлений за всё время"
+
+msgid "All-time browsers"
+msgstr "Браузеров за всё время"
+
+msgid "Almost done"
+msgstr "Почти готово"
+
+msgid "Already have an account?"
+msgstr "Уже есть аккаунт?"
+
+msgid "Available group purchases"
+msgstr "Доступные совместные покупки"
+
+msgid "Back"
+msgstr "Назад"
+
+msgid "Back to catalog"
+msgstr "Назад в каталог"
+
+msgid "Barcode"
+msgstr "Штрихкод"
+
+msgid "Barcode recognized"
+msgstr "Штрихкод распознан"
+
+msgid "Barcode search"
+msgstr "Поиск по штрихкоду"
+
+msgid "Brand"
+msgstr "Бренд"
+
+msgid "Browsers today"
+msgstr "Браузеров сегодня"
+
+msgid "By relevance"
+msgstr "По релевантности"
+
+msgid "Camera access denied"
+msgstr "Нет доступа к камере"
+
+msgid "Camera preview"
+msgstr "Изображение с камеры"
+
+msgid "Candidates checked: %(count)s"
+msgstr "Проверено кандидатов: %(count)s"
+
+msgid "Catalog"
+msgstr "Каталог"
+
+msgid "Catalog results"
+msgstr "Результаты каталога"
+
+msgid "Category"
+msgstr "Категория"
+
+msgid "Cheaper at %(shop)s: %(price)s %(currency)s (−%(saving)s %(currency)s)"
+msgstr "Дешевле в %(shop)s: %(price)s %(currency)s (−%(saving)s %(currency)s)"
+
+msgid "Cheapest now: %(shop)s"
+msgstr "Дешевле сейчас: %(shop)s"
+
+msgid "Check your email"
+msgstr "Проверьте почту"
+
+msgid "Choose photo"
+msgstr "Выбрать фото"
+
+msgid "Clear entire list"
+msgstr "Удалить весь список"
+
+msgid "Clicks"
+msgstr "Переходы"
+
+msgid "Clicks and products in user lists"
+msgstr "Клики и товары в пользовательских списках"
+
+msgid "Clicks in 30 days"
+msgstr "Кликов за 30 дней"
+
+msgid "Close"
+msgstr "Закрыть"
+
+msgid "Close scanner"
+msgstr "Закрыть сканер"
+
+msgid "Collected %(current)s of %(target)s pcs."
+msgstr "Набрано %(current)s из %(target)s шт."
+
+msgid "Collected %(current)s of %(target)s pcs. · %(remaining)s more needed"
+msgstr "Набрано %(current)s из %(target)s шт. · нужно ещё %(remaining)s"
+
+msgid "Collected since %(date)s."
+msgstr "Сбор с %(date)s."
+
+msgid "Confirm email"
+msgstr "Подтвердите email"
+
+msgid "Confirm the email for your Tannenberg account:"
+msgstr "Подтвердите email для аккаунта Tannenberg:"
+
+msgid "Confirm your email for Tannenberg"
+msgstr "Подтвердите email в Tannenberg"
+
+msgid "Contact details are not published. Share them in the chat only if you choose to."
+msgstr "Контактные данные не публикуются. Передавайте их в чате только по собственному желанию."
+
+msgid "Copy link"
+msgstr "Скопировать ссылку"
+
+msgid "Could not confirm email"
+msgstr "Не удалось подтвердить email"
+
+msgid "Could not copy the link"
+msgstr "Не удалось скопировать ссылку"
+
+msgid "Could not recognize the barcode"
+msgstr "Не удалось распознать"
+
+msgid "Could not send the email. Please try again later."
+msgstr "Не удалось отправить письмо. Попробуйте позже."
+
+msgid "Could not share the plan"
+msgstr "Не удалось отправить план"
+
+msgid "Create account"
+msgstr "Создать аккаунт"
+
+msgid "Currency"
+msgstr "Валюта"
+
+msgid "Currently in lists"
+msgstr "Сейчас в списках"
+
+msgid "Currently selected at %(shop)s"
+msgstr "Сейчас выбрано в %(shop)s"
+
+msgid "Date"
+msgstr "Дата"
+
+msgid "Description"
+msgstr "Описание"
+
+msgid "Details"
+msgstr "Подробнее"
+
+msgid "Details: %(name)s"
+msgstr "Подробнее: %(name)s"
+
+msgid "Difference: %(difference)s EUR"
+msgstr "Разница: %(difference)s EUR"
+
+msgid "Email confirmation"
+msgstr "Подтверждение email"
+
+msgid "Email confirmed"
+msgstr "Email подтверждён"
+
+msgid "Email is stored for price change notifications."
+msgstr "Email сохраняется для уведомлений об изменении цен."
+
+msgid "Enter a message."
+msgstr "Введите сообщение."
+
+msgid "Enter a product name, SKU or barcode"
+msgstr "Введите название, SKU или штрихкод"
+
+msgid "Find a product"
+msgstr "Найти товар"
+
+msgid "Find a product and add it to the list to see where it can be bought cheaper."
+msgstr "Найдите товар и добавьте его в список, чтобы увидеть, где купить дешевле."
+
+msgid "First"
+msgstr "Первая"
+
+msgid "Found for “%(query)s”: %(count)s"
+msgstr "По запросу «%(query)s» найдено: %(count)s"
+
+msgid "From %(minimum)s EUR to %(maximum)s EUR"
+msgstr "От %(minimum)s EUR до %(maximum)s EUR"
+
+msgid "From %(quantity)s pcs."
+msgstr "От %(quantity)s шт."
+
+msgid "From %(quantity)s pcs. — %(price)s %(currency)s/pc."
+msgstr "От %(quantity)s шт. — %(price)s %(currency)s/шт."
+
+msgid "General statistics"
+msgstr "Общая статистика"
+
+msgid "Go to login"
+msgstr "Перейти ко входу"
+
+msgid "Go to store"
+msgstr "В магазин"
+
+msgid "Group chat"
+msgstr "Общий чат"
+
+msgid "Group chat · %(count)s"
+msgstr "Общий чат · %(count)s"
+
+msgid "Group price"
+msgstr "Групповая цена"
+
+msgid "Group purchase chat"
+msgstr "Чат совместной покупки"
+
+msgid "Group purchase pages"
+msgstr "Страницы совместных покупок"
+
+msgid "Group purchases"
+msgstr "Совместные покупки"
+
+msgid "Hello, %(username)s!"
+msgstr "Здравствуйте, %(username)s!"
+
+msgid "Highest price first"
+msgstr "Сначала дороже"
+
+msgid "Home"
+msgstr "Главная"
+
+msgid "If you did not register on the site, simply ignore this email."
+msgstr "Если вы не регистрировались на сайте, просто проигнорируйте это письмо."
+
+msgid "In list"
+msgstr "В списке"
+
+msgid "Invalid link"
+msgstr "Ссылка недействительна"
+
+msgid "Items: %(count)s"
+msgstr "Позиций: %(count)s"
+
+msgid "Language"
+msgstr "Язык"
+
+msgid "Last"
+msgstr "Последняя"
+
+msgid "Last %(count)s days"
+msgstr "Последние %(count)s дней"
+
+msgid "Link copied"
+msgstr "Ссылка скопирована"
+
+msgid "Log in"
+msgstr "Войти"
+
+msgid "Log out"
+msgstr "Выйти"
+
+msgid "Looking for a participant"
+msgstr "Ищем участника"
+
+msgid "Lowest price first"
+msgstr "Сначала дешевле"
+
+msgid "Main navigation"
+msgstr "Основная навигация"
+
+msgid "Message"
+msgstr "Сообщение"
+
+msgid "Model"
+msgstr "Модель"
+
+msgid "Most added"
+msgstr "Чаще добавляют"
+
+msgid "Most opened"
+msgstr "Чаще открывают"
+
+msgid "My list"
+msgstr "Мой список"
+
+msgid "Name, SKU or barcode"
+msgstr "Название, SKU или штрихкод"
+
+msgid "Name: A–Z"
+msgstr "Название: А–Я"
+
+msgid "Name: Z–A"
+msgstr "Название: Я–А"
+
+msgid "New account"
+msgstr "Новый аккаунт"
+
+msgid "Newest first"
+msgstr "Сначала новые"
+
+msgid "Next"
+msgstr "Вперёд"
+
+msgid "No account?"
+msgstr "Нет аккаунта?"
+
+msgid "No active group purchases yet"
+msgstr "Пока нет активных совместных покупок"
+
+msgid "No clicks yet"
+msgstr "Переходов пока нет"
+
+msgid "No data yet"
+msgstr "Данных пока нет"
+
+msgid "No image"
+msgstr "Нет фото"
+
+msgid "No lists yet"
+msgstr "Списков пока нет"
+
+msgid "No messages yet. Start discussing the purchase."
+msgstr "Сообщений пока нет. Начните обсуждение покупки."
+
+msgid "No other available offers"
+msgstr "Других доступных предложений нет"
+
+msgid "No products found"
+msgstr "Товары не найдены"
+
+msgid "No replacement needed"
+msgstr "Замена не нужна"
+
+msgid "Nothing found"
+msgstr "Ничего не найдено"
+
+msgid "Now"
+msgstr "Сейчас"
+
+msgid "Now cheaper at %(shop)s: %(price)s EUR. Savings: %(saving)s EUR."
+msgstr "В %(shop)s теперь дешевле: %(price)s EUR. Экономия: %(saving)s EUR."
+
+msgid "Offer catalog"
+msgstr "Каталог предложений"
+
+msgid "Open"
+msgstr "Открыть"
+
+msgid "Open %(name)s"
+msgstr "Открыть %(name)s"
+
+msgid "Open at %(shop)s"
+msgstr "Открыть в %(shop)s"
+
+msgid "Open catalog"
+msgstr "Открыть каталог"
+
+msgid "Open chat"
+msgstr "Открыть чат"
+
+msgid "Open cheaper product"
+msgstr "Открыть дешёвый товар"
+
+msgid "Open in store"
+msgstr "Открыть в магазине"
+
+msgid "Open list: %(url)s"
+msgstr "Открыть список: %(url)s"
+
+msgid "Open menu"
+msgstr "Открыть меню"
+
+msgid "Open selected product"
+msgstr "Открыть выбранный товар"
+
+msgid "Open the selected product or replace it with a better offer."
+msgstr "Открывайте выбранный товар или заменяйте его более выгодным предложением."
+
+msgid "Page views"
+msgstr "Просмотры"
+
+msgid "Pagination"
+msgstr "Пагинация"
+
+msgid "Participants"
+msgstr "Участники"
+
+msgid "Password"
+msgstr "Пароль"
+
+msgid "Plan shared"
+msgstr "План отправлен"
+
+msgid "Point the camera at the barcode"
+msgstr "Наведите камеру на штрихкод"
+
+msgid "Potential savings"
+msgstr "Можно сэкономить"
+
+msgid "Price change notifications"
+msgstr "Уведомления об изменении цен"
+
+msgid "Price decreased: %(previous)s EUR → %(current)s EUR"
+msgstr "Цена снизилась: %(previous)s EUR → %(current)s EUR"
+
+msgid "Price increased: %(previous)s EUR → %(current)s EUR"
+msgstr "Цена выросла: %(previous)s EUR → %(current)s EUR"
+
+msgid "Price not specified"
+msgstr "Цена не указана"
+
+msgid "Prices in your Tannenberg list have changed"
+msgstr "Изменились цены в вашем списке Tannenberg"
+
+msgid "Prices in your Tannenberg shopping list have changed:"
+msgstr "В вашем списке покупок Tannenberg изменились цены:"
+
+msgid "Print / PDF"
+msgstr "Печать / PDF"
+
+msgid "Product catalog"
+msgstr "Каталог товаров"
+
+msgid "Product image"
+msgstr "Изображение товара"
+
+msgid "Product name, SKU or barcode"
+msgstr "Название товара, SKU или штрихкод"
+
+msgid "Product search"
+msgstr "Поиск товаров"
+
+msgid "Product suggestions"
+msgstr "Подсказки товаров"
+
+msgid "Products and better offers from different stores."
+msgstr "Товары и более выгодные предложения по магазинам."
+
+msgid "Products and current prices by store."
+msgstr "Товары и актуальные цены по магазинам."
+
+msgid "Products found: %(count)s"
+msgstr "Найдено товаров: %(count)s"
+
+msgid "Products from user lists for which the store offers a quantity price."
+msgstr "Товары из списков пользователей, для которых магазин предлагает цену за количество."
+
+msgid "Products in lists"
+msgstr "Товаров в списках"
+
+msgid "Purchased"
+msgstr "Куплено"
+
+msgid "Register"
+msgstr "Регистрация"
+
+msgid "Registrations"
+msgstr "Регистрации"
+
+msgid "Registrations in 30 days"
+msgstr "Регистраций за 30 дней"
+
+msgid "Regular price"
+msgstr "Обычная цена"
+
+msgid "Remaining to buy"
+msgstr "Осталось купить"
+
+msgid "Remove"
+msgstr "Удалить"
+
+msgid "Remove all products from the list?"
+msgstr "Удалить все товары из списка?"
+
+msgid "Repeat password"
+msgstr "Повторите пароль"
+
+msgid "Replace"
+msgstr "Заменить"
+
+msgid "Resend confirmation"
+msgstr "Повторное подтверждение"
+
+msgid "Resend email"
+msgstr "Отправить письмо повторно"
+
+msgid "Reset"
+msgstr "Сбросить"
+
+msgid "Reset filters"
+msgstr "Сбросить фильтры"
+
+msgid "Savings"
+msgstr "Экономия"
+
+msgid "Scan barcode with camera"
+msgstr "Сканировать штрихкод камерой"
+
+msgid "Scan product"
+msgstr "Сканировать товар"
+
+msgid "Search"
+msgstr "Найти"
+
+msgid "Search by product name, SKU or barcode and filter by store and category."
+msgstr "Ищите товары по названию, SKU или штрихкоду, фильтруйте по магазину и категории."
+
+msgid "Search for a product"
+msgstr "Поиск товара"
+
+msgid "Search results"
+msgstr "Результаты поиска"
+
+msgid "Selected at %(shop)s"
+msgstr "Выбрано в %(shop)s"
+
+msgid "Selected product store: %(shop)s"
+msgstr "Магазин выбранного товара: %(shop)s"
+
+msgid "Send"
+msgstr "Отправить"
+
+msgid "Send the email again"
+msgstr "Отправить письмо ещё раз"
+
+msgid "Share"
+msgstr "Поделиться"
+
+msgid "Share shopping plan"
+msgstr "Отправить план покупок"
+
+msgid "Shopping plan"
+msgstr "План покупок"
+
+msgid "Shopping plan by store"
+msgstr "План покупки по магазинам"
+
+msgid "Sort"
+msgstr "Сортировка"
+
+msgid "Statistics"
+msgstr "Статистика"
+
+msgid "Still needed: %(count)s"
+msgstr "Нужно ещё: %(count)s"
+
+msgid "Store"
+msgstr "Магазин"
+
+msgid "Store clicks"
+msgstr "Переходов в магазины"
+
+msgid "Stores"
+msgstr "Магазины"
+
+msgid "Tannenberg shopping plan"
+msgstr "План покупок Tannenberg"
+
+msgid "Target quantity reached"
+msgstr "Количество набрано"
+
+msgid "The best price is already at %(shop)s"
+msgstr "Лучшая цена уже в %(shop)s"
+
+msgid "The full catalog is not displayed without a query so the page stays fast."
+msgstr "Полный каталог не выводится без запроса, чтобы страница оставалась быстрой."
+
+msgid "The link may have expired or already been used."
+msgstr "Ссылка могла устареть или уже была использована."
+
+msgid "The list is empty"
+msgstr "Список пуст"
+
+msgid "The message cannot be longer than 1000 characters."
+msgstr "Сообщение не должно быть длиннее 1000 символов."
+
+msgid "Total amount"
+msgstr "Общая сумма"
+
+msgid "Total now"
+msgstr "Итого сейчас"
+
+msgid "Try a shorter query, model, barcode or SKU."
+msgstr "Попробуйте более короткий запрос, модель, штрихкод или SKU."
+
+msgid "Try again"
+msgstr "Повторить"
+
+msgid "Try changing the query, choosing another store or resetting the filters."
+msgstr "Попробуйте изменить запрос, выбрать другой магазин или сбросить фильтры."
+
+msgid "Username"
+msgstr "Имя пользователя"
+
+msgid "Users"
+msgstr "Пользователей"
+
+msgid "Users with a list"
+msgstr "Пользователей со списком"
+
+msgid "Via apps"
+msgstr "Через приложения"
+
+msgid "Visitors"
+msgstr "Посетители"
+
+msgid "Visits, registrations, store clicks and shopping lists."
+msgstr "Посещения, регистрации, переходы в магазины и списки покупок."
+
+msgid "Ways to share the shopping plan"
+msgstr "Способы отправки плана покупок"
+
+msgid "When buying %(quantity)s pcs. or more — %(price)s %(currency)s per piece"
+msgstr "При покупке от %(quantity)s шт. — %(price)s %(currency)s за штуку"
+
+msgid "You can disable notifications on the “My list” page."
+msgstr "Вы можете отключить уведомления на странице «Мой список»."
+
+msgid "You can now log in and use the shopping list."
+msgstr "Теперь можно войти и пользоваться списком покупок."
+
+msgid "Your list is empty"
+msgstr "Список пока пуст"
+
+msgid "and"
+msgstr "и"
+
+msgid "new accounts"
+msgstr "новых аккаунтов"
+
+msgid "pc."
+msgstr "шт."
+
+msgid "pcs."
+msgstr "шт."
+
+msgid "%(count)s participant"
+msgid_plural "%(count)s participants"
+msgstr[0] "%(count)s участник"
+msgstr[1] "%(count)s участника"
+msgstr[2] "%(count)s участников"

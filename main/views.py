@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from catalog.models import Category, ProductOffer, Shop
@@ -179,7 +180,7 @@ def resend_confirmation(request):
                 send_verification_email(request, user)
             except Exception:
                 logger.exception("Could not resend verification email to user %s", user.pk)
-                form.add_error(None, "Не удалось отправить письмо. Попробуйте позже.")
+                form.add_error(None, _("Could not send the email. Please try again later."))
                 return render(request, "registration/resend_confirmation.html", {"form": form})
         return render(
             request,
@@ -327,12 +328,12 @@ def catalog_view(request):
             "selected_category_id": str(selected_category.pk) if selected_category else "",
             "selected_sort": sort,
             "sort_options": [
-                ("relevance", "По релевантности"),
-                ("name_asc", "Название: А-Я"),
-                ("name_desc", "Название: Я-А"),
-                ("price_asc", "Сначала дешевле"),
-                ("price_desc", "Сначала дороже"),
-                ("newest", "Сначала новые"),
+                ("relevance", _("By relevance")),
+                ("name_asc", _("Name: A–Z")),
+                ("name_desc", _("Name: Z–A")),
+                ("price_asc", _("Lowest price first")),
+                ("price_desc", _("Highest price first")),
+                ("newest", _("Newest first")),
             ],
             "page_obj": page_obj,
             "page_params": page_params.urlencode(),
@@ -586,9 +587,9 @@ def group_purchase_chat(request, group_pk):
     if request.method == "POST":
         body = request.POST.get("body", "").strip()
         if not body:
-            chat_error = "Введите сообщение."
+            chat_error = _("Enter a message.")
         elif len(body) > GroupPurchaseMessage._meta.get_field("body").max_length:
-            chat_error = "Сообщение не должно быть длиннее 1000 символов."
+            chat_error = _("The message cannot be longer than 1000 characters.")
         else:
             GroupPurchaseMessage.objects.create(
                 group=group,
@@ -704,12 +705,12 @@ def build_shopping_list_context(request, user_list, *, editable):
     print_url = request.build_absolute_uri(
         reverse("print_shopping_list", args=[user_list.share_token])
     )
-    share_title = "План покупок Tannenberg"
+    share_title = _("Tannenberg shopping plan")
     share_message = f"{share_title}\n{shared_url}"
     email_query = urlencode(
         {
             "subject": share_title,
-            "body": f"План покупок по магазинам:\n{shared_url}",
+            "body": f"{_('Shopping plan by store')}:\n{shared_url}",
         }
     )
     messenger_share_links = (

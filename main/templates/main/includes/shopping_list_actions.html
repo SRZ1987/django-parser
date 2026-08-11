@@ -1,9 +1,20 @@
-<div class="shopping-list-actions" aria-label="Отправить план покупок">
+{% load i18n %}
+<div
+    class="shopping-list-actions"
+    aria-label="{% translate 'Share shopping plan' %}"
+    data-share-title="{% translate 'Tannenberg shopping plan' %}"
+    data-share-text="{% translate 'Shopping plan by store' %}"
+    data-status-shared="{% translate 'Plan shared' %}"
+    data-status-copied="{% translate 'Link copied' %}"
+    data-status-share-error="{% translate 'Could not share the plan' %}"
+    data-status-copy-error="{% translate 'Could not copy the link' %}"
+    data-clear-confirm="{% translate 'Remove all products from the list?' %}"
+>
     <details class="share-action-menu" data-share-menu>
-        <summary class="list-action-button list-action-primary">Поделиться</summary>
-        <div class="share-action-options" aria-label="Способы отправки плана покупок">
+        <summary class="list-action-button list-action-primary">{% translate "Share" %}</summary>
+        <div class="share-action-options" aria-label="{% translate 'Ways to share the shopping plan' %}">
             <button class="share-action-option" type="button" data-share-plan data-share-url="{{ shared_url }}">
-                Через приложения
+                {% translate "Via apps" %}
             </button>
             <a class="share-action-option" href="{{ email_share_url }}">Email</a>
             {% for messenger in messenger_share_links %}
@@ -14,15 +25,15 @@
                 </a>
             {% endfor %}
             <button class="share-action-option" type="button" data-copy-plan data-share-url="{{ shared_url }}">
-                Скопировать ссылку
+                {% translate "Copy link" %}
             </button>
-            <a class="share-action-option" href="{{ print_url }}" target="_blank" rel="noopener">Печать / PDF</a>
+            <a class="share-action-option" href="{{ print_url }}" target="_blank" rel="noopener">{% translate "Print / PDF" %}</a>
         </div>
     </details>
     {% if editable %}
         <form class="shopping-list-clear-form" method="post" action="{% url 'clear_shopping_list' %}" data-clear-list-form>
             {% csrf_token %}
-            <button class="list-action-button list-action-danger" type="submit">Удалить весь список</button>
+            <button class="list-action-button list-action-danger" type="submit">{% translate "Clear entire list" %}</button>
         </form>
     {% endif %}
     <span class="share-action-status" role="status" aria-live="polite" data-share-status></span>

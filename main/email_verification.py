@@ -5,6 +5,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+from django.utils.translation import gettext as _
 
 
 class EmailVerificationTokenGenerator(PasswordResetTokenGenerator):
@@ -26,7 +27,7 @@ def send_verification_email(request, user):
         {"user": user, "confirmation_url": confirmation_url},
     )
     return send_mail(
-        "Подтвердите email в Tannenberg",
+        _("Confirm your email for Tannenberg"),
         message,
         settings.DEFAULT_FROM_EMAIL,
         [user.email],

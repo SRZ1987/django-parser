@@ -2,10 +2,10 @@ const SUPPORTED_FORMATS = new Set(["ean_8", "ean_13", "upc_a", "upc_e"]);
 const SUPPORTED_LENGTHS = new Set([8, 12, 13]);
 
 const STATUS = {
-    scanning: "Наведите камеру на штрихкод",
-    recognized: "Штрихкод распознан",
-    notFound: "Не удалось распознать",
-    cameraDenied: "Нет доступа к камере",
+    scanning: "Point the camera at the barcode",
+    recognized: "Barcode recognized",
+    notFound: "Could not recognize the barcode",
+    cameraDenied: "Camera access denied",
 };
 
 let zxingLoadPromise = null;
@@ -82,6 +82,12 @@ export class BarcodeScannerController {
         this.retryButton = elements.retryButton;
         this.closeButtons = elements.closeButtons || [];
         this.triggers = elements.triggers || [];
+        this.statusMessages = {
+            scanning: this.modal.dataset.statusScanning || STATUS.scanning,
+            recognized: this.modal.dataset.statusRecognized || STATUS.recognized,
+            notFound: this.modal.dataset.statusNotFound || STATUS.notFound,
+            cameraDenied: this.modal.dataset.statusCameraDenied || STATUS.cameraDenied,
+        };
 
         this.document = dependencies.documentRef || globalThis.document;
         this.mediaDevices = hasOwn(dependencies, "mediaDevices")
@@ -161,7 +167,7 @@ export class BarcodeScannerController {
         this.activeTrigger.setAttribute?.("aria-expanded", "true");
         this.document?.body?.classList?.add("is-barcode-scanner-open");
         this.document?.addEventListener?.("keydown", this.handleKeydown);
-        this.setStatus(STATUS.scanning, "scanning");
+        this.setStatus(this.statusMessages.scanning, "scanning");
         this.retryButton.focus?.();
 
         await this.startCamera(sessionId);
@@ -177,13 +183,13 @@ export class BarcodeScannerController {
         if (!this.isCurrentSession(sessionId)) {
             return;
         }
-        this.setStatus(STATUS.scanning, "scanning");
+        this.setStatus(this.statusMessages.scanning, "scanning");
         await this.startCamera(sessionId);
     }
 
     async startCamera(sessionId) {
         if (!this.mediaDevices || typeof this.mediaDevices.getUserMedia !== "function") {
-            this.setStatus(STATUS.cameraDenied, "error");
+            this.setStatus(this.statusMessages.cameraDenied, "error");
             return;
         }
 
@@ -225,7 +231,7 @@ export class BarcodeScannerController {
                 return;
             }
             await this.stopRecognition();
-            this.setStatus(STATUS.cameraDenied, "error");
+            this.setStatus(this.statusMessages.cameraDenied, "error");
         }
     }
 
@@ -340,7 +346,7 @@ export class BarcodeScannerController {
         } catch (error) {
             if (this.isCurrentSession(sessionId)) {
                 await this.stopRecognition();
-                this.setStatus(STATUS.notFound, "error");
+                this.setStatus(this.statusMessages.notFound, "error");
             }
         }
     }
@@ -353,7 +359,7 @@ export class BarcodeScannerController {
         this.isImageProcessing = true;
         const sessionId = ++this.sessionId;
         await this.stopRecognition();
-        this.setStatus(STATUS.scanning, "scanning");
+        this.setStatus(this.statusMessages.scanning, "scanning");
 
         try {
             let detected = await this.scanImageNatively(file);
@@ -365,7 +371,7 @@ export class BarcodeScannerController {
                 return;
             }
             if (!detected || !this.isSupportedBarcode(detected.value, detected.format)) {
-                this.setStatus(STATUS.notFound, "error");
+                this.setStatus(this.statusMessages.notFound, "error");
                 return;
             }
 
@@ -373,7 +379,7 @@ export class BarcodeScannerController {
             await this.pendingCompletion;
         } catch (error) {
             if (this.isCurrentSession(sessionId)) {
-                this.setStatus(STATUS.notFound, "error");
+                this.setStatus(this.statusMessages.notFound, "error");
             }
         } finally {
             this.fileInput.value = "";
@@ -437,7 +443,7 @@ export class BarcodeScannerController {
             this.searchInput.dispatchEvent(new this.EventClass("input", { bubbles: true }));
             this.searchInput.dispatchEvent(new this.EventClass("change", { bubbles: true }));
         }
-        this.setStatus(STATUS.recognized, "success");
+        this.setStatus(this.statusMessages.recognized, "success");
         await this.stopRecognition();
 
         if (this.completionDelay > 0) {

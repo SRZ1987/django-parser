@@ -1,7 +1,21 @@
+const DEFAULT_MESSAGES = {
+    title: "Tannenberg shopping plan",
+    text: "Shopping plan by store",
+    shared: "Plan shared",
+    copied: "Link copied",
+    shareError: "Could not share the plan",
+    copyError: "Could not copy the link",
+    clearConfirm: "Remove all products from the list?",
+};
+
 export class ShoppingListShareController {
-    constructor({ navigatorRef = globalThis.navigator, statusElement = null } = {}) {
+    constructor({ navigatorRef = globalThis.navigator, statusElement = null, messages = {} } = {}) {
         this.navigator = navigatorRef;
         this.statusElement = statusElement;
+        this.messages = {
+            ...DEFAULT_MESSAGES,
+            ...Object.fromEntries(Object.entries(messages).filter(([, value]) => value)),
+        };
     }
 
     setStatus(message) {
@@ -12,16 +26,16 @@ export class ShoppingListShareController {
 
     async copy(url) {
         if (!this.navigator?.clipboard?.writeText) {
-            this.setStatus("Не удалось скопировать ссылку");
+            this.setStatus(this.messages.copyError);
             return false;
         }
 
         try {
             await this.navigator.clipboard.writeText(url);
-            this.setStatus("Ссылка скопирована");
+            this.setStatus(this.messages.copied);
             return true;
         } catch (_error) {
-            this.setStatus("Не удалось скопировать ссылку");
+            this.setStatus(this.messages.copyError);
             return false;
         }
     }
@@ -33,15 +47,15 @@ export class ShoppingListShareController {
 
         try {
             await this.navigator.share({
-                title: "План покупок Tannenberg",
-                text: "План покупок по магазинам",
+                title: this.messages.title,
+                text: this.messages.text,
                 url,
             });
-            this.setStatus("План отправлен");
+            this.setStatus(this.messages.shared);
             return true;
         } catch (error) {
             if (error?.name !== "AbortError") {
-                this.setStatus("Не удалось отправить план");
+                this.setStatus(this.messages.shareError);
             }
             return false;
         }
@@ -70,9 +84,20 @@ export function initializeShoppingListShare(documentRef = globalThis.document, n
         return null;
     }
 
+    const root = documentRef.querySelector(".shopping-list-actions");
+    const messages = root?.dataset || {};
     const controller = new ShoppingListShareController({
         navigatorRef,
         statusElement: documentRef.querySelector("[data-share-status]"),
+        messages: {
+            title: messages.shareTitle,
+            text: messages.shareText,
+            shared: messages.statusShared,
+            copied: messages.statusCopied,
+            shareError: messages.statusShareError,
+            copyError: messages.statusCopyError,
+            clearConfirm: messages.clearConfirm,
+        },
     });
 
     for (const button of documentRef.querySelectorAll("[data-share-plan]")) {
@@ -95,7 +120,7 @@ export function initializeShoppingListShare(documentRef = globalThis.document, n
     }
     for (const form of documentRef.querySelectorAll("[data-clear-list-form]")) {
         form.addEventListener("submit", (event) => {
-            if (!globalThis.confirm("Удалить все товары из списка?")) {
+            if (!globalThis.confirm(controller.messages.clearConfirm)) {
                 event.preventDefault();
             }
         });

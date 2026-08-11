@@ -6,6 +6,7 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from .models import ShoppingList, ShoppingListItem
 from .services import get_best_offer
@@ -124,7 +125,7 @@ def send_shopping_list_price_alerts(log_callback=None):
         if changes:
             try:
                 send_mail(
-                    "Изменились цены в вашем списке Tannenberg",
+                    _("Prices in your Tannenberg list have changed"),
                     render_to_string(
                         "main/emails/shopping_list_price_alert.txt",
                         {

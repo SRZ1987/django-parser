@@ -1,15 +1,16 @@
 {% extends 'main/base.html' %}
+{% load i18n %}
 
-{% block title %}Подтвердите email — Tannenberg{% endblock %}
+{% block title %}{% translate "Confirm email" %} — Tannenberg{% endblock %}
 
 {% block content %}
 <main class="page-shell auth-shell">
     <section class="auth-card auth-message">
-        <p class="eyebrow">Почти готово</p>
-        <h1>Проверьте почту</h1>
-        <p>Ссылка для подтверждения отправлена на <strong>{{ email }}</strong>.</p>
-        <p>После подтверждения вы сможете войти в аккаунт.</p>
-        <a class="store-link" href="{% url 'login' %}">Перейти ко входу</a>
+        <p class="eyebrow">{% translate "Almost done" %}</p>
+        <h1>{% translate "Check your email" %}</h1>
+        <p>{% blocktranslate with email=email %}A confirmation link was sent to <strong>{{ email }}</strong>.{% endblocktranslate %}</p>
+        <p>{% translate "After confirmation you will be able to log in." %}</p>
+        <a class="store-link" href="{% url 'login' %}">{% translate "Go to login" %}</a>
     </section>
 </main>
 {% endblock %}

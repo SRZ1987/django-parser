@@ -75,7 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
             image.loading = "lazy";
             imageBox.appendChild(image);
         } else {
-            imageBox.textContent = "Нет фото";
+            imageBox.textContent = panel.dataset.noImage || "No image";
         }
 
         const content = document.createElement("span");
@@ -95,7 +95,9 @@ document.addEventListener("DOMContentLoaded", () => {
         price.className = "suggestion-price";
 
         const mainPrice = document.createElement("strong");
-        mainPrice.textContent = currentPrice(item) ? `${currentPrice(item)} ${item.currency || "EUR"}` : "Цена не указана";
+        mainPrice.textContent = currentPrice(item)
+            ? `${currentPrice(item)} ${item.currency || "EUR"}`
+            : (panel.dataset.priceUnavailable || "Price not specified");
         price.appendChild(mainPrice);
 
         if (item.sale_price && item.price) {

@@ -1,22 +1,23 @@
 {% extends 'main/base.html' %}
+{% load i18n %}
 
-{% block title %}Поиск товаров — Tannenberg{% endblock %}
+{% block title %}{% translate "Product search" %} — Tannenberg{% endblock %}
 
 {% block content %}
 <main>
     <section class="hero-section simple-hero search-workspace" aria-labelledby="page-title">
         <div class="hero-content">
-            <h1 id="page-title">Поиск товаров</h1>
+            <h1 id="page-title">{% translate "Product search" %}</h1>
 
             <form class="search-panel" method="get" action="{% url 'product_search' %}" role="search" data-search-form data-barcode-search-form>
-                <label class="visually-hidden" for="search-input">Поиск товара</label>
+                <label class="visually-hidden" for="search-input">{% translate "Search for a product" %}</label>
                 <div class="search-input-wrap">
                     <input
                         id="search-input"
                         name="q"
                         type="search"
                         value="{{ query }}"
-                        placeholder="Название товара, SKU или штрихкод"
+                        placeholder="{% translate 'Product name, SKU or barcode' %}"
                         autocomplete="off"
                         aria-autocomplete="list"
                         aria-controls="search-suggestions"
@@ -29,13 +30,15 @@
                         id="search-suggestions"
                         class="suggestions-panel"
                         role="listbox"
-                        aria-label="Подсказки товаров"
+                        aria-label="{% translate 'Product suggestions' %}"
                         data-suggestions-panel
+                        data-no-image="{% translate 'No image' %}"
+                        data-price-unavailable="{% translate 'Price not specified' %}"
                         hidden
                     ></div>
                 </div>
                 {% include "main/includes/barcode_scan_button.html" %}
-                <button class="search-submit search-submit-text" type="submit">Найти</button>
+                <button class="search-submit search-submit-text" type="submit">{% translate "Search" %}</button>
             </form>
         </div>
     </section>

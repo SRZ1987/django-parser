@@ -1,28 +1,29 @@
 {% extends 'main/base.html' %}
+{% load i18n %}
 
-{% block title %}Совместные покупки{% endblock %}
+{% block title %}{% translate "Group purchases" %}{% endblock %}
 {% block body_class %}group-purchase-page{% endblock %}
 
 {% block content %}
 <main class="page-shell group-purchase-shell">
     <header class="compact-page-head group-purchase-head">
         <div>
-            <h1>Совместные покупки</h1>
-            <p>Товары из списков пользователей, для которых магазин предлагает цену за количество.</p>
+            <h1>{% translate "Group purchases" %}</h1>
+            <p>{% translate "Products from user lists for which the store offers a quantity price." %}</p>
         </div>
-        <a class="list-action-button" href="{% url 'shopping_list' %}">Мой список</a>
+        <a class="list-action-button" href="{% url 'shopping_list' %}">{% translate "My list" %}</a>
     </header>
 
     {% if page_obj.object_list %}
-        <section class="group-product-list" aria-label="Доступные совместные покупки">
+        <section class="group-product-list" aria-label="{% translate 'Available group purchases' %}">
             {% for group in page_obj.object_list %}
                 {% with offer=group.offer %}
                     <article class="group-product-card">
-                        <a class="group-product-image" href="{% url 'offer_detail' offer.pk %}" aria-label="Подробнее: {{ offer.original_name }}">
+                        <a class="group-product-image" href="{% url 'offer_detail' offer.pk %}" aria-label="{% blocktranslate with name=offer.original_name %}Details: {{ name }}{% endblocktranslate %}">
                             {% if offer.image_url %}
                                 <img src="{{ offer.image_url }}" alt="" loading="lazy">
                             {% else %}
-                                <span>Нет фото</span>
+                                <span>{% translate "No image" %}</span>
                             {% endif %}
                         </a>
                         <div class="group-product-info">
@@ -30,31 +31,31 @@
                             <h2><a href="{% url 'offer_detail' offer.pk %}">{{ offer.original_name }}</a></h2>
                             <dl class="group-product-identifiers">
                                 <div><dt>SKU</dt><dd>{{ offer.sku|default:'—' }}</dd></div>
-                                <div><dt>Штрихкод</dt><dd>{{ offer.barcode|default:'—' }}</dd></div>
+                                <div><dt>{% translate "Barcode" %}</dt><dd>{{ offer.barcode|default:'—' }}</dd></div>
                             </dl>
                         </div>
                         <div class="group-product-deal">
-                            <span>Обычная цена</span>
+                            <span>{% translate "Regular price" %}</span>
                             <strong>{{ offer.current_price }} {{ offer.currency }}</strong>
-                            <span>От {{ group.target_quantity }} шт.</span>
-                            <strong>{{ group.quantity_price }} {{ offer.currency }}/шт.</strong>
+                            <span>{% blocktranslate with quantity=group.target_quantity %}From {{ quantity }} pcs.{% endblocktranslate %}</span>
+                            <strong>{{ group.quantity_price }} {{ offer.currency }}/{% translate "pc." %}</strong>
                         </div>
                         <div class="group-product-progress">
-                            <strong>{{ group.quantity_count }} из {{ group.target_quantity }} шт.</strong>
-                            <span>{{ group.participant_count }} участник{{ group.participant_count|pluralize:"а,ов" }}</span>
+                            <strong>{% blocktranslate with current=group.quantity_count target=group.target_quantity %}{{ current }} of {{ target }} pcs.{% endblocktranslate %}</strong>
+                            <span>{% blocktranslate count count=group.participant_count %}{{ count }} participant{% plural %}{{ count }} participants{% endblocktranslate %}</span>
                             {% if group.quantity_reached %}
-                                <span class="group-ready-state">Количество набрано</span>
+                                <span class="group-ready-state">{% translate "Target quantity reached" %}</span>
                             {% else %}
-                                <span>Нужно ещё: {{ group.remaining_quantity }}</span>
+                                <span>{% blocktranslate with count=group.remaining_quantity %}Still needed: {{ count }}{% endblocktranslate %}</span>
                             {% endif %}
                         </div>
                         <div class="group-product-action">
                             {% if group.user_is_member %}
-                                <a class="group-primary-button" href="{% url 'group_purchase_chat' group.pk %}">Открыть чат</a>
+                                <a class="group-primary-button" href="{% url 'group_purchase_chat' group.pk %}">{% translate "Open chat" %}</a>
                             {% else %}
                                 <form method="post" action="{% url 'join_group_purchase' group.pk %}">
                                     {% csrf_token %}
-                                    <button class="group-primary-button" type="submit">Добавить и открыть чат</button>
+                                    <button class="group-primary-button" type="submit">{% translate "Add and open chat" %}</button>
                                 </form>
                             {% endif %}
                         </div>
@@ -64,17 +65,17 @@
         </section>
 
         {% if page_obj.paginator.num_pages > 1 %}
-            <nav class="group-pagination" aria-label="Страницы совместных покупок">
-                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">Назад</a>{% endif %}
+            <nav class="group-pagination" aria-label="{% translate 'Group purchase pages' %}">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">{% translate "Back" %}</a>{% endif %}
                 <span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Далее</a>{% endif %}
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">{% translate "Next" %}</a>{% endif %}
             </nav>
         {% endif %}
     {% else %}
         <section class="empty-state">
-            <h2>Пока нет активных совместных покупок</h2>
-            <p>Добавьте в список товар с ценой за количество. Он появится здесь, и другие зарегистрированные пользователи смогут присоединиться.</p>
-            <a class="store-link" href="{% url 'catalog' %}">Открыть каталог</a>
+            <h2>{% translate "No active group purchases yet" %}</h2>
+            <p>{% translate "Add a product with a quantity price to your list. It will appear here so other registered users can join." %}</p>
+            <a class="store-link" href="{% url 'catalog' %}">{% translate "Open catalog" %}</a>
         </section>
     {% endif %}
 </main>

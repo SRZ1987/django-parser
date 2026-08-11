@@ -1,3 +1,4 @@
+{% load i18n %}
 {% if matches %}
 <section class="match-section" aria-label="{{ title }}">
     <div class="results-header">
@@ -9,11 +10,11 @@
         {% for match in matches %}
             {% with offer=match.offer %}
                 <article class="product-card match-card" data-offer-id="{{ offer.pk }}">
-                    <a class="product-image" href="{% url 'offer_detail' offer.pk %}" aria-label="Открыть {{ offer.original_name }}">
+                    <a class="product-image" href="{% url 'offer_detail' offer.pk %}" aria-label="{% blocktranslate with name=offer.original_name %}Open {{ name }}{% endblocktranslate %}">
                         {% if offer.image_url %}
                             <img src="{{ offer.image_url }}" alt="{{ offer.original_name }}" loading="lazy">
                         {% else %}
-                            <span>Нет фото</span>
+                            <span>{% translate "No image" %}</span>
                         {% endif %}
                     </a>
 
@@ -21,11 +22,11 @@
                         <h3><a href="{% url 'offer_detail' offer.pk %}">{{ offer.original_name }}</a></h3>
                         <dl class="product-meta">
                             <div>
-                                <dt>Магазин</dt>
+                                <dt>{% translate "Store" %}</dt>
                                 <dd>{{ offer.shop.name }}</dd>
                             </div>
                             <div>
-                                <dt>Категория</dt>
+                                <dt>{% translate "Category" %}</dt>
                                 <dd>{% if offer.category %}{{ offer.category.name }}{% else %}-{% endif %}</dd>
                             </div>
                             <div>
@@ -33,7 +34,7 @@
                                 <dd>{% firstof offer.sku offer.external_id "-" %}</dd>
                             </div>
                             <div>
-                                <dt>Штрихкод</dt>
+                                <dt>{% translate "Barcode" %}</dt>
                                 <dd>{% firstof offer.barcode offer.product.barcode "-" %}</dd>
                             </div>
                         </dl>
@@ -49,31 +50,31 @@
                             {% elif offer.price %}
                                 <strong>{{ offer.price }} {{ offer.currency }}</strong>
                             {% else %}
-                                <strong>Цена не указана</strong>
+                                <strong>{% translate "Price not specified" %}</strong>
                             {% endif %}
                             {% if offer.quantity_price and offer.quantity_price_min_quantity %}
                                 <span class="quantity-price">
-                                    От {{ offer.quantity_price_min_quantity }} шт. — {{ offer.quantity_price }} {{ offer.currency }}/шт.
+                                    {% blocktranslate with quantity=offer.quantity_price_min_quantity price=offer.quantity_price currency=offer.currency %}From {{ quantity }} pcs. — {{ price }} {{ currency }}/pc.{% endblocktranslate %}
                                 </span>
                             {% endif %}
                         </div>
                         {% if user.is_authenticated %}
                             {% if offer.pk in list_offer_ids %}
-                                <span class="list-state">✓ В списке</span>
+                                <span class="list-state">✓ {% translate "In list" %}</span>
                             {% else %}
                                 <form method="post" action="{% url 'add_to_shopping_list' offer.pk %}">
                                     {% csrf_token %}
                                     <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                                    <button class="list-button" type="submit">+ В список</button>
+                                    <button class="list-button" type="submit">+ {% translate "Add to list" %}</button>
                                 </form>
                             {% endif %}
                         {% else %}
-                            <a class="list-button" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">+ В список</a>
+                            <a class="list-button" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">+ {% translate "Add to list" %}</a>
                         {% endif %}
                         {% if offer.product_url %}
-                            <a class="store-link" href="{% url 'store_click' offer.pk %}" target="_blank" rel="noopener noreferrer">Открыть</a>
+                            <a class="store-link" href="{% url 'store_click' offer.pk %}" target="_blank" rel="noopener noreferrer">{% translate "Open" %}</a>
                         {% else %}
-                            <a class="store-link" href="{% url 'offer_detail' offer.pk %}">Подробнее</a>
+                            <a class="store-link" href="{% url 'offer_detail' offer.pk %}">{% translate "Details" %}</a>
                         {% endif %}
                     </div>
                 </article>

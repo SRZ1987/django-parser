@@ -38,7 +38,13 @@ function createFixture(overrides = {}) {
     };
     const modal = {
         hidden: true,
-        dataset: { zxingUrl: "/static/main/vendor/zxing-browser-0.2.1.min.js" },
+        dataset: {
+            zxingUrl: "/static/main/vendor/zxing-browser-0.2.1.min.js",
+            statusScanning: "Наведите камеру на штрихкод",
+            statusRecognized: "Штрихкод распознан",
+            statusNotFound: "Не удалось распознать",
+            statusCameraDenied: "Нет доступа к камере",
+        },
         querySelectorAll: () => [],
     };
     const video = {

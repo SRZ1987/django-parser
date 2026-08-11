@@ -1,15 +1,15 @@
 {% extends 'main/base.html' %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Мой список{% endblock %}
+{% block title %}{% translate "My list" %}{% endblock %}
 {% block body_class %}shopping-list-page{% endblock %}
-{% block extra_scripts %}<script src="{% static 'main/js/shopping-list-share.js' %}?v=2" type="module"></script>{% endblock %}
+{% block extra_scripts %}<script src="{% static 'main/js/shopping-list-share.js' %}?v=3" type="module"></script>{% endblock %}
 
 {% block content %}
 <main class="page-shell list-shell">
     <header class="compact-page-head">
-        <h1 id="list-title">Мой список</h1>
-        <p>Товары и более выгодные предложения по магазинам.</p>
+        <h1 id="list-title">{% translate "My list" %}</h1>
+        <p>{% translate "Products and better offers from different stores." %}</p>
     </header>
 
     <section class="price-alert-settings" aria-labelledby="price-alert-title">
@@ -28,7 +28,7 @@
                 >
                 <span class="price-alert-switch" aria-hidden="true"></span>
                 <span class="price-alert-copy">
-                    <strong id="price-alert-title">Уведомления об изменении цен</strong>
+                    <strong id="price-alert-title">{% translate "Price change notifications" %}</strong>
                     <small>{{ user.email }}</small>
                 </span>
             </label>
@@ -40,9 +40,9 @@
         {% include 'main/includes/purchase_plan.html' %}
     {% else %}
         <section class="empty-state">
-            <h2>Список пока пуст</h2>
-            <p>Найдите товар и добавьте его в список — здесь появится рекомендация, где купить дешевле.</p>
-            <a class="store-link" href="{% url 'home' %}">Найти товар</a>
+            <h2>{% translate "Your list is empty" %}</h2>
+            <p>{% translate "Find a product and add it to the list to see where it can be bought cheaper." %}</p>
+            <a class="store-link" href="{% url 'home' %}">{% translate "Find a product" %}</a>
         </section>
     {% endif %}
 </main>

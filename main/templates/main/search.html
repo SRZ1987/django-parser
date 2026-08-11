@@ -1,64 +1,66 @@
 {% extends 'main/base.html' %}
+{% load i18n %}
 
-{% block title %}Поиск товаров{% endblock %}
+{% block title %}{% translate "Product search" %}{% endblock %}
 
 {% block content %}
 <main class="page-shell search-results-shell">
-    <h1 id="search-title" class="compact-page-title">Поиск товаров</h1>
+    <h1 id="search-title" class="compact-page-title">{% translate "Product search" %}</h1>
 
     <form class="catalog-filters search-page-form" method="get" action="{% url 'product_search' %}" data-barcode-search-form>
         <div class="catalog-search-control">
-            <label for="product-search-input">Поиск</label>
+            <label for="product-search-input">{% translate "Search" %}</label>
             <div class="catalog-search-input-row">
-                <input id="product-search-input" name="q" type="search" value="{{ query }}" placeholder="Название товара, SKU или штрихкод" autofocus data-barcode-search-input>
+                <input id="product-search-input" name="q" type="search" value="{{ query }}" placeholder="{% translate 'Product name, SKU or barcode' %}" autofocus data-barcode-search-input>
                 {% include "main/includes/barcode_scan_button.html" %}
             </div>
         </div>
         <div class="filter-actions">
-            <button type="submit">Найти</button>
-            <a href="{% url 'product_search' %}">Сбросить</a>
+            <button type="submit">{% translate "Search" %}</button>
+            <a href="{% url 'product_search' %}">{% translate "Reset" %}</a>
         </div>
     </form>
 
     {% if not query %}
         <section class="empty-state search-empty">
-            <h2>Введите название, SKU или штрихкод</h2>
-            <p>Полный каталог не выводится без запроса, чтобы страница оставалась быстрой.</p>
+            <h2>{% translate "Enter a product name, SKU or barcode" %}</h2>
+            <p>{% translate "The full catalog is not displayed without a query so the page stays fast." %}</p>
         </section>
     {% elif results and results.has_results %}
         <section class="search-summary">
             <div>
-                <h2>По запросу «{{ query }}» найдено: {{ results.total_count }}</h2>
-                <p>Проверено кандидатов: {{ results.candidates_count }}</p>
+                <h2>{% blocktranslate with query=query count=results.total_count %}Found for “{{ query }}”: {{ count }}{% endblocktranslate %}</h2>
+                <p>{% blocktranslate with count=results.candidates_count %}Candidates checked: {{ count }}{% endblocktranslate %}</p>
             </div>
             {% if results.price_summary %}
                 <div class="price-comparison">
-                    <span>От {{ results.price_summary.min_price }} EUR до {{ results.price_summary.max_price }} EUR</span>
-                    <strong>Дешевле сейчас: {{ results.price_summary.cheapest_shop }}</strong>
+                    <span>{% blocktranslate with minimum=results.price_summary.min_price maximum=results.price_summary.max_price %}From {{ minimum }} EUR to {{ maximum }} EUR{% endblocktranslate %}</span>
+                    <strong>{% blocktranslate with shop=results.price_summary.cheapest_shop %}Cheapest now: {{ shop }}{% endblocktranslate %}</strong>
                     {% if results.price_summary.price_difference %}
-                        <span>Разница: {{ results.price_summary.price_difference }} EUR</span>
+                        <span>{% blocktranslate with difference=results.price_summary.price_difference %}Difference: {{ difference }} EUR{% endblocktranslate %}</span>
                     {% endif %}
                 </div>
             {% endif %}
         </section>
 
-        {% include "main/search_section.html" with title="Результаты поиска" matches=results_page.object_list list_offer_ids=list_offer_ids %}
+        {% translate "Search results" as search_results_title %}
+        {% include "main/search_section.html" with title=search_results_title matches=results_page.object_list list_offer_ids=list_offer_ids %}
 
         {% if results_page.paginator.num_pages > 1 %}
-            <nav class="pagination" aria-label="Результаты поиска">
+            <nav class="pagination" aria-label="{% translate 'Search results' %}">
                 {% if results_page.has_previous %}
-                    <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ results_page.previous_page_number }}">Назад</a>
+                    <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ results_page.previous_page_number }}">{% translate "Back" %}</a>
                 {% endif %}
                 <span class="is-current">{{ results_page.number }} / {{ results_page.paginator.num_pages }}</span>
                 {% if results_page.has_next %}
-                    <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ results_page.next_page_number }}">Вперёд</a>
+                    <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ results_page.next_page_number }}">{% translate "Next" %}</a>
                 {% endif %}
             </nav>
         {% endif %}
     {% else %}
         <section class="empty-state search-empty">
-            <h2>Ничего не найдено</h2>
-            <p>Попробуйте более короткий запрос, модель, штрихкод или SKU.</p>
+            <h2>{% translate "Nothing found" %}</h2>
+            <p>{% translate "Try a shorter query, model, barcode or SKU." %}</p>
         </section>
     {% endif %}
 </main>

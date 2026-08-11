@@ -1,42 +1,43 @@
 {% extends 'main/base.html' %}
+{% load i18n %}
 
-{% block title %}Статистика — Tannenberg{% endblock %}
+{% block title %}{% translate "Statistics" %} — Tannenberg{% endblock %}
 
 {% block content %}
 <main class="page-shell statistics-shell">
     <header class="compact-page-head statistics-head">
         <div>
-            <h1>Статистика</h1>
-            <p>Посещения, регистрации, переходы в магазины и списки покупок.{% if visit_totals.tracking_started %} Сбор с {{ visit_totals.tracking_started|date:"d.m.Y" }}.{% endif %}</p>
+            <h1>{% translate "Statistics" %}</h1>
+            <p>{% translate "Visits, registrations, store clicks and shopping lists." %}{% if visit_totals.tracking_started %} {% blocktranslate with date=visit_totals.tracking_started|date:"d.m.Y" %}Collected since {{ date }}.{% endblocktranslate %}{% endif %}</p>
         </div>
         <a class="list-action-button" href="{% url 'admin:index' %}">Django Admin</a>
     </header>
 
-    <section class="statistics-summary" aria-label="Общая статистика">
-        <article><span>Браузеров сегодня</span><strong>{{ today.visitors }}</strong><small>{{ today.pageviews }} просмотров</small></article>
-        <article><span>Браузеров за всё время</span><strong>{{ visit_totals.unique_visitors }}</strong><small>{{ visit_totals.pageviews }} просмотров всего</small></article>
-        <article><span>Пользователей</span><strong>{{ registered_users }}</strong><small>{{ confirmed_users }} активных аккаунтов с email</small></article>
-        <article><span>Регистраций за 30 дней</span><strong>{{ registrations_30d }}</strong><small>новых аккаунтов</small></article>
-        <article><span>Переходов в магазины</span><strong>{{ click_totals.total }}</strong><small>{{ click_totals.unique_visitors }} посетителей</small></article>
-        <article><span>Товаров в списках</span><strong>{{ current_list_items }}</strong><small>{{ active_offers }} активных предложений</small></article>
+    <section class="statistics-summary" aria-label="{% translate 'General statistics' %}">
+        <article><span>{% translate "Browsers today" %}</span><strong>{{ today.visitors }}</strong><small>{% blocktranslate with count=today.pageviews %}{{ count }} page views{% endblocktranslate %}</small></article>
+        <article><span>{% translate "All-time browsers" %}</span><strong>{{ visit_totals.unique_visitors }}</strong><small>{% blocktranslate with count=visit_totals.pageviews %}{{ count }} total page views{% endblocktranslate %}</small></article>
+        <article><span>{% translate "Users" %}</span><strong>{{ registered_users }}</strong><small>{% blocktranslate with count=confirmed_users %}{{ count }} active accounts with email{% endblocktranslate %}</small></article>
+        <article><span>{% translate "Registrations in 30 days" %}</span><strong>{{ registrations_30d }}</strong><small>{% translate "new accounts" %}</small></article>
+        <article><span>{% translate "Store clicks" %}</span><strong>{{ click_totals.total }}</strong><small>{% blocktranslate with count=click_totals.unique_visitors %}{{ count }} visitors{% endblocktranslate %}</small></article>
+        <article><span>{% translate "Products in lists" %}</span><strong>{{ current_list_items }}</strong><small>{% blocktranslate with count=active_offers %}{{ count }} active offers{% endblocktranslate %}</small></article>
     </section>
 
     <section class="statistics-section" aria-labelledby="shops-statistics-title">
         <div class="statistics-section-head">
-            <h2 id="shops-statistics-title">Магазины</h2>
-            <span>Клики и товары в пользовательских списках</span>
+            <h2 id="shops-statistics-title">{% translate "Stores" %}</h2>
+            <span>{% translate "Clicks and products in user lists" %}</span>
         </div>
         <div class="statistics-table-wrap">
             <table class="statistics-table">
                 <thead>
                     <tr>
-                        <th>Магазин</th>
-                        <th>Активных товаров</th>
-                        <th>Кликов всего</th>
-                        <th>Кликов за 30 дней</th>
-                        <th>Сейчас в списках</th>
-                        <th>Пользователей со списком</th>
-                        <th>Добавлений за всё время</th>
+                        <th>{% translate "Store" %}</th>
+                        <th>{% translate "Active products" %}</th>
+                        <th>{% translate "All clicks" %}</th>
+                        <th>{% translate "Clicks in 30 days" %}</th>
+                        <th>{% translate "Currently in lists" %}</th>
+                        <th>{% translate "Users with a list" %}</th>
+                        <th>{% translate "All-time additions" %}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -51,7 +52,7 @@
                             <td>{{ shop.added_events_count }}</td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="7">Данных пока нет</td></tr>
+                        <tr><td colspan="7">{% translate "No data yet" %}</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -60,13 +61,13 @@
 
     <section class="statistics-section" aria-labelledby="daily-statistics-title">
         <div class="statistics-section-head">
-            <h2 id="daily-statistics-title">Последние {{ period_days }} дней</h2>
-            <span>Динамика активности</span>
+            <h2 id="daily-statistics-title">{% blocktranslate with count=period_days %}Last {{ count }} days{% endblocktranslate %}</h2>
+            <span>{% translate "Activity trend" %}</span>
         </div>
         <div class="statistics-table-wrap">
             <table class="statistics-table statistics-daily-table">
                 <thead>
-                    <tr><th>Дата</th><th>Посетители</th><th>Просмотры</th><th>Регистрации</th><th>Переходы</th><th>Добавлено в списки</th></tr>
+                    <tr><th>{% translate "Date" %}</th><th>{% translate "Visitors" %}</th><th>{% translate "Page views" %}</th><th>{% translate "Registrations" %}</th><th>{% translate "Clicks" %}</th><th>{% translate "Added to lists" %}</th></tr>
                 </thead>
                 <tbody>
                     {% for row in daily_rows %}
@@ -86,18 +87,18 @@
 
     <div class="statistics-columns">
         <section class="statistics-section" aria-labelledby="top-clicked-title">
-            <div class="statistics-section-head"><h2 id="top-clicked-title">Чаще открывают</h2></div>
+            <div class="statistics-section-head"><h2 id="top-clicked-title">{% translate "Most opened" %}</h2></div>
             <ol class="statistics-ranking">
                 {% for offer in top_clicked_offers %}
                     <li><span>{{ offer.original_name }} <small>{{ offer.shop.name }}</small></span><strong>{{ offer.clicks_count }}</strong></li>
                 {% empty %}
-                    <li>Переходов пока нет</li>
+                    <li>{% translate "No clicks yet" %}</li>
                 {% endfor %}
             </ol>
         </section>
 
         <section class="statistics-section" aria-labelledby="top-listed-title">
-            <div class="statistics-section-head"><h2 id="top-listed-title">Чаще добавляют</h2></div>
+            <div class="statistics-section-head"><h2 id="top-listed-title">{% translate "Most added" %}</h2></div>
             <ol class="statistics-ranking">
                 {% for offer in top_listed_offers %}
                     <li>
@@ -105,7 +106,7 @@
                         <strong>{{ offer.list_items_count }} / {{ offer.list_users_count }}</strong>
                     </li>
                 {% empty %}
-                    <li>Списков пока нет</li>
+                    <li>{% translate "No lists yet" %}</li>
                 {% endfor %}
             </ol>
         </section>

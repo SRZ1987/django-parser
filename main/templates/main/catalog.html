@@ -1,30 +1,31 @@
 {% extends 'main/base.html' %}
+{% load i18n %}
 
-{% block title %}Каталог товаров{% endblock %}
+{% block title %}{% translate "Product catalog" %}{% endblock %}
 
 {% block content %}
 <main class="page-shell catalog-shell">
     <section class="catalog-head" aria-labelledby="catalog-title">
-        <p class="eyebrow">Каталог предложений</p>
-        <h1 id="catalog-title">Каталог товаров</h1>
+        <p class="eyebrow">{% translate "Offer catalog" %}</p>
+        <h1 id="catalog-title">{% translate "Product catalog" %}</h1>
         <p>
-            Ищите товары по названию, SKU или штрихкоду, фильтруйте по магазину и категории.
+            {% translate "Search by product name, SKU or barcode and filter by store and category." %}
         </p>
     </section>
 
     <form class="catalog-filters" method="get" action="{% url 'catalog' %}" data-barcode-search-form>
         <div class="catalog-search-control">
-            <label for="catalog-search-input">Поиск</label>
+            <label for="catalog-search-input">{% translate "Search" %}</label>
             <div class="catalog-search-input-row">
-                <input id="catalog-search-input" name="q" type="search" value="{{ query }}" placeholder="Название, SKU или штрихкод" data-barcode-search-input>
+                <input id="catalog-search-input" name="q" type="search" value="{{ query }}" placeholder="{% translate 'Name, SKU or barcode' %}" data-barcode-search-input>
                 {% include "main/includes/barcode_scan_button.html" %}
             </div>
         </div>
 
         <label>
-            <span>Магазин</span>
+            <span>{% translate "Store" %}</span>
             <select name="shop">
-                <option value="">Все магазины</option>
+                <option value="">{% translate "All stores" %}</option>
                 {% for shop in shops %}
                     <option value="{{ shop.code }}" {% if shop.code == selected_shop_code %}selected{% endif %}>
                         {{ shop.name }}
@@ -34,9 +35,9 @@
         </label>
 
         <label>
-            <span>Категория</span>
+            <span>{% translate "Category" %}</span>
             <select name="category">
-                <option value="">Все категории</option>
+                <option value="">{% translate "All categories" %}</option>
                 {% for category in categories %}
                     <option value="{{ category.pk }}" {% if category.pk|stringformat:"s" == selected_category_id %}selected{% endif %}>
                         {{ category.name }}
@@ -46,7 +47,7 @@
         </label>
 
         <label>
-            <span>Сортировка</span>
+            <span>{% translate "Sort" %}</span>
             <select name="sort">
                 {% for value, label in sort_options %}
                     <option value="{{ value }}" {% if value == selected_sort %}selected{% endif %}>{{ label }}</option>
@@ -55,30 +56,30 @@
         </label>
 
         <div class="filter-actions">
-            <button type="submit">Найти</button>
-            <a href="{% url 'catalog' %}">Сбросить фильтры</a>
+            <button type="submit">{% translate "Search" %}</button>
+            <a href="{% url 'catalog' %}">{% translate "Reset filters" %}</a>
         </div>
     </form>
 
-    <section class="catalog-results" aria-label="Результаты каталога">
+    <section class="catalog-results" aria-label="{% translate 'Catalog results' %}">
         <div class="results-header">
             {% if query %}
-                <h2>По запросу «{{ query }}» найдено: {{ page_obj.paginator.count }}</h2>
+                <h2>{% blocktranslate with query=query count=page_obj.paginator.count %}Found for “{{ query }}”: {{ count }}{% endblocktranslate %}</h2>
             {% else %}
-                <h2>Найдено товаров: {{ page_obj.paginator.count }}</h2>
+                <h2>{% blocktranslate with count=page_obj.paginator.count %}Products found: {{ count }}{% endblocktranslate %}</h2>
             {% endif %}
-            <span>По 24 предложения на странице</span>
+            <span>{% translate "24 offers per page" %}</span>
         </div>
 
         {% if page_obj.object_list %}
             <div class="catalog-grid">
                 {% for offer in page_obj.object_list %}
                     <article class="catalog-card">
-                        <a class="catalog-card-image" href="{% url 'offer_detail' offer.pk %}" aria-label="Открыть {{ offer.original_name }}">
+                        <a class="catalog-card-image" href="{% url 'offer_detail' offer.pk %}" aria-label="{% blocktranslate with name=offer.original_name %}Open {{ name }}{% endblocktranslate %}">
                             {% if offer.image_url %}
                                 <img src="{{ offer.image_url }}" alt="{{ offer.original_name }}" loading="lazy">
                             {% else %}
-                                <span>Нет фото</span>
+                                <span>{% translate "No image" %}</span>
                             {% endif %}
                         </a>
 
@@ -96,7 +97,7 @@
                                     <span>SKU: {{ offer.sku }}</span>
                                 {% endif %}
                                 {% if offer.barcode %}
-                                    <span>Штрихкод: {{ offer.barcode }}</span>
+                                    <span>{% translate "Barcode" %}: {{ offer.barcode }}</span>
                                 {% endif %}
                             </div>
                         </div>
@@ -111,11 +112,11 @@
                                 {% elif offer.price %}
                                     <strong>{{ offer.price }} {{ offer.currency }}</strong>
                                 {% else %}
-                                    <strong>Цена не указана</strong>
+                                    <strong>{% translate "Price not specified" %}</strong>
                                 {% endif %}
                                 {% if offer.quantity_price and offer.quantity_price_min_quantity %}
                                     <span class="quantity-price">
-                                        От {{ offer.quantity_price_min_quantity }} шт. — {{ offer.quantity_price }} {{ offer.currency }}/шт.
+                                        {% blocktranslate with quantity=offer.quantity_price_min_quantity price=offer.quantity_price currency=offer.currency %}From {{ quantity }} pcs. — {{ price }} {{ currency }}/pc.{% endblocktranslate %}
                                     </span>
                                 {% endif %}
                             </div>
@@ -123,21 +124,21 @@
                             <div class="catalog-card-actions">
                                 {% if user.is_authenticated %}
                                     {% if offer.pk in list_offer_ids %}
-                                        <span class="list-state">✓ В списке</span>
+                                        <span class="list-state">✓ {% translate "In list" %}</span>
                                     {% else %}
                                         <form method="post" action="{% url 'add_to_shopping_list' offer.pk %}">
                                             {% csrf_token %}
                                             <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                                            <button class="list-button" type="submit">+ В список</button>
+                                            <button class="list-button" type="submit">+ {% translate "Add to list" %}</button>
                                         </form>
                                     {% endif %}
                                 {% else %}
-                                    <a class="list-button" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">+ В список</a>
+                                    <a class="list-button" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">+ {% translate "Add to list" %}</a>
                                 {% endif %}
-                                <a class="store-link" href="{% url 'offer_detail' offer.pk %}">Подробнее</a>
+                                <a class="store-link" href="{% url 'offer_detail' offer.pk %}">{% translate "Details" %}</a>
                                 {% if offer.product_url %}
                                     <a class="external-link" href="{% url 'store_click' offer.pk %}" target="_blank" rel="noopener noreferrer">
-                                        В магазин
+                                        {% translate "Go to store" %}
                                     </a>
                                 {% endif %}
                             </div>
@@ -147,10 +148,10 @@
             </div>
 
             {% if page_obj.paginator.num_pages > 1 %}
-                <nav class="pagination" aria-label="Пагинация">
+                <nav class="pagination" aria-label="{% translate 'Pagination' %}">
                     {% if page_obj.has_previous %}
-                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page=1">Первая</a>
-                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Назад</a>
+                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page=1">{% translate "First" %}</a>
+                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">{% translate "Back" %}</a>
                     {% endif %}
 
                     {% for page_number in page_range %}
@@ -164,16 +165,16 @@
                     {% endfor %}
 
                     {% if page_obj.has_next %}
-                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Вперёд</a>
-                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ page_obj.paginator.num_pages }}">Последняя</a>
+                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ page_obj.next_page_number }}">{% translate "Next" %}</a>
+                        <a href="?{% if page_params %}{{ page_params }}&amp;{% endif %}page={{ page_obj.paginator.num_pages }}">{% translate "Last" %}</a>
                     {% endif %}
                 </nav>
             {% endif %}
         {% else %}
             <div class="empty-state">
-                <h2>Товары не найдены</h2>
-                <p>Попробуйте изменить запрос, выбрать другой магазин или сбросить фильтры.</p>
-                <a class="store-link" href="{% url 'catalog' %}">Сбросить фильтры</a>
+                <h2>{% translate "No products found" %}</h2>
+                <p>{% translate "Try changing the query, choosing another store or resetting the filters." %}</p>
+                <a class="store-link" href="{% url 'catalog' %}">{% translate "Reset filters" %}</a>
             </div>
         {% endif %}
     </section>
