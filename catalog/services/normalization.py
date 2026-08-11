@@ -4,17 +4,20 @@ import unicodedata
 
 _DASHES_RE = re.compile(r"[\u2010-\u2015\u2212\-]+")
 _DECIMAL_COMMA_RE = re.compile(r"(?<=\d),(?=\d)")
+_DIAMETER_PREFIX_RE = re.compile(r"(?<!\w)(?:ø|diam(?:eter)?)\.?\s*(?=\d)", re.IGNORECASE)
+_DIMENSION_AXIS_RE = re.compile(r"(?<=x)\s*[lwh]\s*(?=\d)", re.IGNORECASE)
 _MODEL_SPLIT_RE = re.compile(r"\b([a-z]{2,6})\s+(\d{2,5})([a-z0-9]*)\b")
 _DIMENSION_RE = re.compile(
     r"\b(\d+(?:\.\d+)?)\s*[xх]\s*(\d+(?:\.\d+)?)(?:\s*[xх]\s*(\d+(?:\.\d+)?))?(?:\s*(mm|мм|cm|см|m|м)\b)?",
     re.IGNORECASE,
 )
 _NUMBER_UNIT_RE = re.compile(
-    r"\b(\d+(?:\.\d+)?)\s*(mm|мм|cm|см|m|м|kg|кг|g|г|l|л|ml|мл|v|в|w|вт|ah|ач)\b",
+    r"\b(\d+(?:\.\d+)?)\s*(mm|мм|cm|см|m|м|mg|kg|кг|g|г|cl|ml|мл|l|л|"
+    r"kw|w|вт|v|в|mah|ah|ач|a|bar|kpa|mpa|pa|nm|hz)\b",
     re.IGNORECASE,
 )
 _ADJACENT_MEASURES_RE = re.compile(
-    r"(\d+(?:\.\d+)?(?:mm|cm|kg|ml|ah|m|g|l|v|w))(?=\d)",
+    r"(\d+(?:\.\d+)?(?:mm|cm|mg|kg|cl|ml|mah|ah|bar|kpa|mpa|pa|nm|hz|kw|m|g|l|v|w|a))(?=\d)",
     re.IGNORECASE,
 )
 _UNWANTED_CHARS_RE = re.compile(r"[^\w\s.]+", re.UNICODE)
@@ -23,7 +26,9 @@ _NUMBER_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)?$")
 _DIMENSION_TOKEN_RE = re.compile(
     r"^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:x(\d+(?:\.\d+)?))?(?:mm|cm|m)?$"
 )
-_MEASURE_TOKEN_RE = re.compile(r"^(\d+(?:\.\d+)?)(mm|cm|m|kg|g|l|ml|v|w|ah)$")
+_MEASURE_TOKEN_RE = re.compile(
+    r"^(\d+(?:\.\d+)?)(mm|cm|m|mg|kg|g|cl|ml|l|kw|w|v|mah|ah|a|bar|kpa|mpa|pa|nm|hz)$"
+)
 _MODEL_PREFIX_VOWELS = frozenset("aeiouyõäöü")
 COMPOUND_PREFIX_MIN_LENGTH = 7
 _UNIT_ALIASES = {
@@ -62,7 +67,10 @@ def _normalize_split_model(match) -> str:
     suffix = match.group(3)
     if any(character in _MODEL_PREFIX_VOWELS for character in prefix):
         return match.group(0)
-    if suffix in {"v", "w", "ah", "mm", "cm", "m", "kg", "g", "l", "ml"}:
+    if suffix in {
+        "v", "w", "kw", "a", "ah", "mah", "mm", "cm", "m", "mg", "kg", "g",
+        "l", "cl", "ml", "bar", "kpa", "mpa", "pa", "nm", "hz",
+    }:
         return match.group(0)
     return f"{prefix}{match.group(2)}{suffix}"
 
@@ -82,6 +90,8 @@ def normalize_text(value: str) -> str:
     text = text.lower().replace("ё", "е")
     text = text.replace("×", "x").replace("х", "x")
     text = _DECIMAL_COMMA_RE.sub(".", text)
+    text = _DIAMETER_PREFIX_RE.sub("", text)
+    text = _DIMENSION_AXIS_RE.sub("", text)
     text = _DASHES_RE.sub(" ", text)
     text = _UNWANTED_CHARS_RE.sub(" ", text)
     text = _SPACES_RE.sub(" ", text)

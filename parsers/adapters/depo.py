@@ -20,6 +20,12 @@ class DepoAdapter(ParserAdapter):
         depo_parser.COLUMNS[6]: "image_url",
         depo_parser.COLUMNS[7]: "product_url",
         depo_parser.COLUMNS[8]: "quantity_price_min_quantity",
+        depo_parser.COLUMNS[9]: "sku",
+        depo_parser.COLUMNS[10]: "category_name",
+        depo_parser.COLUMNS[11]: "category_external_id",
+        depo_parser.COLUMNS[12]: "description",
+        depo_parser.COLUMNS[13]: "brand",
+        depo_parser.COLUMNS[14]: "model",
     }
 
     async def run(self, output_path, log_callback=None):

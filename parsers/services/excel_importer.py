@@ -243,6 +243,8 @@ class ExcelCatalogImporter:
             "category_name": data.get("category_name", ""),
             "category_external_id": data.get("category_external_id", ""),
             "description": data.get("description", ""),
+            "brand": data.get("brand", ""),
+            "model": data.get("model", ""),
         }
 
     def _validate_model_field_lengths(self, parsed):
@@ -260,6 +262,8 @@ class ExcelCatalogImporter:
             ("image_url", parsed["image_url"], ProductOffer, "image_url"),
             ("category_external_id", parsed["category_external_id"], Category, "external_id"),
             ("category_name", parsed["category_name"], Category, "name"),
+            ("brand", parsed["brand"], Product, "brand"),
+            ("model", parsed["model"], Product, "model"),
         )
         for source_field, value, model, model_field_name in fields:
             model_field = model._meta.get_field(model_field_name)
@@ -284,6 +288,8 @@ class ExcelCatalogImporter:
             product = Product.objects.create(
                 name=parsed["original_name"],
                 barcode=parsed["barcode"],
+                brand=parsed["brand"],
+                model=parsed["model"],
                 normalized_name=normalize_product_name(parsed["original_name"]),
             )
             offer = ProductOffer(shop=shop, product=product, external_id=parsed["external_id"])
@@ -292,8 +298,23 @@ class ExcelCatalogImporter:
             product.name = parsed["original_name"]
             if parsed["barcode"]:
                 product.barcode = parsed["barcode"]
+            if parsed["brand"]:
+                product.brand = parsed["brand"]
+            if parsed["model"]:
+                product.model = parsed["model"]
             product.normalized_name = normalize_product_name(parsed["original_name"])
-            product.save(update_fields=["name", "normalized_name", "barcode", "updated_at"])
+            product.save(
+                update_fields=[
+                    "name",
+                    "normalized_name",
+                    "barcode",
+                    "brand",
+                    "normalized_brand",
+                    "model",
+                    "normalized_model",
+                    "updated_at",
+                ]
+            )
 
         previous_price = offer.price
         previous_sale_price = offer.sale_price

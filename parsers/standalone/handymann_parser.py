@@ -33,6 +33,12 @@ COLUMNS = [
     "Код магазина",
     "Фото",
     "Ссылка",
+    "SKU",
+    "Category",
+    "Category ID",
+    "Description",
+    "Brand",
+    "Model",
 ]
 
 RETRYABLE_STATUSES = {408, 425, 429, 500, 502, 503, 504}
@@ -87,6 +93,22 @@ def extract_barcode(product: dict[str, Any]) -> str:
     return ""
 
 
+def extract_named_attribute(product: dict[str, Any], *names: str) -> str:
+    expected = {name.casefold() for name in names}
+    for attribute in product.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        attribute_name = clean_text(attribute.get("name")).casefold()
+        if attribute_name not in expected:
+            continue
+        for term in attribute.get("terms") or []:
+            if isinstance(term, dict):
+                value = clean_text(term.get("name"))
+                if value:
+                    return value
+    return ""
+
+
 def parse_money(value: Any, minor_unit: int) -> float | str:
     if value in (None, "") or isinstance(value, bool):
         return ""
@@ -129,6 +151,10 @@ def normalize_product(product: dict[str, Any]) -> list[Any] | None:
     images = product.get("images") or []
     image_url = clean_text(images[0].get("src")) if images and isinstance(images[0], dict) else ""
     price, sale_price = extract_prices(product)
+    categories = [item for item in product.get("categories") or [] if isinstance(item, dict)]
+    category = categories[-1] if categories else {}
+    brands = [item for item in product.get("brands") or [] if isinstance(item, dict)]
+    brand = clean_text(brands[0].get("name")) if brands else ""
     return [
         name,
         price,
@@ -138,6 +164,12 @@ def normalize_product(product: dict[str, Any]) -> list[Any] | None:
         external_id,
         image_url,
         product_url,
+        sku,
+        clean_text(category.get("name")),
+        clean_text(category.get("id")),
+        clean_text(product.get("description") or product.get("short_description")),
+        brand or extract_named_attribute(product, "Kaubamärk", "Brand", "Tootja", "Manufacturer"),
+        extract_named_attribute(product, "Mudel", "Model", "Tootekood"),
     ]
 
 

@@ -29,6 +29,12 @@ COLUMNS = [
     "Фото",
     "Ссылка",
     "Минимальное количество для скидки",
+    "SKU",
+    "Category",
+    "Category ID",
+    "Description",
+    "Brand",
+    "Model",
 ]
 
 
@@ -275,6 +281,12 @@ class DepoParser:
                 ),
                 "Ссылка": f"{SITE_URL}/product/{product_id}" if product_id else "",
                 "Минимальное количество для скидки": self.normalize_quantity(orange.get("priceQuantity")),
+                "SKU": product_id,
+                "Category": "",
+                "Category ID": str(category_id),
+                "Description": "",
+                "Brand": "",
+                "Model": "",
             })
 
         return total, rows

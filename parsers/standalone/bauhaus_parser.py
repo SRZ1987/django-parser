@@ -2244,6 +2244,12 @@ FINAL_COLUMNS = [
     "Код магазина",
     "Фото",
     "Ссылка",
+    "SKU",
+    "Category",
+    "Category ID",
+    "Description",
+    "Brand",
+    "Model",
 ]
 
 COLUMNS = FINAL_COLUMNS
@@ -2343,6 +2349,19 @@ def export_final_excel(products: list[dict[str, Any]]) -> None:
                     or product.get("retina_image_url")
                 ),
                 "Ссылка": product_url,
+                "SKU": sku,
+                "Category": clean_text(
+                    product.get("category_level_2")
+                    or product.get("category_level_1")
+                    or product.get("category_level_0")
+                ),
+                "Category ID": "",
+                "Description": clean_text(
+                    product.get("description")
+                    or product.get("short_description")
+                ),
+                "Brand": clean_text(product.get("brand")),
+                "Model": clean_text(product.get("model")),
             }
         )
 

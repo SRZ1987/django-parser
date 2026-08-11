@@ -18,6 +18,12 @@ class EhituseABCAdapter(ParserAdapter):
         ehituseabc_parser.COLUMNS[5]: "external_id",
         ehituseabc_parser.COLUMNS[6]: "image_url",
         ehituseabc_parser.COLUMNS[7]: "product_url",
+        ehituseabc_parser.COLUMNS[8]: "sku",
+        ehituseabc_parser.COLUMNS[9]: "category_name",
+        ehituseabc_parser.COLUMNS[10]: "category_external_id",
+        ehituseabc_parser.COLUMNS[11]: "description",
+        ehituseabc_parser.COLUMNS[12]: "brand",
+        ehituseabc_parser.COLUMNS[13]: "model",
     }
 
     async def run(self, output_path, log_callback=None):

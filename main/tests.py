@@ -1536,6 +1536,92 @@ class MainCatalogTests(TestCase):
         self.assertEqual(result.best_price, Decimal("19.56"))
         self.assertEqual(result.potential_saving, Decimal("0.00"))
 
+    def test_best_offer_requires_matching_dimensions_and_weight(self):
+        user = self.create_user()
+        source = self.create_offer(
+            name="Ehitusnael 3.1x100mm 1kg",
+            sku="NAEL-SOURCE",
+            barcode="",
+            external_id="nael-source",
+            brand="",
+            model="",
+            price=Decimal("10.00"),
+        )
+        equivalent = self.create_offer(
+            name="Ehitusnaelad 3.1x100mm 1000g",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="NAEL-EQUAL",
+            barcode="",
+            external_id="nael-equal",
+            brand="",
+            model="",
+            price=Decimal("8.00"),
+        )
+        self.create_offer(
+            name="Ehitusnaelad 3.1x90mm 1000g",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="NAEL-WRONG-LENGTH",
+            barcode="",
+            external_id="nael-wrong-length",
+            brand="",
+            model="",
+            price=Decimal("1.00"),
+        )
+        self.create_offer(
+            name="Ehitusnaelad 3.1x100mm 500g",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="NAEL-WRONG-WEIGHT",
+            barcode="",
+            external_id="nael-wrong-weight",
+            brand="",
+            model="",
+            price=Decimal("2.00"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, equivalent)
+        self.assertEqual(result.best_price, Decimal("8.00"))
+        self.assertEqual(result.potential_saving, Decimal("2.00"))
+
+    def test_best_offer_rejects_same_weight_nails_with_different_dimensions(self):
+        user = self.create_user()
+        bauhof = Shop.objects.create(name="Bauhof", code="bauhof")
+        source = self.create_offer(
+            name="EHITUSNAEL HJFASTENERS 4,0X100 5KG CA. 496TK PAKIS",
+            shop=bauhof,
+            category=None,
+            sku="BAUHOF-NAEL-4X100",
+            barcode="",
+            external_id="bauhof-nael-4x100",
+            brand="",
+            model="",
+            price=Decimal("43.99"),
+        )
+        wrong_dimensions = self.create_offer(
+            name="Ehitusnaelad/tsingitud Metalo Prekyba Ø2xL40mm 5kg",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-NAEL-2X40",
+            barcode="",
+            external_id="depo-nael-2x40",
+            brand="",
+            model="",
+            price=Decimal("16.47"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, source)
+        self.assertEqual(result.best_price, Decimal("43.99"))
+        self.assertEqual(result.potential_saving, Decimal("0.00"))
+        self.assertNotIn(wrong_dimensions, result.other_offers)
+
     def test_purchase_plan_saving_uses_selected_price_instead_of_highest_offer(self):
         user = self.create_user()
         source = self.create_offer(

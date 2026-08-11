@@ -7,7 +7,7 @@ from django.db.models import Case, IntegerField, Q, Value, When
 
 from catalog.models import ProductOffer
 
-from .attribute_extraction import extract_product_attributes
+from .attribute_extraction import equivalent_measure_tokens, extract_product_attributes
 from .normalization import (
     allows_token_prefix,
     is_number_token,
@@ -27,6 +27,7 @@ from .product_matching import (
     PriceSummary,
     build_offer_attributes,
     build_price_summary,
+    offers_are_comparable,
     score_offer_against_offer,
     score_offer_against_query,
 )
@@ -87,6 +88,12 @@ def search_products(
         else score_offer_against_query(candidate, query, source_attributes=source_attributes)
         for candidate in candidates
     ]
+    if source_offer:
+        ranked = [
+            match
+            for match in ranked
+            if match.match_type == MATCH_EXACT or offers_are_comparable(source_offer, match.offer)
+        ]
     ranked = [match for match in ranked if match.score >= 0.05 or match.match_type == MATCH_EXACT]
     ranked.sort(key=lambda match: _match_sort_key(match, identifier_search=source_offer is not None))
     ranked = ranked[:results_limit]
@@ -266,9 +273,12 @@ def build_token_candidate_query(token: str) -> Q:
 
     measure = parse_measure_token(token)
     if measure:
-        number, unit = measure
-        pattern = rf"(^|[^0-9.]){_number_regex(number)}\s*{re.escape(unit)}([^a-z0-9]|$)"
-        return Q(search_text__iregex=pattern) | Q(normalized_name__iregex=pattern)
+        query = Q()
+        for equivalent in equivalent_measure_tokens(token):
+            number, unit = parse_measure_token(equivalent)
+            pattern = rf"(^|[^0-9.]){_number_regex(number)}\s*{re.escape(unit)}([^a-z0-9]|$)"
+            query |= Q(search_text__iregex=pattern) | Q(normalized_name__iregex=pattern)
+        return query
 
     if is_number_token(token):
         pattern = rf"(^|[^0-9.]){_number_regex(token)}([^0-9.]|$)"
@@ -292,6 +302,9 @@ def _number_regex(value: str) -> str:
 def _source_name_anchor(tokens, source_attributes):
     if source_attributes.model and source_attributes.model in tokens:
         return source_attributes.model
+
+    if source_attributes.product_type_tokens:
+        return source_attributes.product_type_tokens[0]
 
     text_tokens = [
         token
@@ -319,7 +332,19 @@ def _source_name_anchors(tokens, source_attributes):
         and not parse_dimension_token(token)
         and not parse_measure_token(token)
     ]
-    return list(dict.fromkeys(filter(None, (primary_anchor, *text_tokens))))
+    return list(
+        dict.fromkeys(
+            filter(
+                None,
+                (
+                    *source_attributes.product_type_tokens,
+                    primary_anchor,
+                    source_attributes.model,
+                    *text_tokens,
+                ),
+            )
+        )
+    )
 
 
 def _extend_candidates(candidates, seen_ids, queryset, candidate_limit):

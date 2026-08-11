@@ -18,6 +18,12 @@ class HandymannAdapter(ParserAdapter):
         handymann_parser.COLUMNS[5]: "external_id",
         handymann_parser.COLUMNS[6]: "image_url",
         handymann_parser.COLUMNS[7]: "product_url",
+        handymann_parser.COLUMNS[8]: "sku",
+        handymann_parser.COLUMNS[9]: "category_name",
+        handymann_parser.COLUMNS[10]: "category_external_id",
+        handymann_parser.COLUMNS[11]: "description",
+        handymann_parser.COLUMNS[12]: "brand",
+        handymann_parser.COLUMNS[13]: "model",
     }
 
     async def run(self, output_path, log_callback=None):

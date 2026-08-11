@@ -46,6 +46,8 @@ def woo_product(
         "images": [{"src": f"https://img.test/{product_id}.jpg"}],
         "categories": [{"id": 7, "name": "Fasteners"}],
         "description": "Product description",
+        "brands": [{"name": "SUKI"}],
+        "attributes": [{"name": "Model", "terms": [{"name": "NAEL-100"}]}],
         "extensions": {"catalog": {"ean": "4740000000001"}},
     }
 
@@ -113,6 +115,8 @@ class PublicCommerceNormalizationTests(SimpleTestCase):
         self.assertEqual(row[9], "Fasteners")
         self.assertEqual(row[10], "wc-category-7")
         self.assertEqual(row[11], "Product description")
+        self.assertEqual(row[12], "SUKI")
+        self.assertEqual(row[13], "NAEL-100")
 
     def test_woocommerce_without_sku_keeps_stable_external_id(self):
         row = public_commerce_parser.normalize_woocommerce_product(woo_product(sku=""))
@@ -360,6 +364,8 @@ class PublicCommerceExcelPipelineTests(TestCase):
         self.assertEqual(offer.sku, "SHOP-101")
         self.assertEqual(offer.category.name, "Fasteners")
         self.assertEqual(offer.description, "Product description")
+        self.assertEqual(offer.product.brand, "SUKI")
+        self.assertEqual(offer.product.model, "NAEL-100")
         self.assertEqual(str(offer.price), "15.99")
         self.assertEqual(str(offer.sale_price), "12.99")
 

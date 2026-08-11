@@ -32,6 +32,12 @@ COLUMNS = [
     "Код магазина",
     "Фото",
     "Ссылка",
+    "SKU",
+    "Category",
+    "Category ID",
+    "Description",
+    "Brand",
+    "Model",
 ]
 
 
@@ -207,6 +213,13 @@ def normalize_record(record: dict[str, Any]) -> dict[str, Any]:
         "product_url",
         "link",
     )
+    category_name = clean_text(
+        first_value(record, "category", "categoryName", "category_name", "klevu_category")
+    )
+    category_id = clean_text(first_value(record, "categoryId", "category_id"))
+    description = clean_text(
+        first_value(record, "shortDesc", "shortDescription", "description", "summary")
+    )
 
     return {
         "Название товара": clean_text(name),
@@ -217,6 +230,12 @@ def normalize_record(record: dict[str, Any]) -> dict[str, Any]:
         "Код магазина": clean_text(code),
         "Фото": absolute_url(image),
         "Ссылка": absolute_url(product_url),
+        "SKU": clean_text(first_value(record, "sku", "productCode", "product_code")),
+        "Category": category_name,
+        "Category ID": category_id,
+        "Description": description,
+        "Brand": clean_text(first_value(record, "brand", "manufacturer", "vendor")),
+        "Model": clean_text(first_value(record, "model", "itemGroupId", "mpn")),
     }
 
 

@@ -45,6 +45,12 @@ COLUMNS = [
     "Код магазина",
     "Фото",
     "Ссылка",
+    "SKU",
+    "Category",
+    "Category ID",
+    "Description",
+    "Brand",
+    "Model",
 ]
 
 TAG_RE = re.compile(r"<[^>]+>")
@@ -134,6 +140,9 @@ def parse_product(product: dict[str, Any]) -> dict[str, Any]:
         "Barcode",
         "Штрихкод",
     )
+    categories = [item for item in product.get("categories") or [] if isinstance(item, dict)]
+    category = categories[-1] if categories else {}
+    sku = clean_text(product.get("sku"))
 
     return {
         "Название товара": clean_text(product.get("name")),
@@ -141,9 +150,15 @@ def parse_product(product: dict[str, Any]) -> dict[str, Any]:
         "Цена со скидкой": discount_price,
         "Цена со скидкой 2": "",
         "Штрихкод": barcode,
-        "Код магазина": clean_text(product.get("sku")),
+        "Код магазина": sku,
         "Фото": image_url,
         "Ссылка": clean_text(product.get("permalink")),
+        "SKU": sku,
+        "Category": clean_text(category.get("name")),
+        "Category ID": clean_text(category.get("id")),
+        "Description": clean_text(product.get("description") or product.get("short_description")),
+        "Brand": get_attribute(product, "Kaubamärk", "Brand", "Tootja", "Manufacturer"),
+        "Model": get_attribute(product, "Mudel", "Model", "Tootekood"),
     }
 
 

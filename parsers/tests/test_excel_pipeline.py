@@ -466,6 +466,21 @@ class ExcelImportTests(TestCase):
 
 
 class FereAdapterTests(TestCase):
+    def test_listing_row_preserves_category_and_description(self):
+        rows = fere_parser.parse_category_page(
+            """
+            <ol class="products-list"><li class="item">
+              <h2 class="product-name">Ehitusnael 4x100mm</h2>
+              <strong class="product-code">NAEL-100</strong>
+              <div class="short-description">Pakis 100 tk</div>
+            </li></ol>
+            """,
+            "https://fere.ee/kinnitusvahendid/ehitusnaelad.html?p=1",
+        )
+
+        self.assertEqual(rows[0]["Category"], "ehitusnaelad")
+        self.assertEqual(rows[0]["Description"], "Pakis 100 tk")
+
     def test_adapter_runs_standalone_with_output_path_and_log_callback(self):
         calls = {}
 
@@ -501,6 +516,10 @@ class EhituseABCAdapterTests(TestCase):
                 "salePrice": 16.9,
                 "image": "/images/product.jpeg",
                 "url": "/ee/product",
+                "category": "Power tools; Drills",
+                "shortDesc": "18V cordless drill",
+                "brand": "Kreator",
+                "model": "KRT-18",
             }
         ]
         logs = []
@@ -519,6 +538,11 @@ class EhituseABCAdapterTests(TestCase):
 
         self.assertEqual(rows_count, 1)
         self.assertTrue(logs)
+        normalized = ehituseabc_parser.normalize_record(products[0])
+        self.assertEqual(normalized["Category"], "Power tools; Drills")
+        self.assertEqual(normalized["Description"], "18V cordless drill")
+        self.assertEqual(normalized["Brand"], "Kreator")
+        self.assertEqual(normalized["Model"], "KRT-18")
 
     def test_adapter_runs_standalone_and_counts_products(self):
         calls = {}
@@ -577,6 +601,9 @@ class BauhausAdapterTests(TestCase):
                 "ordinary_price": 19.95,
                 "image_url": "https://img.test/bauhaus.jpg",
                 "product_url": "https://www.bauhaus.ee/item",
+                "category_level_2": "Hammers",
+                "brand": "BAUHAUS Pro",
+                "model": "BH-14",
             }
         ]
         logs = []
@@ -604,12 +631,18 @@ class BauhausAdapterTests(TestCase):
                 rows_count = max(worksheet.max_row - 1, 0)
                 barcode = worksheet["E2"].value
                 external_id = worksheet["F2"].value
+                category = worksheet["J2"].value
+                brand = worksheet["M2"].value
+                model = worksheet["N2"].value
             finally:
                 workbook.close()
 
         self.assertEqual(rows_count, 1)
         self.assertIn(barcode, (None, ""))
         self.assertEqual(external_id, "SKU-BAUHAUS-1")
+        self.assertEqual(category, "Hammers")
+        self.assertEqual(brand, "BAUHAUS Pro")
+        self.assertEqual(model, "BH-14")
         enrich_ean.assert_not_called()
         self.assertTrue(logs)
 
@@ -891,6 +924,10 @@ class BauhofAdapterTests(TestCase):
             "sku": "SKU-BH-IN",
             "name": "Available Bauhof product",
             "stock_status": "IN_STOCK",
+            "categories": [{"id": "tools", "name": "Tools"}],
+            "short_description": "Steel hammer 1kg",
+            "brand": {"name": "Bauhof Pro"},
+            "model": "BH-100",
             "price_range": {
                 "minimum_price": {
                     "regular_price": {"value": 12.5},
@@ -906,6 +943,10 @@ class BauhofAdapterTests(TestCase):
 
         self.assertIsNotNone(row)
         self.assertEqual(row[bauhof_parser.COLUMNS[5]], "SKU-BH-IN")
+        self.assertEqual(row["Category"], "Tools")
+        self.assertEqual(row["Description"], "Steel hammer 1kg")
+        self.assertEqual(row["Brand"], "Bauhof Pro")
+        self.assertEqual(row["Model"], "BH-100")
 
     def test_standalone_wrapper_creates_excel(self):
         products = {
@@ -1007,6 +1048,8 @@ class DepoAdapterTests(TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(rows[0][depo_parser.COLUMNS[3]], 8.5)
         self.assertEqual(rows[0][depo_parser.COLUMNS[8]], 6)
+        self.assertEqual(rows[0]["SKU"], "DEPO-1")
+        self.assertEqual(rows[0]["Category ID"], "8570")
 
     def test_first_category_pages_are_processed_by_the_worker_queue(self):
         async def scenario():

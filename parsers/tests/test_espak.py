@@ -8,6 +8,7 @@ from parsers.models import ParserConfig, ParserRun
 from parsers.services.espak_client import parse_price
 from parsers.services.espak import EspakParser
 from parsers.services.runner import run_parser
+from parsers.standalone import espak_parser as standalone_espak_parser
 
 
 def espak_product(product_id=101, name="Bosch GSR 18V-50", price="1299", sale_price="", on_sale=False):
@@ -41,6 +42,16 @@ class EspakPriceTests(TestCase):
         self.assertEqual(parse_price("12.99"), Decimal("12.99"))
         self.assertIsNone(parse_price(""))
         self.assertIsNone(parse_price("not a price"))
+
+    def test_excel_row_preserves_catalog_metadata(self):
+        row = standalone_espak_parser.parse_product(espak_product())
+
+        self.assertEqual(row["SKU"], "SKU-101")
+        self.assertEqual(row["Category"], "Tools")
+        self.assertEqual(row["Category ID"], "7")
+        self.assertEqual(row["Description"], "Reliable drill")
+        self.assertEqual(row["Brand"], "Bosch")
+        self.assertEqual(row["Model"], "GSR 18V-50")
 
 
 class EspakParserTests(TestCase):

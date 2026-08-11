@@ -30,6 +30,8 @@ COLUMNS = [
     "Категория",
     "Код категории",
     "Описание",
+    "Brand",
+    "Model",
 ]
 
 PAGE_SIZE = 100
@@ -163,6 +165,52 @@ def extract_barcode(product: dict[str, Any]) -> str:
     return ""
 
 
+def extract_named_attribute(product: dict[str, Any], *names: str) -> str:
+    expected = {name.casefold() for name in names}
+    for attribute in product.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        attribute_names = {
+            clean_text(attribute.get("name")).casefold(),
+            clean_text(attribute.get("slug")).casefold(),
+        }
+        if not attribute_names & expected:
+            continue
+        values = attribute.get("terms") or attribute.get("options") or attribute.get("values") or []
+        if not isinstance(values, list):
+            values = [values]
+        for value in values:
+            if isinstance(value, dict):
+                value = value.get("name") or value.get("value")
+            cleaned = clean_text(value)
+            if cleaned:
+                return cleaned
+    return ""
+
+
+def extract_brand(product: dict[str, Any]) -> str:
+    direct = clean_text(product.get("brand") or product.get("manufacturer") or product.get("vendor"))
+    if direct:
+        return direct
+    for brand in product.get("brands") or []:
+        if isinstance(brand, dict):
+            brand = brand.get("name")
+        cleaned = clean_text(brand)
+        if cleaned:
+            return cleaned
+    return extract_named_attribute(product, "brand", "pa_brand", "kaubamärk", "tootja", "manufacturer")
+
+
+def extract_model(product: dict[str, Any]) -> str:
+    return clean_text(product.get("model")) or extract_named_attribute(
+        product,
+        "model",
+        "mudel",
+        "pa_model",
+        "tootekood",
+    )
+
+
 def parse_minor_money(value: Any, minor_unit: int) -> float | str:
     if value in (None, "") or isinstance(value, bool):
         return ""
@@ -250,6 +298,8 @@ def normalize_woocommerce_product(product: dict[str, Any]) -> list[Any] | None:
         category_name,
         f"wc-category-{category_id}" if category_id else "",
         clean_text(product.get("description") or product.get("short_description")),
+        extract_brand(product),
+        extract_model(product),
     ]
 
 
@@ -308,6 +358,8 @@ def normalize_shopify_product(product: dict[str, Any], base_url: str) -> list[li
                 category_name,
                 category_id,
                 clean_text(product.get("body_html")),
+                clean_text(product.get("vendor")),
+                clean_text(product.get("model")),
             ]
         )
     return rows
@@ -351,6 +403,8 @@ def normalize_klevu_product(product: dict[str, Any]) -> list[Any] | None:
         category_name,
         category_id,
         clean_text(product.get("shortDesc")),
+        clean_text(product.get("brand") or product.get("manufacturer")),
+        clean_text(product.get("model") or product.get("itemGroupId")),
     ]
 
 

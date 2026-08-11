@@ -18,6 +18,12 @@ class BauhausAdapter(ParserAdapter):
         bauhaus_parser.COLUMNS[5]: "external_id",
         bauhaus_parser.COLUMNS[6]: "image_url",
         bauhaus_parser.COLUMNS[7]: "product_url",
+        bauhaus_parser.COLUMNS[8]: "sku",
+        bauhaus_parser.COLUMNS[9]: "category_name",
+        bauhaus_parser.COLUMNS[10]: "category_external_id",
+        bauhaus_parser.COLUMNS[11]: "description",
+        bauhaus_parser.COLUMNS[12]: "brand",
+        bauhaus_parser.COLUMNS[13]: "model",
     }
 
     async def run(self, output_path, log_callback=None):

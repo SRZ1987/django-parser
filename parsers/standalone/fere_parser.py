@@ -8,7 +8,7 @@ import random
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlparse, urlunparse
 
 import aiohttp
 import pandas as pd
@@ -54,6 +54,12 @@ COLUMNS = [
     "Код магазина",
     "Фото",
     "Ссылка",
+    "SKU",
+    "Category",
+    "Category ID",
+    "Description",
+    "Brand",
+    "Model",
 ]
 
 
@@ -627,6 +633,8 @@ def parse_product_item(item: Tag, category_url: str) -> dict[str, Any]:
     ean = normalize_ean(text_of(ean_tag))
 
     regular_price, sale_price = extract_prices(item)
+    category_slug = unquote(urlparse(category_url).path.rstrip("/").split("/")[-1])
+    category_name = re.sub(r"[-_]+", " ", re.sub(r"\.html?$", "", category_slug, flags=re.I)).strip()
 
     return {
         "Название товара": name,
@@ -637,6 +645,14 @@ def parse_product_item(item: Tag, category_url: str) -> dict[str, Any]:
         "Код магазина": sku,
         "Фото": extract_image(item),
         "Ссылка": category_url,
+        "SKU": sku,
+        "Category": category_name,
+        "Category ID": "",
+        "Description": text_of(
+            item.select_one(".short-description, .description, .desc, .std")
+        ),
+        "Brand": text_of(item.select_one(".manufacturer, .brand, [class*='brand']")),
+        "Model": "",
     }
 
 

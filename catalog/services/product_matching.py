@@ -5,7 +5,12 @@ from difflib import SequenceMatcher
 
 from catalog.models import ProductOffer
 
-from .attribute_extraction import ProductAttributes, extract_product_attributes
+from .attribute_extraction import (
+    ProductAttributes,
+    canonical_measure,
+    extract_product_attributes,
+    measures_equal,
+)
 from .normalization import (
     is_number_token,
     is_meaningful_query_token,
@@ -26,6 +31,7 @@ MATCH_SIMILAR_PRODUCT = "similar_product"
 SAME_PRODUCT_SCORE = 0.46
 BUNDLE_SCORE = 0.42
 SIMILAR_SCORE = 0.12
+MAX_MATCH_DESCRIPTION_LENGTH = 4000
 
 RANK_WEAK = 0
 RANK_PARTIAL = 1
@@ -38,7 +44,6 @@ RANK_EXACT_IDENTIFIER_OR_MODEL = 6
 TEXT_MATCH_NONE = 0
 TEXT_MATCH_COMPOUND = 1
 TEXT_MATCH_EXACT_WORD = 2
-COMPARABLE_NAME_TOKEN_LIMIT = 3
 
 
 @dataclass(frozen=True)
@@ -61,11 +66,24 @@ class PriceSummary:
 
 
 def build_offer_attributes(offer: ProductOffer) -> ProductAttributes:
-    return extract_product_attributes(
+    brand = offer.product.brand if offer.product_id and offer.product else ""
+    model = offer.product.model if offer.product_id and offer.product else ""
+    category = offer.category.name if offer.category_id and offer.category else ""
+    description = offer.description[:MAX_MATCH_DESCRIPTION_LENGTH]
+    cache_key = (offer.original_name, brand, model, category, description)
+    if getattr(offer, "_matching_attributes_cache_key", None) == cache_key:
+        return offer._matching_attributes_cache
+
+    attributes = extract_product_attributes(
         offer.original_name,
-        brand=offer.product.brand if offer.product_id and offer.product else "",
-        model=offer.product.model if offer.product_id and offer.product else "",
+        brand=brand,
+        model=model,
+        category=category,
+        description=description,
     )
+    offer._matching_attributes_cache_key = cache_key
+    offer._matching_attributes_cache = attributes
+    return attributes
 
 
 def score_offer_against_query(
@@ -330,29 +348,26 @@ def offers_are_comparable(source: ProductOffer, candidate: ProductOffer) -> bool
 
     source_attributes = build_offer_attributes(source)
     candidate_attributes = build_offer_attributes(candidate)
-    source_tokens = {
-        token
-        for token in source_attributes.tokens
-        if is_meaningful_query_token(token)
-    }
-    candidate_tokens = set(candidate_attributes.tokens)
-    structured_tokens = {
-        token
-        for token in source_tokens
-        if is_number_token(token) or parse_dimension_token(token) or parse_measure_token(token)
-    }
-    if structured_tokens:
-        if not _product_names_overlap(source_attributes, candidate_attributes):
-            return False
-        if _structured_attributes_conflict(source_attributes, candidate_attributes):
-            return False
-        return any(_token_matches(token, candidate_tokens) for token in structured_tokens)
-
+    if source_attributes.brand and candidate_attributes.brand and source_attributes.brand != candidate_attributes.brand:
+        return False
     if (
         source_attributes.model
         and candidate_attributes.model
-        and source_attributes.model == candidate_attributes.model
+        and source_attributes.base_model != candidate_attributes.base_model
     ):
+        return False
+    if (
+        source_attributes.model
+        and candidate_attributes.model
+        and source_attributes.base_model == candidate_attributes.base_model
+    ):
+        return _required_structured_attributes_match(source_attributes, candidate_attributes)
+    if not _product_names_overlap(source_attributes, candidate_attributes):
+        return False
+    if not _required_structured_attributes_match(source_attributes, candidate_attributes):
+        return False
+
+    if _has_structured_attributes(source_attributes):
         return True
     return source_attributes.normalized_name == candidate_attributes.normalized_name
 
@@ -419,7 +434,7 @@ def _token_matches(query_token: str, offer_tokens: set[str]) -> bool:
         )
     query_measure = parse_measure_token(query_token)
     if query_measure:
-        return any(parse_measure_token(offer_token) == query_measure for offer_token in offer_tokens)
+        return any(measures_equal(query_token, offer_token) for offer_token in offer_tokens)
     if is_number_token(query_token):
         number_pattern = re.compile(rf"(?<![\d.]){re.escape(query_token)}(?![\d.])")
         return any(number_pattern.search(offer_token) for offer_token in offer_tokens)
@@ -443,7 +458,7 @@ def _contains_exact_phrase(normalized_name: str, normalized_query: str) -> bool:
 
 def _dimension_match_count(source: ProductAttributes, candidate: ProductAttributes) -> int:
     return sum(
-        source_value == candidate_value
+        measures_equal(source_value, candidate_value)
         for source_value, candidate_value in zip(source.dimensions, candidate.dimensions)
     )
 
@@ -477,39 +492,11 @@ def _dimensions_match(source: ProductAttributes, candidate: ProductAttributes) -
     return bool(
         source.dimensions
         and candidate.dimensions
-        and candidate.dimensions[:len(source.dimensions)] == source.dimensions
-    )
-
-
-def _structured_attributes_conflict(
-    source: ProductAttributes,
-    candidate: ProductAttributes,
-) -> bool:
-    if (
-        source.model
-        and candidate.model
-        and source.base_model != candidate.base_model
-    ):
-        return True
-    scalar_pairs = (
-        (source.power, candidate.power),
-        (source.voltage, candidate.voltage),
-        (source.weight, candidate.weight),
-        (source.volume, candidate.volume),
-        (source.quantity, candidate.quantity),
-        (source.battery_capacity, candidate.battery_capacity),
-    )
-    if any(left and right and left != right for left, right in scalar_pairs):
-        return True
-    if source.dimensions and candidate.dimensions and not _dimensions_match(source, candidate):
-        return True
-    source_lengths = _length_measure_tokens(source)
-    candidate_lengths = _length_measure_tokens(candidate)
-    return bool(
-        source_lengths
-        and candidate_lengths
-        and not source_lengths.issubset(candidate_lengths)
-        and not candidate_lengths.issubset(source_lengths)
+        and len(candidate.dimensions) >= len(source.dimensions)
+        and all(
+            measures_equal(source_value, candidate_value)
+            for source_value, candidate_value in zip(source.dimensions, candidate.dimensions)
+        )
     )
 
 
@@ -517,8 +504,10 @@ def _product_names_overlap(
     source: ProductAttributes,
     candidate: ProductAttributes,
 ) -> bool:
-    source_tokens = _comparable_name_tokens(source)
-    candidate_tokens = _comparable_name_tokens(candidate)
+    source_tokens = source.product_type_tokens
+    candidate_tokens = candidate.product_type_tokens
+    if not source_tokens or not candidate_tokens:
+        return False
     return any(
         text_token_matches(source_token, candidate_token)
         or text_token_matches(candidate_token, source_token)
@@ -527,31 +516,74 @@ def _product_names_overlap(
     )
 
 
-def _comparable_name_tokens(attributes: ProductAttributes) -> list[str]:
-    ignored_tokens = set(tokenize(attributes.brand)) | set(tokenize(attributes.model))
-    result = []
-    for token in tokenize(attributes.normalized_name):
+def _required_structured_attributes_match(
+    source: ProductAttributes,
+    candidate: ProductAttributes,
+) -> bool:
+    if source.dimensions and candidate.dimensions and not _dimensions_match(source, candidate):
+        return False
+
+    source_measurements = _measurement_groups(source)
+    candidate_measurements = _measurement_groups(candidate)
+    for kind, source_values in source_measurements.items():
+        candidate_values = candidate_measurements.get(kind, set())
         if (
-            token in ignored_tokens
-            or not is_meaningful_query_token(token)
-            or is_number_token(token)
-            or parse_dimension_token(token)
-            or parse_measure_token(token)
+            candidate_values
+            and not source_values.issubset(candidate_values)
+            and not candidate_values.issubset(source_values)
         ):
-            continue
-        if token not in result:
-            result.append(token)
-        if len(result) >= COMPARABLE_NAME_TOKEN_LIMIT:
-            break
+            return False
+
+    for source_value, candidate_value in _structured_scalar_pairs(source, candidate):
+        if source_value and candidate_value and not _structured_value_equal(source_value, candidate_value):
+            return False
+
+    if (
+        source.battery_count is not None
+        and candidate.battery_count is not None
+        and source.battery_count != candidate.battery_count
+    ):
+        return False
+    return True
+
+
+def _structured_scalar_pairs(source: ProductAttributes, candidate: ProductAttributes):
+    return ((source.quantity, candidate.quantity),)
+
+
+def _measurement_groups(attributes: ProductAttributes) -> dict[str, set]:
+    result = {}
+    for value in attributes.measurements:
+        canonical = canonical_measure(value)
+        if canonical:
+            kind, amount = canonical
+            result.setdefault(kind, set()).add(amount)
     return result
 
 
-def _length_measure_tokens(attributes: ProductAttributes) -> set[str]:
-    return {
-        token
-        for token in attributes.tokens
-        if (measure := parse_measure_token(token)) and measure[1] in {"mm", "cm", "m"}
-    }
+def _structured_value_equal(left, right) -> bool:
+    if isinstance(left, int) or isinstance(right, int):
+        return left == right
+    return left == right or measures_equal(str(left), str(right))
+
+
+def _has_structured_attributes(attributes: ProductAttributes) -> bool:
+    return bool(
+        attributes.dimensions
+        or attributes.measurements
+        or attributes.power
+        or attributes.voltage
+        or attributes.weight
+        or attributes.volume
+        or attributes.length
+        or attributes.quantity
+        or attributes.battery_capacity
+        or attributes.battery_count is not None
+        or attributes.current
+        or attributes.torque
+        or attributes.pressure
+        or attributes.frequency
+    )
 
 
 def _quantity_matches(source: ProductAttributes, candidate: ProductAttributes) -> bool:

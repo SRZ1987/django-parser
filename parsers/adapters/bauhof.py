@@ -18,6 +18,12 @@ class BauhofAdapter(ParserAdapter):
         bauhof_parser.COLUMNS[5]: "external_id",
         bauhof_parser.COLUMNS[6]: "image_url",
         bauhof_parser.COLUMNS[7]: "product_url",
+        bauhof_parser.COLUMNS[8]: "sku",
+        bauhof_parser.COLUMNS[9]: "category_name",
+        bauhof_parser.COLUMNS[10]: "category_external_id",
+        bauhof_parser.COLUMNS[11]: "description",
+        bauhof_parser.COLUMNS[12]: "brand",
+        bauhof_parser.COLUMNS[13]: "model",
     }
 
     async def run(self, output_path, log_callback=None):

@@ -32,6 +32,12 @@ COLUMNS = [
     "Код магазина",
     "Фото",
     "Ссылка",
+    "SKU",
+    "Category",
+    "Category ID",
+    "Description",
+    "Brand",
+    "Model",
 ]
 
 
@@ -315,6 +321,15 @@ def product_to_row(item: dict[str, Any], sitemap_url: str) -> dict[str, Any] | N
     if regular_price != "" and final_price != "" and float(final_price) < float(regular_price):
         discount_price = final_price
 
+    categories = item.get("categories") or item.get("category") or []
+    if isinstance(categories, dict):
+        categories = [categories]
+    categories = [category for category in categories if isinstance(category, dict)]
+    category = categories[-1] if categories else {}
+    brand = item.get("brand") or item.get("manufacturer") or ""
+    if isinstance(brand, dict):
+        brand = brand.get("name") or brand.get("label") or ""
+
     return {
         "Название товара": clean_text(item.get("name")),
         "Цена": regular_price,
@@ -324,6 +339,20 @@ def product_to_row(item: dict[str, Any], sitemap_url: str) -> dict[str, Any] | N
         "Код магазина": clean_text(item.get("sku")),
         "Фото": clean_text(nested(item, "thumbnail", "url", default="")),
         "Ссылка": build_url(item, sitemap_url),
+        "SKU": clean_text(item.get("sku")),
+        "Category": clean_text(
+            category.get("name")
+            or category.get("label")
+            or item.get("category_name")
+        ),
+        "Category ID": clean_text(category.get("id") or category.get("uid")),
+        "Description": re.sub(
+            r"<[^>]+>",
+            " ",
+            clean_text(item.get("short_description") or item.get("description")),
+        ).strip(),
+        "Brand": clean_text(brand),
+        "Model": clean_text(item.get("model") or item.get("manufacturer_sku")),
     }
 
 

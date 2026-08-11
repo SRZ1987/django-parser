@@ -10,6 +10,7 @@ from catalog.services.product_matching import (
     MATCH_EXACT,
     MATCH_SAME_PRODUCT,
     MATCH_SIMILAR_PRODUCT,
+    offers_are_comparable,
     score_offer_against_query,
 )
 from catalog.services.product_search import search_products
@@ -37,6 +38,7 @@ class ProductSearchTests(TestCase):
         sale_price=None,
         is_active=True,
         is_available=True,
+        description="",
     ):
         shop = shop or self.espak
         category = category or self.tools
@@ -50,6 +52,7 @@ class ProductSearchTests(TestCase):
             sku=sku,
             barcode=barcode,
             original_name=name,
+            description=description,
             price=Decimal(price) if price is not None else None,
             sale_price=Decimal(sale_price) if sale_price is not None else None,
             currency="EUR",
@@ -292,6 +295,89 @@ class ProductSearchTests(TestCase):
         self.assertIn(target.pk, result_ids)
         self.assertNotIn(wrong_length.pk, result_ids)
         self.assertNotIn(number_only.pk, result_ids)
+
+    def test_ehitusnael_query_requires_requested_length(self):
+        wrong_length = self.offer(
+            "Ehitusnaelad SUKI international Ø1.2xL20mm/85g hele",
+            category=self.fasteners,
+            sku="SUKI-20",
+        )
+        correct_length = self.offer(
+            "Ehitusnaelad SUKI international Ø3.1xL100mm/1kg",
+            category=self.fasteners,
+            sku="SUKI-100",
+        )
+
+        result_ids = self.result_ids(search_products("ehitusnael 100"))
+
+        self.assertIn(correct_length.pk, result_ids)
+        self.assertNotIn(wrong_length.pk, result_ids)
+
+    def test_product_type_and_power_are_both_required(self):
+        trimmer = self.offer("Elektrimootoriga murutrimmer Jasper 350W/25cm", sku="TRIMMER-350")
+        wrong_power = self.offer("Murutrimmer Jasper 500W/25cm", sku="TRIMMER-500")
+        jigsaw = self.offer("Elektriline tikksaag Jasper 350W", sku="JIGSAW-350")
+
+        result_ids = self.result_ids(search_products("murutrimmer 350w"))
+
+        self.assertIn(trimmer.pk, result_ids)
+        self.assertNotIn(wrong_power.pk, result_ids)
+        self.assertNotIn(jigsaw.pk, result_ids)
+
+    def test_equivalent_power_and_weight_units_match(self):
+        trimmer = self.offer("Murutrimmer 700W", sku="TRIMMER-700W")
+        filler = self.offer("Pahtel 1000g", sku="FILLER-1000G")
+        self.offer("Murutrimmer 750W", sku="TRIMMER-750W")
+        self.offer("Pahtel 1500g", sku="FILLER-1500G")
+
+        self.assertIn(trimmer.pk, self.result_ids(search_products("murutrimmer 0.7kw")))
+        self.assertIn(filler.pk, self.result_ids(search_products("pahtel 1kg")))
+
+    def test_offer_comparison_rejects_conflicting_dimensions_and_weight(self):
+        source = self.offer("Ehitusnael 3.1x100mm 1kg", sku="COMPARE-SOURCE")
+        equivalent = self.offer(
+            "Ehitusnaelad 3.1x100mm 1000g",
+            shop=self.depo,
+            category=None,
+            sku="COMPARE-EQUAL",
+        )
+        wrong_length = self.offer(
+            "Ehitusnaelad 3.1x90mm 1000g",
+            shop=self.bauhof,
+            category=None,
+            sku="COMPARE-LENGTH",
+        )
+        wrong_weight = self.offer(
+            "Ehitusnaelad 3.1x100mm 500g",
+            shop=self.bauhof,
+            category=None,
+            sku="COMPARE-WEIGHT",
+        )
+        wrong_type = self.offer(
+            "Kruvi SUKI international 3.1x100mm 1kg",
+            shop=self.depo,
+            category=None,
+            sku="COMPARE-TYPE",
+        )
+
+        self.assertTrue(offers_are_comparable(source, equivalent))
+        self.assertFalse(offers_are_comparable(source, wrong_length))
+        self.assertFalse(offers_are_comparable(source, wrong_weight))
+        self.assertFalse(offers_are_comparable(source, wrong_type))
+
+    def test_offer_comparison_rejects_real_nail_names_with_different_dimensions(self):
+        source = self.offer(
+            "EHITUSNAEL HJFASTENERS 4,0X100 5KG CA. 496TK PAKIS",
+            sku="BAUHOF-NAEL-4X100",
+        )
+        wrong_dimensions = self.offer(
+            "Ehitusnaelad/tsingitud Metalo Prekyba Ø2xL40mm 5kg",
+            shop=self.depo,
+            category=None,
+            sku="DEPO-NAEL-2X40",
+        )
+
+        self.assertFalse(offers_are_comparable(source, wrong_dimensions))
 
     def test_compound_word_fragment_matches_ehitusnael(self):
         target = self.offer("Ehitusnael 3,1x100 mm", category=self.fasteners, sku="NAEL-WORD")
@@ -564,6 +650,16 @@ class AttributeExtractionTests(TestCase):
         self.assertEqual(attributes.battery_capacity, "5ah")
         self.assertEqual(attributes.dimensions, ("5mm", "70mm"))
         self.assertEqual(attributes.weight, "1kg")
+
+    def test_extracts_labeled_dimensions_product_type_and_weight(self):
+        attributes = extract_product_attributes(
+            "Ehitusnaelad SUKI international Ø1.2xL20mm/85g hele",
+            category="Kinnitusvahendid / Ehitusnaelad",
+        )
+
+        self.assertIn("ehitusnael", attributes.product_type_tokens)
+        self.assertEqual(attributes.dimensions, ("1.2mm", "20mm"))
+        self.assertEqual(attributes.weight, "85g")
 
     def test_normalization_keeps_model_and_normalizes_units(self):
         self.assertEqual(normalize_product_name("Makita DDF 482 Z 18 V 5×70 мм"), "makita ddf482 z 18v 5x70mm")

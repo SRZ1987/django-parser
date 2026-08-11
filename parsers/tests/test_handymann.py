@@ -39,6 +39,10 @@ def api_product(
             "currency_minor_unit": 2,
         },
         "images": [{"src": f"https://img.test/{product_id}.jpg"}],
+        "categories": [{"id": 9, "name": "Garden trimmers"}],
+        "description": "Cutting width 25cm",
+        "brands": [{"name": "Trolla"}],
+        "attributes": [{"name": "Model", "terms": [{"name": "HM-350"}]}],
         "extensions": {},
     }
 
@@ -54,6 +58,10 @@ class HandymannParserUnitTests(SimpleTestCase):
         self.assertEqual(row[2], 12.99)
         self.assertEqual(row[4], "")
         self.assertEqual(row[5], "HM-101")
+        self.assertEqual(row[9], "Garden trimmers")
+        self.assertEqual(row[11], "Cutting width 25cm")
+        self.assertEqual(row[12], "Trolla")
+        self.assertEqual(row[13], "HM-350")
 
     def test_product_without_sku_uses_stable_woocommerce_id(self):
         row = handymann_parser.normalize_product(api_product(product_id=777, sku=""))
@@ -177,3 +185,7 @@ class HandymannExcelPipelineTests(TestCase):
         self.assertEqual(offer.sku, "HM-101")
         self.assertEqual(str(offer.price), "15.99")
         self.assertEqual(str(offer.sale_price), "12.99")
+        self.assertEqual(offer.category.name, "Garden trimmers")
+        self.assertEqual(offer.description, "Cutting width 25cm")
+        self.assertEqual(offer.product.brand, "Trolla")
+        self.assertEqual(offer.product.model, "HM-350")

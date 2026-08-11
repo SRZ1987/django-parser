@@ -20,6 +20,8 @@ class PublicCommerceAdapter(ParserAdapter):
         public_commerce_parser.COLUMNS[9]: "category_name",
         public_commerce_parser.COLUMNS[10]: "category_external_id",
         public_commerce_parser.COLUMNS[11]: "description",
+        public_commerce_parser.COLUMNS[12]: "brand",
+        public_commerce_parser.COLUMNS[13]: "model",
     }
 
     async def run(self, output_path, log_callback=None):
