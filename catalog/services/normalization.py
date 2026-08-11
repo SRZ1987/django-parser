@@ -11,14 +11,31 @@ _DIMENSION_RE = re.compile(
     r"\b(\d+(?:\.\d+)?)\s*[xх]\s*(\d+(?:\.\d+)?)(?:\s*[xх]\s*(\d+(?:\.\d+)?))?(?:\s*(mm|мм|cm|см|m|м)\b)?",
     re.IGNORECASE,
 )
+_MEASURE_UNIT_PATTERN = (
+    r"m3h|lmin|lh|kmh|mps|rpm|mm2|cm2|m2|mm3|cm3|m3|kwh|wh|"
+    r"kohm|mohm|ohm|celsius|degc|deg|kn|psi|lm|lx|db|"
+    r"mm|мм|cm|см|mg|kg|кг|cl|ml|мл|kw|вт|mah|ah|ач|"
+    r"bar|kpa|mpa|pa|nm|hz|m|м|g|г|l|л|w|v|в|a|n|k"
+)
 _NUMBER_UNIT_RE = re.compile(
-    r"\b(\d+(?:\.\d+)?)\s*(mm|мм|cm|см|m|м|mg|kg|кг|g|г|cl|ml|мл|l|л|"
-    r"kw|w|вт|v|в|mah|ah|ач|a|bar|kpa|mpa|pa|nm|hz)\b",
+    rf"\b(\d+(?:\.\d+)?)\s*({_MEASURE_UNIT_PATTERN})\b",
     re.IGNORECASE,
 )
 _ADJACENT_MEASURES_RE = re.compile(
-    r"(\d+(?:\.\d+)?(?:mm|cm|mg|kg|cl|ml|mah|ah|bar|kpa|mpa|pa|nm|hz|kw|m|g|l|v|w|a))(?=\d)",
+    rf"(\d+(?:\.\d+)?(?:{_MEASURE_UNIT_PATTERN}))(?=\d+(?:\.\d+)?(?:{_MEASURE_UNIT_PATTERN})\b)",
     re.IGNORECASE,
+)
+_COMPOUND_UNIT_REPLACEMENTS = (
+    (re.compile(r"(?<=\d)\s*m3\s*/\s*h\b", re.IGNORECASE), "m3h"),
+    (re.compile(r"(?<=\d)\s*l\s*/\s*min\b", re.IGNORECASE), "lmin"),
+    (re.compile(r"(?<=\d)\s*l\s*/\s*h\b", re.IGNORECASE), "lh"),
+    (re.compile(r"(?<=\d)\s*km\s*/\s*h\b", re.IGNORECASE), "kmh"),
+    (re.compile(r"(?<=\d)\s*m\s*/\s*s\b", re.IGNORECASE), "mps"),
+    (re.compile(r"(?<=\d)\s*(?:p|r)\s*/\s*min\b", re.IGNORECASE), "rpm"),
+    (re.compile(r"(?<=\d)\s*min\s*(?:-\s*1|1)\b", re.IGNORECASE), "rpm"),
+    (re.compile(r"(?<=\d)\s*°\s*c\b", re.IGNORECASE), "celsius"),
+    (re.compile(r"(?<=\d)\s*°"), "deg"),
+    (re.compile(r"(?<=\d)\s*[Ωω]\b"), "ohm"),
 )
 _UNWANTED_CHARS_RE = re.compile(r"[^\w\s.]+", re.UNICODE)
 _SPACES_RE = re.compile(r"\s+")
@@ -27,10 +44,17 @@ _DIMENSION_TOKEN_RE = re.compile(
     r"^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:x(\d+(?:\.\d+)?))?(?:mm|cm|m)?$"
 )
 _MEASURE_TOKEN_RE = re.compile(
-    r"^(\d+(?:\.\d+)?)(mm|cm|m|mg|kg|g|cl|ml|l|kw|w|v|mah|ah|a|bar|kpa|mpa|pa|nm|hz)$"
+    rf"^(\d+(?:\.\d+)?)({_MEASURE_UNIT_PATTERN})$"
 )
 _MODEL_PREFIX_VOWELS = frozenset("aeiouyõäöü")
 COMPOUND_PREFIX_MIN_LENGTH = 7
+_MODEL_UNIT_TOKENS = {
+    "v", "w", "kw", "a", "ah", "mah", "mm", "cm", "m", "mg", "kg", "g",
+    "l", "cl", "ml", "bar", "kpa", "mpa", "pa", "psi", "nm", "hz",
+    "wh", "kwh", "rpm", "mps", "kmh", "lmin", "lh", "m3h", "degc",
+    "deg", "n", "kn", "lm", "lx", "k", "db", "ohm", "kohm", "mohm",
+    "mm2", "cm2", "m2", "mm3", "cm3", "m3",
+}
 _UNIT_ALIASES = {
     "мм": "mm",
     "см": "cm",
@@ -42,6 +66,7 @@ _UNIT_ALIASES = {
     "в": "v",
     "вт": "w",
     "ач": "ah",
+    "celsius": "degc",
 }
 
 
@@ -67,10 +92,7 @@ def _normalize_split_model(match) -> str:
     suffix = match.group(3)
     if any(character in _MODEL_PREFIX_VOWELS for character in prefix):
         return match.group(0)
-    if suffix in {
-        "v", "w", "kw", "a", "ah", "mah", "mm", "cm", "m", "mg", "kg", "g",
-        "l", "cl", "ml", "bar", "kpa", "mpa", "pa", "nm", "hz",
-    }:
+    if prefix in _MODEL_UNIT_TOKENS or suffix in _MODEL_UNIT_TOKENS:
         return match.group(0)
     return f"{prefix}{match.group(2)}{suffix}"
 
@@ -90,6 +112,8 @@ def normalize_text(value: str) -> str:
     text = text.lower().replace("ё", "е")
     text = text.replace("×", "x").replace("х", "x")
     text = _DECIMAL_COMMA_RE.sub(".", text)
+    for pattern, replacement in _COMPOUND_UNIT_REPLACEMENTS:
+        text = pattern.sub(replacement, text)
     text = _DIAMETER_PREFIX_RE.sub("", text)
     text = _DIMENSION_AXIS_RE.sub("", text)
     text = _DASHES_RE.sub(" ", text)

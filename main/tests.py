@@ -1473,7 +1473,7 @@ class MainCatalogTests(TestCase):
             price=Decimal("19.56"),
         )
         cheaper = self.create_offer(
-            name="Murutrimmer Trolla 350W",
+            name="Murutrimmer Trolla 350W/25cm",
             shop=handymann,
             category=None,
             sku="139-131319",
@@ -1621,6 +1621,69 @@ class MainCatalogTests(TestCase):
         self.assertEqual(result.best_price, Decimal("43.99"))
         self.assertEqual(result.potential_saving, Decimal("0.00"))
         self.assertNotIn(wrong_dimensions, result.other_offers)
+
+    def test_best_offer_rejects_nails_without_selected_dimensions(self):
+        user = self.create_user()
+        bauhof = Shop.objects.create(name="Bauhof", code="bauhof")
+        hammerjack = Shop.objects.create(name="Hammerjack", code="hammerjack")
+        source = self.create_offer(
+            name="EHITUSNAEL HJFASTENERS 4,0X100 5KG CA. 496TK PAKIS",
+            shop=bauhof,
+            category=None,
+            sku="BAUHOF-NAEL-SIZED",
+            barcode="",
+            external_id="bauhof-nael-sized",
+            brand="",
+            model="",
+            price=Decimal("43.99"),
+        )
+        unspecified = self.create_offer(
+            name="Ehitusnael pinnakatteta",
+            shop=hammerjack,
+            category=None,
+            sku="HAMMERJACK-NAEL-UNSPECIFIED",
+            barcode="",
+            external_id="hammerjack-nael-unspecified",
+            brand="",
+            model="",
+            price=Decimal("2.22"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, source)
+        self.assertNotIn(unspecified, result.other_offers)
+
+    def test_best_offer_rejects_trimmer_accessory(self):
+        user = self.create_user()
+        hammerjack = Shop.objects.create(name="Hammerjack", code="hammerjack")
+        source = self.create_offer(
+            name="Elektrimootoriga murutrimmer QT6045 Jasper 350W/25cm",
+            sku="DEPO-MURUTRIMMER-SOURCE",
+            barcode="",
+            external_id="depo-murutrimmer-source",
+            brand="",
+            model="",
+            price=Decimal("19.56"),
+        )
+        shoulder_strap = self.create_offer(
+            name="Õlarihm murutrimmeritele",
+            shop=hammerjack,
+            category=None,
+            sku="HAMMERJACK-SHOULDER-STRAP",
+            barcode="",
+            external_id="hammerjack-shoulder-strap",
+            brand="",
+            model="",
+            price=Decimal("4.05"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, source)
+        self.assertNotIn(shoulder_strap, result.other_offers)
 
     def test_purchase_plan_saving_uses_selected_price_instead_of_highest_offer(self):
         user = self.create_user()

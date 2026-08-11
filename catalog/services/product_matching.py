@@ -348,6 +348,8 @@ def offers_are_comparable(source: ProductOffer, candidate: ProductOffer) -> bool
 
     source_attributes = build_offer_attributes(source)
     candidate_attributes = build_offer_attributes(candidate)
+    if source_attributes.is_accessory != candidate_attributes.is_accessory:
+        return False
     if source_attributes.brand and candidate_attributes.brand and source_attributes.brand != candidate_attributes.brand:
         return False
     if (
@@ -361,10 +363,18 @@ def offers_are_comparable(source: ProductOffer, candidate: ProductOffer) -> bool
         and candidate_attributes.model
         and source_attributes.base_model == candidate_attributes.base_model
     ):
-        return _required_structured_attributes_match(source_attributes, candidate_attributes)
+        return _required_structured_attributes_match(
+            source_attributes,
+            candidate_attributes,
+            require_source_specs=False,
+        )
     if not _product_names_overlap(source_attributes, candidate_attributes):
         return False
-    if not _required_structured_attributes_match(source_attributes, candidate_attributes):
+    if not _required_structured_attributes_match(
+        source_attributes,
+        candidate_attributes,
+        require_source_specs=True,
+    ):
         return False
 
     if _has_structured_attributes(source_attributes):
@@ -519,14 +529,21 @@ def _product_names_overlap(
 def _required_structured_attributes_match(
     source: ProductAttributes,
     candidate: ProductAttributes,
+    *,
+    require_source_specs: bool,
 ) -> bool:
-    if source.dimensions and candidate.dimensions and not _dimensions_match(source, candidate):
-        return False
+    if source.dimensions:
+        if require_source_specs and not candidate.dimensions:
+            return False
+        if candidate.dimensions and not _dimensions_match(source, candidate):
+            return False
 
     source_measurements = _measurement_groups(source)
     candidate_measurements = _measurement_groups(candidate)
     for kind, source_values in source_measurements.items():
         candidate_values = candidate_measurements.get(kind, set())
+        if require_source_specs and not candidate_values:
+            return False
         if (
             candidate_values
             and not source_values.issubset(candidate_values)

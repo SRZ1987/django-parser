@@ -379,6 +379,34 @@ class ProductSearchTests(TestCase):
 
         self.assertFalse(offers_are_comparable(source, wrong_dimensions))
 
+    def test_offer_comparison_rejects_candidate_without_source_dimensions(self):
+        source = self.offer(
+            "EHITUSNAEL HJFASTENERS 4,0X100 5KG CA. 496TK PAKIS",
+            sku="BAUHOF-NAEL-WITH-DIMENSIONS",
+        )
+        missing_dimensions = self.offer(
+            "Ehitusnael pinnakatteta",
+            shop=self.depo,
+            category=None,
+            sku="HAMMERJACK-NAEL-WITHOUT-DIMENSIONS",
+        )
+
+        self.assertFalse(offers_are_comparable(source, missing_dimensions))
+
+    def test_offer_comparison_rejects_accessory_for_main_product(self):
+        source = self.offer(
+            "Elektrimootoriga murutrimmer QT6045 Jasper 350W/25cm",
+            sku="DEPO-MURUTRIMMER",
+        )
+        shoulder_strap = self.offer(
+            "Õlarihm murutrimmeritele",
+            shop=self.depo,
+            category=None,
+            sku="HAMMERJACK-TRIMMER-STRAP",
+        )
+
+        self.assertFalse(offers_are_comparable(source, shoulder_strap))
+
     def test_compound_word_fragment_matches_ehitusnael(self):
         target = self.offer("Ehitusnael 3,1x100 mm", category=self.fasteners, sku="NAEL-WORD")
         nail_gun = self.offer("Naelapüstol 18 V", category=self.fasteners, sku="NAEL-GUN")
@@ -663,3 +691,19 @@ class AttributeExtractionTests(TestCase):
 
     def test_normalization_keeps_model_and_normalizes_units(self):
         self.assertEqual(normalize_product_name("Makita DDF 482 Z 18 V 5×70 мм"), "makita ddf482 z 18v 5x70mm")
+
+    def test_extracts_extended_construction_measurements(self):
+        attributes = extract_product_attributes(
+            "Pump 3.6 m³/h 10 bar 1.2kW 230V 75dB"
+        )
+
+        self.assertEqual(
+            attributes.measurements,
+            frozenset({"3.6m3h", "10bar", "1.2kw", "230v", "75db"}),
+        )
+
+    def test_normalizes_area_light_and_rotation_units(self):
+        self.assertEqual(
+            normalize_product_name("LED 1000 lm 4000 K 12 W 3600 p/min kaabel 2.5 mm²"),
+            "led 1000lm 4000k 12w 3600rpm kaabel 2.5mm2",
+        )

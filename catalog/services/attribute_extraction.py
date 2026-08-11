@@ -37,9 +37,6 @@ KNOWN_BRANDS = {
 }
 MODEL_RE = re.compile(r"\b(?=[a-z0-9]*[a-z])(?=[a-z0-9]*\d)[a-z]{2,8}\d{2,6}[a-z0-9]*\b")
 DIMENSION_RE = re.compile(r"\b(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:x(\d+(?:\.\d+)?))?(mm|cm|m)?\b")
-NUMBER_UNIT_RE = re.compile(
-    r"\b(\d+(?:\.\d+)?)(mm|cm|m|mg|kg|g|cl|ml|l|kw|w|v|mah|ah|a|bar|kpa|mpa|pa|nm|hz)\b"
-)
 PACK_RE = re.compile(r"\b(\d+)\s*(tk|pcs|pc|шт|шт.)\b")
 BATTERY_RE = re.compile(r"\b(\d+)x(\d+(?:\.\d+)?)ah\b")
 PRODUCT_TYPE_STOP_WORDS = {
@@ -86,6 +83,12 @@ MEASURE_FACTORS = {
     "mm": ("length", Decimal("1")),
     "cm": ("length", Decimal("10")),
     "m": ("length", Decimal("1000")),
+    "mm2": ("area", Decimal("1")),
+    "cm2": ("area", Decimal("100")),
+    "m2": ("area", Decimal("1000000")),
+    "mm3": ("volume", Decimal("0.001")),
+    "cm3": ("volume", Decimal("1")),
+    "m3": ("volume", Decimal("1000000")),
     "mg": ("weight", Decimal("0.001")),
     "g": ("weight", Decimal("1")),
     "kg": ("weight", Decimal("1000")),
@@ -94,6 +97,8 @@ MEASURE_FACTORS = {
     "l": ("volume", Decimal("1000")),
     "w": ("power", Decimal("1")),
     "kw": ("power", Decimal("1000")),
+    "wh": ("energy", Decimal("1")),
+    "kwh": ("energy", Decimal("1000")),
     "v": ("voltage", Decimal("1")),
     "a": ("current", Decimal("1")),
     "mah": ("battery_capacity", Decimal("0.001")),
@@ -102,8 +107,26 @@ MEASURE_FACTORS = {
     "kpa": ("pressure", Decimal("1000")),
     "mpa": ("pressure", Decimal("1000000")),
     "bar": ("pressure", Decimal("100000")),
+    "psi": ("pressure", Decimal("6894.757293")),
     "nm": ("torque", Decimal("1")),
     "hz": ("frequency", Decimal("1")),
+    "rpm": ("rotation_speed", Decimal("1")),
+    "mps": ("speed", Decimal("3.6")),
+    "kmh": ("speed", Decimal("1")),
+    "lmin": ("flow", Decimal("60000")),
+    "lh": ("flow", Decimal("1000")),
+    "m3h": ("flow", Decimal("1000000")),
+    "degc": ("temperature", Decimal("1")),
+    "deg": ("angle", Decimal("1")),
+    "n": ("force", Decimal("1")),
+    "kn": ("force", Decimal("1000")),
+    "lm": ("luminous_flux", Decimal("1")),
+    "lx": ("illuminance", Decimal("1")),
+    "k": ("color_temperature", Decimal("1")),
+    "db": ("noise", Decimal("1")),
+    "ohm": ("resistance", Decimal("1")),
+    "kohm": ("resistance", Decimal("1000")),
+    "mohm": ("resistance", Decimal("1000000")),
 }
 BUNDLE_TOKENS = {
     "set",
@@ -119,6 +142,47 @@ BUNDLE_TOKENS = {
     "аккумулятор",
     "аккумуляторы",
 }
+ACCESSORY_EXACT_TOKENS = {
+    "accessory",
+    "adapter",
+    "adaptor",
+    "filter",
+    "hoidik",
+    "juhik",
+    "kaitse",
+    "kanderihm",
+    "kate",
+    "kohver",
+    "kott",
+    "laadija",
+    "lisatarvik",
+    "nozzle",
+    "otsak",
+    "otsik",
+    "pikendus",
+    "rihm",
+    "spare",
+    "strap",
+    "tera",
+    "varuosa",
+    "õlarihm",
+}
+ACCESSORY_SUFFIXES = (
+    "adapter",
+    "filter",
+    "hoidik",
+    "juhik",
+    "kaitse",
+    "kanderihm",
+    "kohver",
+    "laadija",
+    "lisatarvik",
+    "otsak",
+    "otsik",
+    "rihm",
+    "varuosa",
+    "varutera",
+)
 
 
 @dataclass(frozen=True)
@@ -148,6 +212,7 @@ class ProductAttributes:
     battery_count: int | None = None
     battery_capacity: str = ""
     is_bundle: bool = False
+    is_accessory: bool = False
 
 
 def extract_product_attributes(
@@ -171,8 +236,9 @@ def extract_product_attributes(
     dimensions = _extract_dimensions(searchable_details)
     measures = _extract_measures(searchable_details)
     measurements = frozenset(
-        f"{value}{unit}"
-        for value, unit in NUMBER_UNIT_RE.findall(searchable_details)
+        token
+        for token in tokenize(searchable_details)
+        if parse_measure_token(token)
     )
     battery = BATTERY_RE.search(searchable_details)
     category_tokens = {
@@ -211,6 +277,7 @@ def extract_product_attributes(
         battery_count=int(battery.group(1)) if battery else None,
         battery_capacity=f"{battery.group(2)}ah" if battery else measures.get("battery_capacity", ""),
         is_bundle=_is_bundle(tokens, normalized_name),
+        is_accessory=_is_accessory(normalized_name, normalized_category),
     )
 
 
@@ -299,28 +366,15 @@ def _extract_dimensions(normalized_name: str) -> tuple[str, ...]:
 
 def _extract_measures(normalized_name: str) -> dict[str, str]:
     measures = {}
-    for value, unit in NUMBER_UNIT_RE.findall(normalized_name):
-        normalized = f"{value}{unit}"
-        if unit in {"mg", "kg", "g"}:
-            measures.setdefault("weight", normalized)
-        elif unit in {"l", "cl", "ml"}:
-            measures.setdefault("volume", normalized)
-        elif unit == "v":
-            measures.setdefault("voltage", normalized)
-        elif unit in {"w", "kw"}:
-            measures.setdefault("power", normalized)
-        elif unit == "a":
-            measures.setdefault("current", normalized)
-        elif unit in {"ah", "mah"}:
-            measures.setdefault("battery_capacity", normalized)
-        elif unit in {"bar", "kpa", "mpa", "pa"}:
-            measures.setdefault("pressure", normalized)
-        elif unit == "nm":
-            measures.setdefault("torque", normalized)
-        elif unit == "hz":
-            measures.setdefault("frequency", normalized)
-        elif unit in {"mm", "cm", "m"}:
-            measures.setdefault("length", normalized)
+    for token in tokenize(normalized_name):
+        parsed = parse_measure_token(token)
+        if not parsed:
+            continue
+        _value, unit = parsed
+        factor = MEASURE_FACTORS.get(unit)
+        if factor:
+            kind, _multiplier = factor
+            measures.setdefault(kind, token)
     return measures
 
 
@@ -374,3 +428,14 @@ def _is_bundle(tokens: set[str], normalized_name: str) -> bool:
     if "+" in normalized_name:
         return True
     return bool(BATTERY_RE.search(normalized_name))
+
+
+def _is_accessory(normalized_name: str, normalized_category: str) -> bool:
+    name_tokens = set(tokenize(normalized_name))
+    if name_tokens & ACCESSORY_EXACT_TOKENS:
+        return True
+    return any(
+        token.endswith(suffix)
+        for token in name_tokens
+        for suffix in ACCESSORY_SUFFIXES
+    )
