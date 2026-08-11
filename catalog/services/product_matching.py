@@ -358,17 +358,19 @@ def offers_are_comparable(source: ProductOffer, candidate: ProductOffer) -> bool
         and source_attributes.base_model != candidate_attributes.base_model
     ):
         return False
-    if (
+    same_model = bool(
         source_attributes.model
         and candidate_attributes.model
         and source_attributes.base_model == candidate_attributes.base_model
-    ):
+    )
+    if same_model:
         return _required_structured_attributes_match(
             source_attributes,
             candidate_attributes,
-            require_source_specs=False,
+            require_source_specs=True,
         )
-    if not _product_names_overlap(source_attributes, candidate_attributes):
+    product_names_overlap = _product_names_overlap(source_attributes, candidate_attributes)
+    if not product_names_overlap:
         return False
     if not _required_structured_attributes_match(
         source_attributes,

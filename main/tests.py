@@ -1685,6 +1685,36 @@ class MainCatalogTests(TestCase):
         self.assertEqual(result.best_offer, source)
         self.assertNotIn(shoulder_strap, result.other_offers)
 
+    def test_best_offer_does_not_replace_trimmer_with_same_model_spool(self):
+        user = self.create_user()
+        source = self.create_offer(
+            name="Elektrimootoriga murutrimmer QT6045 Jasper 350W/25cm",
+            sku="DEPO-QT6045-TRIMMER",
+            barcode="",
+            external_id="depo-qt6045-trimmer",
+            brand="Jasper",
+            model="QT6045",
+            price=Decimal("19.56"),
+        )
+        compatible_spool = self.create_offer(
+            name="Trimmerijõhvi pooliga Jasper QT6045",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-QT6045-SPOOL",
+            barcode="",
+            external_id="depo-qt6045-spool",
+            brand="Jasper",
+            model="QT6045",
+            price=Decimal("5.96"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, source)
+        self.assertEqual(result.potential_saving, Decimal("0.00"))
+        self.assertNotIn(compatible_spool, result.other_offers)
+
     def test_purchase_plan_saving_uses_selected_price_instead_of_highest_offer(self):
         user = self.create_user()
         source = self.create_offer(

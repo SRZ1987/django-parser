@@ -160,6 +160,7 @@ ACCESSORY_EXACT_TOKENS = {
     "otsak",
     "otsik",
     "pikendus",
+    "pool",
     "rihm",
     "spare",
     "strap",
@@ -182,6 +183,10 @@ ACCESSORY_SUFFIXES = (
     "rihm",
     "varuosa",
     "varutera",
+)
+ACCESSORY_PREFIXES = (
+    "pool",
+    "trimmerijõhv",
 )
 
 
@@ -435,7 +440,6 @@ def _is_accessory(normalized_name: str, normalized_category: str) -> bool:
     if name_tokens & ACCESSORY_EXACT_TOKENS:
         return True
     return any(
-        token.endswith(suffix)
+        token.endswith(ACCESSORY_SUFFIXES) or token.startswith(ACCESSORY_PREFIXES)
         for token in name_tokens
-        for suffix in ACCESSORY_SUFFIXES
     )

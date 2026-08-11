@@ -407,6 +407,20 @@ class ProductSearchTests(TestCase):
 
         self.assertFalse(offers_are_comparable(source, shoulder_strap))
 
+    def test_same_model_does_not_override_product_type_and_power(self):
+        source = self.offer(
+            "Elektrimootoriga murutrimmer QT6045 Jasper 350W/25cm",
+            sku="DEPO-MURUTRIMMER-QT6045",
+        )
+        compatible_spool = self.offer(
+            "Trimmerijõhvi pooliga Jasper QT6045",
+            shop=self.depo,
+            category=None,
+            sku="DEPO-QT6045-SPOOL",
+        )
+
+        self.assertFalse(offers_are_comparable(source, compatible_spool))
+
     def test_compound_word_fragment_matches_ehitusnael(self):
         target = self.offer("Ehitusnael 3,1x100 mm", category=self.fasteners, sku="NAEL-WORD")
         nail_gun = self.offer("Naelapüstol 18 V", category=self.fasteners, sku="NAEL-GUN")
