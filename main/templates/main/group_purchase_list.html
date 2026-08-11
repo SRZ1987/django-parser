@@ -1,0 +1,81 @@
+{% extends 'main/base.html' %}
+
+{% block title %}Совместные покупки{% endblock %}
+{% block body_class %}group-purchase-page{% endblock %}
+
+{% block content %}
+<main class="page-shell group-purchase-shell">
+    <header class="compact-page-head group-purchase-head">
+        <div>
+            <h1>Совместные покупки</h1>
+            <p>Товары из списков пользователей, для которых магазин предлагает цену за количество.</p>
+        </div>
+        <a class="list-action-button" href="{% url 'shopping_list' %}">Мой список</a>
+    </header>
+
+    {% if page_obj.object_list %}
+        <section class="group-product-list" aria-label="Доступные совместные покупки">
+            {% for group in page_obj.object_list %}
+                {% with offer=group.offer %}
+                    <article class="group-product-card">
+                        <a class="group-product-image" href="{% url 'offer_detail' offer.pk %}" aria-label="Подробнее: {{ offer.original_name }}">
+                            {% if offer.image_url %}
+                                <img src="{{ offer.image_url }}" alt="" loading="lazy">
+                            {% else %}
+                                <span>Нет фото</span>
+                            {% endif %}
+                        </a>
+                        <div class="group-product-info">
+                            <span class="group-product-shop">{{ offer.shop.name }}</span>
+                            <h2><a href="{% url 'offer_detail' offer.pk %}">{{ offer.original_name }}</a></h2>
+                            <dl class="group-product-identifiers">
+                                <div><dt>SKU</dt><dd>{{ offer.sku|default:'—' }}</dd></div>
+                                <div><dt>Штрихкод</dt><dd>{{ offer.barcode|default:'—' }}</dd></div>
+                            </dl>
+                        </div>
+                        <div class="group-product-deal">
+                            <span>Обычная цена</span>
+                            <strong>{{ offer.current_price }} {{ offer.currency }}</strong>
+                            <span>От {{ group.target_quantity }} шт.</span>
+                            <strong>{{ group.quantity_price }} {{ offer.currency }}/шт.</strong>
+                        </div>
+                        <div class="group-product-progress">
+                            <strong>{{ group.quantity_count }} из {{ group.target_quantity }} шт.</strong>
+                            <span>{{ group.participant_count }} участник{{ group.participant_count|pluralize:"а,ов" }}</span>
+                            {% if group.quantity_reached %}
+                                <span class="group-ready-state">Количество набрано</span>
+                            {% else %}
+                                <span>Нужно ещё: {{ group.remaining_quantity }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="group-product-action">
+                            {% if group.user_is_member %}
+                                <a class="group-primary-button" href="{% url 'group_purchase_chat' group.pk %}">Открыть чат</a>
+                            {% else %}
+                                <form method="post" action="{% url 'join_group_purchase' group.pk %}">
+                                    {% csrf_token %}
+                                    <button class="group-primary-button" type="submit">Добавить и открыть чат</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </article>
+                {% endwith %}
+            {% endfor %}
+        </section>
+
+        {% if page_obj.paginator.num_pages > 1 %}
+            <nav class="group-pagination" aria-label="Страницы совместных покупок">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">Назад</a>{% endif %}
+                <span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Далее</a>{% endif %}
+            </nav>
+        {% endif %}
+    {% else %}
+        <section class="empty-state">
+            <h2>Пока нет активных совместных покупок</h2>
+            <p>Добавьте в список товар с ценой за количество. Он появится здесь, и другие зарегистрированные пользователи смогут присоединиться.</p>
+            <a class="store-link" href="{% url 'catalog' %}">Открыть каталог</a>
+        </section>
+    {% endif %}
+</main>
+{% endblock %}

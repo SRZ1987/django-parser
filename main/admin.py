@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from .models import DailySiteVisit, ShoppingList, ShoppingListEvent, ShoppingListItem, StoreClick
+from .models import (
+    DailySiteVisit,
+    GroupPurchase,
+    GroupPurchaseMember,
+    GroupPurchaseMessage,
+    ShoppingList,
+    ShoppingListEvent,
+    ShoppingListItem,
+    StoreClick,
+)
 
 
 class ReadOnlyAnalyticsAdmin(admin.ModelAdmin):
@@ -54,6 +63,55 @@ class ShoppingListItemAdmin(admin.ModelAdmin):
         "price_alert_checked_at",
         "created_at",
     ]
+
+
+class GroupPurchaseMemberInline(admin.TabularInline):
+    model = GroupPurchaseMember
+    extra = 0
+    autocomplete_fields = ["user", "shopping_list_item"]
+    readonly_fields = ["joined_at"]
+
+
+class GroupPurchaseMessageInline(admin.TabularInline):
+    model = GroupPurchaseMessage
+    extra = 0
+    autocomplete_fields = ["sender"]
+    readonly_fields = ["created_at"]
+
+
+@admin.register(GroupPurchase)
+class GroupPurchaseAdmin(admin.ModelAdmin):
+    list_display = [
+        "offer",
+        "status",
+        "target_quantity",
+        "quantity_price",
+        "members_count",
+        "last_activity_at",
+    ]
+    list_filter = ["status", "offer__shop"]
+    search_fields = ["offer__original_name", "offer__sku", "offer__barcode"]
+    list_select_related = ["offer", "offer__shop"]
+    readonly_fields = ["created_at", "updated_at", "last_activity_at", "closed_at"]
+    autocomplete_fields = ["offer"]
+    inlines = [GroupPurchaseMemberInline, GroupPurchaseMessageInline]
+
+    @admin.display(description="Participants")
+    def members_count(self, obj):
+        return obj.members.count()
+
+
+@admin.register(GroupPurchaseMessage)
+class GroupPurchaseMessageAdmin(admin.ModelAdmin):
+    list_display = ["group", "sender", "body_preview", "created_at"]
+    search_fields = ["body", "sender__username", "sender__email", "group__offer__original_name"]
+    list_select_related = ["group", "group__offer", "sender"]
+    readonly_fields = ["created_at"]
+    autocomplete_fields = ["group", "sender"]
+
+    @admin.display(description="Message")
+    def body_preview(self, obj):
+        return obj.body[:80]
 
 
 @admin.register(DailySiteVisit)

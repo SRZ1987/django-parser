@@ -41,6 +41,16 @@
                                         {% else %}
                                             <a class="plan-text-link" href="{% url 'offer_detail' source.pk %}">Открыть выбранный товар</a>
                                         {% endif %}
+                                        {% if editable and row.group_purchase %}
+                                            <div class="group-purchase-inline">
+                                                <span>От {{ row.group_purchase.target_quantity }} шт. — {{ row.group_purchase.quantity_price }} {{ source.currency }}/шт.</span>
+                                                {% if row.group_participant_count >= 2 %}
+                                                    <a href="{% url 'group_purchase_chat' row.group_purchase.pk %}">Общий чат · {{ row.group_participant_count }}</a>
+                                                {% else %}
+                                                    <a href="{% url 'group_purchase_list' %}">Ищем участника</a>
+                                                {% endif %}
+                                            </div>
+                                        {% endif %}
                                     </div>
                                 </article>
 

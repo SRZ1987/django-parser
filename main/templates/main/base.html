@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Tannenberg{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'main/css/style.css' %}?v=8">
-    <link rel="stylesheet" href="{% static 'main/css/tannenberg.css' %}?v=4">
+    <link rel="stylesheet" href="{% static 'main/css/tannenberg.css' %}?v=5">
     <link rel="stylesheet" href="{% static 'main/css/barcode-scanner.css' %}?v=2">
     <script src="{% static 'main/js/menu.js' %}?v=1" defer></script>
     <script src="{% static 'main/js/search-suggestions.js' %}?v=2" defer></script>
@@ -28,6 +28,7 @@
                 <a class="nav-link" href="{% url 'catalog' %}">Каталог</a>
                 {% if user.is_authenticated %}
                     <a class="nav-link" href="{% url 'shopping_list' %}">Мой список{% if user.shopping_list %} ({{ user.shopping_list.items.count }}){% endif %}</a>
+                    <a class="nav-link" href="{% url 'group_purchase_list' %}">Совместные покупки</a>
                     {% if user.is_staff %}
                         <a class="nav-link" href="{% url 'statistics_dashboard' %}">Статистика</a>
                     {% endif %}

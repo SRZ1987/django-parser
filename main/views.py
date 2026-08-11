@@ -5,14 +5,16 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Case, DecimalField, F, IntegerField, Q, Value, When
+from django.db.models import Case, Count, DecimalField, F, IntegerField, Q, Sum, Value, When
+from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from catalog.models import Category, ProductOffer, Shop
 from catalog.services.normalization import normalize_product_name, tokenize
@@ -26,7 +28,22 @@ from catalog.services.product_search import (
 from .analytics import build_analytics_dashboard, record_store_click
 from .email_verification import email_verification_token, send_verification_email
 from .forms import EmailRequiredUserCreationForm, ResendConfirmationForm
-from .models import ShoppingList, ShoppingListEvent, ShoppingListItem
+from .group_purchases import (
+    active_group_purchases,
+    cleanup_group_purchases,
+    close_group_if_empty,
+    detach_group_purchase_membership,
+    sync_shopping_list_group_memberships,
+    touch_group_purchase,
+)
+from .models import (
+    GroupPurchase,
+    GroupPurchaseMember,
+    GroupPurchaseMessage,
+    ShoppingList,
+    ShoppingListEvent,
+    ShoppingListItem,
+)
 from .price_alerts import set_shopping_list_price_alerts
 from .services import (
     add_offer_to_shopping_list,
@@ -400,7 +417,9 @@ def statistics_dashboard(request):
 
 @login_required
 def shopping_list(request):
+    cleanup_group_purchases()
     user_list = get_or_create_shopping_list(request.user)
+    sync_shopping_list_group_memberships(user_list)
     return render(
         request,
         "main/shopping_list.html",
@@ -458,6 +477,7 @@ def remove_from_shopping_list(request, item_pk):
             ShoppingListEvent.EventType.REMOVED,
             item.name,
         )
+        detach_group_purchase_membership(item)
         item.delete()
     return redirect("shopping_list")
 
@@ -483,8 +503,147 @@ def clear_shopping_list(request):
             for item in items
         ]
     )
+    group_ids = list(
+        GroupPurchaseMember.objects.filter(
+            shopping_list_item_id__in=[item.pk for item in items]
+        ).values_list("group_id", flat=True)
+    )
     ShoppingListItem.objects.filter(pk__in=[item.pk for item in items]).delete()
+    for group_id in set(group_ids):
+        close_group_if_empty(group_id)
     return redirect("shopping_list")
+
+
+@login_required
+def group_purchase_list(request):
+    cleanup_group_purchases()
+    groups = (
+        active_group_purchases()
+        .select_related("offer", "offer__shop", "offer__category", "offer__product")
+        .annotate(
+            participant_count=Count("members", distinct=True),
+            quantity_count=Coalesce(
+                Sum("members__quantity"),
+                Value(0),
+                output_field=IntegerField(),
+            ),
+        )
+        .order_by("-last_activity_at", "offer__original_name", "id")
+    )
+    page_obj = Paginator(groups, 24).get_page(request.GET.get("page"))
+    member_group_ids = set(
+        GroupPurchaseMember.objects.filter(
+            user=request.user,
+            group_id__in=[group.pk for group in page_obj.object_list],
+        ).values_list("group_id", flat=True)
+    )
+    for group in page_obj.object_list:
+        group.user_is_member = group.pk in member_group_ids
+        group.remaining_quantity = max(group.target_quantity - group.quantity_count, 0)
+        group.quantity_reached = group.quantity_count >= group.target_quantity
+
+    return render(
+        request,
+        "main/group_purchase_list.html",
+        {"page_obj": page_obj},
+    )
+
+
+@login_required
+@require_POST
+def join_group_purchase(request, group_pk):
+    cleanup_group_purchases()
+    group = get_object_or_404(
+        active_group_purchases().select_related("offer", "offer__product"),
+        pk=group_pk,
+    )
+    item = add_offer_to_shopping_list(request.user, group.offer)
+    membership = GroupPurchaseMember.objects.filter(
+        shopping_list_item=item,
+        group=group,
+        user=request.user,
+    ).first()
+    if membership is None:
+        return redirect("group_purchase_list")
+    return redirect("group_purchase_chat", group_pk=group.pk)
+
+
+@login_required
+def group_purchase_chat(request, group_pk):
+    cleanup_group_purchases()
+    group = get_object_or_404(
+        active_group_purchases().select_related(
+            "offer",
+            "offer__shop",
+            "offer__category",
+            "offer__product",
+        ),
+        pk=group_pk,
+    )
+    get_object_or_404(GroupPurchaseMember, group=group, user=request.user)
+
+    chat_error = ""
+    if request.method == "POST":
+        body = request.POST.get("body", "").strip()
+        if not body:
+            chat_error = "Введите сообщение."
+        elif len(body) > GroupPurchaseMessage._meta.get_field("body").max_length:
+            chat_error = "Сообщение не должно быть длиннее 1000 символов."
+        else:
+            GroupPurchaseMessage.objects.create(
+                group=group,
+                sender=request.user,
+                body=body,
+            )
+            touch_group_purchase(group)
+            return redirect("group_purchase_chat", group_pk=group.pk)
+
+    messages = list(
+        group.messages.select_related("sender").order_by("-id")[:100]
+    )
+    messages.reverse()
+    participants = list(group.members.select_related("user").order_by("joined_at", "id"))
+    quantity_count = sum(member.quantity for member in participants)
+    return render(
+        request,
+        "main/group_purchase_chat.html",
+        {
+            "group": group,
+            "chat_messages": messages,
+            "participants": participants,
+            "quantity_count": quantity_count,
+            "remaining_quantity": max(group.target_quantity - quantity_count, 0),
+            "quantity_reached": quantity_count >= group.target_quantity,
+            "chat_error": chat_error,
+        },
+    )
+
+
+@login_required
+@require_GET
+def group_purchase_messages(request, group_pk):
+    cleanup_group_purchases()
+    group = get_object_or_404(GroupPurchase, pk=group_pk, status=GroupPurchase.Status.OPEN)
+    get_object_or_404(GroupPurchaseMember, group=group, user=request.user)
+    try:
+        after_id = max(0, int(request.GET.get("after", "0")))
+    except (TypeError, ValueError):
+        after_id = 0
+    messages = group.messages.filter(pk__gt=after_id).select_related("sender").order_by("id")[:100]
+    return JsonResponse(
+        {
+            "messages": [
+                {
+                    "id": message.pk,
+                    "sender": message.sender.get_short_name() or message.sender.username,
+                    "body": message.body,
+                    "created_at": timezone.localtime(message.created_at).strftime("%d.%m.%Y %H:%M"),
+                    "is_own": message.sender_id == request.user.pk,
+                }
+                for message in messages
+            ]
+        }
+    )
 
 
 @login_required

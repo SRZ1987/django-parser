@@ -2,13 +2,14 @@ import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 
 from catalog.models import ProductOffer, Shop
 from catalog.services.product_matching import offers_are_comparable
 from catalog.services.product_search import find_matches
 
-from .models import ShoppingList, ShoppingListEvent, ShoppingListItem
+from .models import GroupPurchase, ShoppingList, ShoppingListEvent, ShoppingListItem
 
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,9 @@ class BestOfferResult:
     highest_price: Decimal | None = None
     price_difference: Decimal | None = None
     potential_saving: Decimal = Decimal("0.00")
+    group_purchase: GroupPurchase | None = None
+    group_participant_count: int = 0
+    group_quantity_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -67,6 +71,7 @@ def add_offer_to_shopping_list(user, offer):
                 refresh_item_price_alert_baseline(item)
             except Exception:
                 logger.exception("Could not initialize price alert baseline for shopping list item %s", item.pk)
+    _ensure_group_membership_safely(item)
     return item
 
 
@@ -83,6 +88,7 @@ def record_shopping_list_event(user, offer, event_type, item_name):
 @transaction.atomic
 def replace_shopping_list_offer(item, offer):
     user = item.shopping_list.user
+    _detach_group_membership_safely(item)
     existing_item = (
         ShoppingListItem.objects.select_for_update()
         .filter(shopping_list=item.shopping_list, source_offer=offer)
@@ -94,6 +100,7 @@ def replace_shopping_list_offer(item, offer):
             existing_item.is_purchased = True
             existing_item.save(update_fields=["is_purchased"])
         item.delete()
+        _ensure_group_membership_safely(existing_item)
         record_shopping_list_event(
             user,
             offer,
@@ -120,6 +127,7 @@ def replace_shopping_list_offer(item, offer):
             "price_alert_checked_at",
         ]
     )
+    _ensure_group_membership_safely(item)
     if item.shopping_list.price_alerts_enabled:
         try:
             from .price_alerts import refresh_item_price_alert_baseline
@@ -137,6 +145,7 @@ def replace_shopping_list_offer(item, offer):
 
 
 def get_best_offer(item):
+    group_purchase, participant_count, quantity_count = _item_group_purchase(item)
     matches = find_matches(item.source_offer)
     candidate_matches = matches.exact_matches + matches.same_product + matches.similar_products
     offers = [
@@ -151,7 +160,13 @@ def get_best_offer(item):
         offers.append(item.source_offer)
 
     if not offers:
-        return BestOfferResult(item=item, best_offer=None)
+        return BestOfferResult(
+            item=item,
+            best_offer=None,
+            group_purchase=group_purchase,
+            group_participant_count=participant_count,
+            group_quantity_count=quantity_count,
+        )
 
     offers = sorted(offers, key=lambda offer: (offer.current_price, offer.shop.name, offer.original_name))
     best_offer = offers[0]
@@ -173,6 +188,9 @@ def get_best_offer(item):
         highest_price=highest_price,
         price_difference=highest_price - best_price,
         potential_saving=potential_saving,
+        group_purchase=group_purchase,
+        group_participant_count=participant_count,
+        group_quantity_count=quantity_count,
     )
 
 
@@ -184,7 +202,9 @@ def build_purchase_plan(shopping_list):
             "source_offer__shop",
             "source_offer__category",
             "source_offer__product",
+            "group_purchase_membership__group",
         )
+        .prefetch_related("group_purchase_membership__group__members")
         .order_by("source_offer__shop__name", "name", "id")
     )
     rows = [get_best_offer(item) for item in items]
@@ -223,3 +243,35 @@ def build_purchase_plan(shopping_list):
         remaining_best_cost=remaining_best_cost,
         potential_saving=sum((row.potential_saving for row in rows), Decimal("0.00")),
     )
+
+
+def _item_group_purchase(item):
+    try:
+        membership = item.group_purchase_membership
+    except ObjectDoesNotExist:
+        return None, 0, 0
+    group = membership.group
+    if group.status != GroupPurchase.Status.OPEN:
+        return None, 0, 0
+    members = list(group.members.all())
+    return group, len(members), sum(member.quantity for member in members)
+
+
+def _ensure_group_membership_safely(item):
+    try:
+        from .group_purchases import ensure_group_purchase_membership
+
+        return ensure_group_purchase_membership(item)
+    except Exception:
+        logger.exception("Could not synchronize group purchase membership for item %s", item.pk)
+        return None
+
+
+def _detach_group_membership_safely(item):
+    try:
+        from .group_purchases import detach_group_purchase_membership
+
+        return detach_group_purchase_membership(item)
+    except Exception:
+        logger.exception("Could not remove group purchase membership for item %s", item.pk)
+        return None

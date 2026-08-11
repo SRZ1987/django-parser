@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
 from urllib.parse import parse_qs, urlparse
@@ -9,12 +10,21 @@ from django.core import mail
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
 from catalog.models import Category, Product, ProductOffer, Shop
 from main.email_verification import email_verification_token
-from main.models import DailySiteVisit, ShoppingListEvent, ShoppingListItem, StoreClick
+from main.models import (
+    DailySiteVisit,
+    GroupPurchase,
+    GroupPurchaseMember,
+    GroupPurchaseMessage,
+    ShoppingListEvent,
+    ShoppingListItem,
+    StoreClick,
+)
 from main.price_alerts import send_shopping_list_price_alerts, set_shopping_list_price_alerts
 from main.services import add_offer_to_shopping_list, build_purchase_plan, get_best_offer
 
@@ -318,6 +328,287 @@ class MainCatalogTests(TestCase):
         self.client.post(reverse("add_to_shopping_list", args=[offer.pk]))
 
         self.assertEqual(ShoppingListItem.objects.filter(shopping_list__user=user).count(), 1)
+
+    def test_group_purchase_pages_require_login(self):
+        list_response = self.client.get(reverse("group_purchase_list"))
+        chat_response = self.client.get(reverse("group_purchase_chat", args=[999]))
+
+        self.assertEqual(list_response.status_code, 302)
+        self.assertIn(reverse("login"), list_response["Location"])
+        self.assertEqual(chat_response.status_code, 302)
+        self.assertIn(reverse("login"), chat_response["Location"])
+
+    def test_regular_offer_does_not_create_group_purchase(self):
+        user = self.create_user("regular-offer-user")
+        offer = self.create_offer(name="Regular hammer", price=Decimal("10.00"))
+
+        add_offer_to_shopping_list(user, offer)
+
+        self.assertFalse(GroupPurchase.objects.exists())
+        self.assertFalse(GroupPurchaseMember.objects.exists())
+
+    def test_quantity_discount_offer_creates_group_and_membership(self):
+        user = self.create_user("group-owner")
+        offer = self.create_offer(
+            name="DEPO group screws",
+            price=Decimal("10.00"),
+            quantity_price=Decimal("8.50"),
+            quantity_price_min_quantity=3,
+        )
+
+        item = add_offer_to_shopping_list(user, offer)
+
+        group = GroupPurchase.objects.get(offer=offer, status=GroupPurchase.Status.OPEN)
+        membership = GroupPurchaseMember.objects.get(group=group, user=user)
+        self.assertEqual(group.target_quantity, 3)
+        self.assertEqual(group.quantity_price, Decimal("8.50"))
+        self.assertEqual(membership.shopping_list_item, item)
+
+    def test_group_purchase_is_bound_to_exact_store_offer(self):
+        first = self.create_user("exact-offer-first")
+        second = self.create_user("exact-offer-second")
+        shared_barcode = "4740000000777"
+        first_offer = self.create_offer(
+            name="Same product in ESPAK",
+            barcode=shared_barcode,
+            external_id="espak-group-offer",
+            price=Decimal("10.00"),
+            quantity_price=Decimal("8.00"),
+            quantity_price_min_quantity=2,
+        )
+        second_offer = self.create_offer(
+            name="Same product in DEPO",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-GROUP-OFFER",
+            barcode=shared_barcode,
+            external_id="depo-group-offer",
+            price=Decimal("9.00"),
+            quantity_price=Decimal("7.50"),
+            quantity_price_min_quantity=2,
+        )
+
+        add_offer_to_shopping_list(first, first_offer)
+        add_offer_to_shopping_list(second, second_offer)
+
+        self.assertEqual(GroupPurchase.objects.count(), 2)
+        self.assertEqual(GroupPurchase.objects.get(offer=first_offer).members.count(), 1)
+        self.assertEqual(GroupPurchase.objects.get(offer=second_offer).members.count(), 1)
+
+    def test_opening_list_syncs_existing_item_that_gained_quantity_discount(self):
+        user = self.create_user("late-discount-user")
+        offer = self.create_offer(
+            name="Late discount product",
+            price=Decimal("10.00"),
+            quantity_price=None,
+            quantity_price_min_quantity=None,
+        )
+        item = add_offer_to_shopping_list(user, offer)
+        ProductOffer.objects.filter(pk=offer.pk).update(
+            quantity_price=Decimal("8.00"),
+            quantity_price_min_quantity=2,
+        )
+        offer.refresh_from_db()
+        self.assertFalse(GroupPurchase.objects.exists())
+        self.client.force_login(user)
+
+        self.client.get(reverse("shopping_list"))
+
+        self.assertTrue(
+            GroupPurchaseMember.objects.filter(
+                shopping_list_item=item,
+                group__offer=offer,
+                group__status=GroupPurchase.Status.OPEN,
+            ).exists()
+        )
+
+    def test_two_users_share_one_group_and_see_chat_in_their_lists(self):
+        first = self.create_user("first-group-user")
+        second = self.create_user("second-group-user")
+        offer = self.create_offer(
+            name="DEPO group cleaner",
+            price=Decimal("4.73"),
+            quantity_price=Decimal("4.21"),
+            quantity_price_min_quantity=2,
+        )
+        add_offer_to_shopping_list(first, offer)
+        add_offer_to_shopping_list(second, offer)
+        group = GroupPurchase.objects.get(offer=offer, status=GroupPurchase.Status.OPEN)
+        self.client.force_login(first)
+
+        response = self.client.get(reverse("shopping_list"))
+
+        self.assertEqual(GroupPurchase.objects.filter(offer=offer, status="open").count(), 1)
+        self.assertEqual(group.members.count(), 2)
+        self.assertContains(response, reverse("group_purchase_chat", args=[group.pk]))
+        self.assertContains(response, "Общий чат · 2")
+
+    def test_group_purchase_list_shows_only_eligible_added_products(self):
+        user = self.create_user("group-list-owner")
+        group_offer = self.create_offer(
+            name="Group product",
+            sku="GROUP-SKU",
+            barcode="4740000000999",
+            external_id="group-product",
+            price=Decimal("12.00"),
+            quantity_price=Decimal("9.00"),
+            quantity_price_min_quantity=4,
+        )
+        regular_offer = self.create_offer(
+            name="Regular product",
+            sku="REGULAR-SKU",
+            barcode="4740000000888",
+            external_id="regular-product",
+            price=Decimal("8.00"),
+        )
+        add_offer_to_shopping_list(user, group_offer)
+        add_offer_to_shopping_list(user, regular_offer)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("group_purchase_list"))
+
+        self.assertContains(response, "Group product")
+        self.assertContains(response, "GROUP-SKU")
+        self.assertContains(response, "4740000000999")
+        self.assertNotContains(response, "Regular product")
+
+    def test_joining_group_adds_offer_to_list_and_opens_chat(self):
+        owner = self.create_user("group-join-owner")
+        participant = self.create_user("group-join-participant")
+        offer = self.create_offer(
+            name="Joinable product",
+            price=Decimal("5.00"),
+            quantity_price=Decimal("4.00"),
+            quantity_price_min_quantity=2,
+        )
+        add_offer_to_shopping_list(owner, offer)
+        group = GroupPurchase.objects.get(offer=offer, status=GroupPurchase.Status.OPEN)
+        self.client.force_login(participant)
+
+        response = self.client.post(reverse("join_group_purchase", args=[group.pk]))
+
+        self.assertRedirects(response, reverse("group_purchase_chat", args=[group.pk]))
+        item = ShoppingListItem.objects.get(shopping_list__user=participant, source_offer=offer)
+        self.assertTrue(
+            GroupPurchaseMember.objects.filter(
+                group=group,
+                user=participant,
+                shopping_list_item=item,
+            ).exists()
+        )
+
+    def test_group_chat_is_available_only_to_members(self):
+        owner = self.create_user("private-chat-owner")
+        outsider = self.create_user("private-chat-outsider")
+        offer = self.create_offer(
+            name="Private chat product",
+            price=Decimal("7.00"),
+            quantity_price=Decimal("6.00"),
+            quantity_price_min_quantity=2,
+        )
+        add_offer_to_shopping_list(owner, offer)
+        group = GroupPurchase.objects.get(offer=offer, status=GroupPurchase.Status.OPEN)
+        self.client.force_login(outsider)
+
+        response = self.client.get(reverse("group_purchase_chat", args=[group.pk]))
+        messages_response = self.client.get(reverse("group_purchase_messages", args=[group.pk]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(messages_response.status_code, 404)
+
+    def test_member_can_post_escaped_message_and_activity_is_updated(self):
+        user = self.create_user("chat-message-user")
+        offer = self.create_offer(
+            name="Chat message product",
+            price=Decimal("9.00"),
+            quantity_price=Decimal("7.00"),
+            quantity_price_min_quantity=2,
+        )
+        add_offer_to_shopping_list(user, offer)
+        group = GroupPurchase.objects.get(offer=offer, status=GroupPurchase.Status.OPEN)
+        old_activity = timezone.now() - timedelta(hours=2)
+        GroupPurchase.objects.filter(pk=group.pk).update(last_activity_at=old_activity)
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("group_purchase_chat", args=[group.pk]),
+            {"body": "Встречаемся в 18:00 <script>alert(1)</script>"},
+        )
+
+        self.assertRedirects(response, reverse("group_purchase_chat", args=[group.pk]))
+        group.refresh_from_db()
+        self.assertGreater(group.last_activity_at, old_activity)
+        self.assertEqual(GroupPurchaseMessage.objects.filter(group=group).count(), 1)
+        chat_page = self.client.get(reverse("group_purchase_chat", args=[group.pk]))
+        self.assertContains(chat_page, "&lt;script&gt;alert(1)&lt;/script&gt;")
+        self.assertNotContains(chat_page, "<script>alert(1)</script>")
+
+        messages_response = self.client.get(
+            reverse("group_purchase_messages", args=[group.pk]),
+            {"after": 0},
+        )
+        payload = messages_response.json()["messages"][0]
+        self.assertEqual(payload["body"], "Встречаемся в 18:00 <script>alert(1)</script>")
+        self.assertTrue(payload["is_own"])
+
+    def test_removing_last_group_item_closes_group(self):
+        user = self.create_user("last-member")
+        offer = self.create_offer(
+            name="Last member product",
+            price=Decimal("5.00"),
+            quantity_price=Decimal("4.00"),
+            quantity_price_min_quantity=2,
+        )
+        item = add_offer_to_shopping_list(user, offer)
+        group = GroupPurchase.objects.get(offer=offer, status=GroupPurchase.Status.OPEN)
+        self.client.force_login(user)
+
+        self.client.post(reverse("remove_from_shopping_list", args=[item.pk]))
+
+        group.refresh_from_db()
+        self.assertEqual(group.status, GroupPurchase.Status.CLOSED)
+        self.assertFalse(group.members.exists())
+
+    def test_removing_one_of_two_items_keeps_group_open(self):
+        first = self.create_user("remaining-first")
+        second = self.create_user("remaining-second")
+        offer = self.create_offer(
+            name="Remaining group product",
+            price=Decimal("5.00"),
+            quantity_price=Decimal("4.00"),
+            quantity_price_min_quantity=2,
+        )
+        first_item = add_offer_to_shopping_list(first, offer)
+        add_offer_to_shopping_list(second, offer)
+        group = GroupPurchase.objects.get(offer=offer, status=GroupPurchase.Status.OPEN)
+        self.client.force_login(first)
+
+        self.client.post(reverse("remove_from_shopping_list", args=[first_item.pk]))
+
+        group.refresh_from_db()
+        self.assertEqual(group.status, GroupPurchase.Status.OPEN)
+        self.assertEqual(group.members.count(), 1)
+
+    def test_inactive_group_expires_after_seven_days(self):
+        user = self.create_user("stale-group-owner")
+        offer = self.create_offer(
+            name="Stale group product",
+            price=Decimal("5.00"),
+            quantity_price=Decimal("4.00"),
+            quantity_price_min_quantity=2,
+        )
+        add_offer_to_shopping_list(user, offer)
+        group = GroupPurchase.objects.get(offer=offer, status=GroupPurchase.Status.OPEN)
+        GroupPurchase.objects.filter(pk=group.pk).update(
+            last_activity_at=timezone.now() - timedelta(days=8)
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("group_purchase_list"))
+
+        group.refresh_from_db()
+        self.assertEqual(group.status, GroupPurchase.Status.EXPIRED)
+        self.assertNotContains(response, "Stale group product")
 
     def test_user_does_not_see_another_users_list(self):
         owner = self.create_user("owner")

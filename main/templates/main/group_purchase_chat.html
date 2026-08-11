@@ -1,0 +1,85 @@
+{% extends 'main/base.html' %}
+{% load static %}
+
+{% block title %}Чат совместной покупки{% endblock %}
+{% block body_class %}group-purchase-page{% endblock %}
+{% block extra_scripts %}<script src="{% static 'main/js/group-purchase-chat.js' %}?v=1" type="module"></script>{% endblock %}
+
+{% block content %}
+<main class="page-shell group-chat-shell">
+    <a class="back-link" href="{% url 'group_purchase_list' %}">← Совместные покупки</a>
+
+    <section class="group-chat-product">
+        <a class="group-chat-image" href="{% url 'offer_detail' group.offer.pk %}">
+            {% if group.offer.image_url %}
+                <img src="{{ group.offer.image_url }}" alt="" loading="lazy">
+            {% else %}
+                <span>Нет фото</span>
+            {% endif %}
+        </a>
+        <div>
+            <span class="group-product-shop">{{ group.offer.shop.name }}</span>
+            <h1>{{ group.offer.original_name }}</h1>
+            <p>SKU: {{ group.offer.sku|default:'—' }} · Штрихкод: {{ group.offer.barcode|default:'—' }}</p>
+            {% if group.offer.product_url %}
+                <a class="plan-text-link" href="{% url 'store_click' group.offer.pk %}" target="_blank" rel="noopener noreferrer">Открыть в магазине</a>
+            {% endif %}
+        </div>
+        <div class="group-chat-deal">
+            <span>Групповая цена</span>
+            <strong>{{ group.quantity_price }} {{ group.offer.currency }}/шт.</strong>
+            {% if quantity_reached %}
+                <span class="group-ready-state">Набрано {{ quantity_count }} из {{ group.target_quantity }} шт.</span>
+            {% else %}
+                <span>Набрано {{ quantity_count }} из {{ group.target_quantity }} шт. · нужно ещё {{ remaining_quantity }}</span>
+            {% endif %}
+        </div>
+    </section>
+
+    <div class="group-chat-layout">
+        <section
+            class="group-chat-panel"
+            data-group-chat
+            data-messages-url="{% url 'group_purchase_messages' group.pk %}"
+        >
+            <header>
+                <h2>Общий чат</h2>
+                <span>Договоритесь о времени, месте и способе покупки.</span>
+            </header>
+            <div class="group-chat-messages" data-chat-messages aria-live="polite">
+                {% for message in chat_messages %}
+                    <article class="group-chat-message{% if message.sender_id == user.pk %} is-own{% endif %}" data-message-id="{{ message.pk }}">
+                        <div>
+                            <strong>{{ message.sender.get_short_name|default:message.sender.username }}</strong>
+                            <time datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:'d.m.Y H:i' }}</time>
+                        </div>
+                        <p>{{ message.body|linebreaksbr }}</p>
+                    </article>
+                {% empty %}
+                    <p class="group-chat-empty" data-chat-empty>Сообщений пока нет. Начните обсуждение покупки.</p>
+                {% endfor %}
+            </div>
+            <form class="group-chat-form" method="post">
+                {% csrf_token %}
+                <label for="chat-body">Сообщение</label>
+                <textarea id="chat-body" name="body" maxlength="1000" rows="3" required></textarea>
+                {% if chat_error %}<p class="group-chat-error">{{ chat_error }}</p>{% endif %}
+                <button class="group-primary-button" type="submit">Отправить</button>
+            </form>
+        </section>
+
+        <aside class="group-participants">
+            <h2>Участники · {{ participants|length }}</h2>
+            <ul>
+                {% for participant in participants %}
+                    <li>
+                        <span>{{ participant.user.get_short_name|default:participant.user.username }}</span>
+                        <small>{{ participant.quantity }} шт.</small>
+                    </li>
+                {% endfor %}
+            </ul>
+            <p>Контактные данные не публикуются. Передавайте их в чате только по собственному желанию.</p>
+        </aside>
+    </div>
+</main>
+{% endblock %}

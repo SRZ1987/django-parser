@@ -2,6 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class ShoppingList(models.Model):
@@ -75,6 +76,101 @@ class ShoppingListItem(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class GroupPurchase(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Открыта"
+        CLOSED = "closed", "Закрыта"
+        EXPIRED = "expired", "Истекла"
+
+    offer = models.ForeignKey(
+        "catalog.ProductOffer",
+        related_name="group_purchases",
+        on_delete=models.CASCADE,
+    )
+    target_quantity = models.PositiveIntegerField()
+    quantity_price = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.OPEN,
+        db_index=True,
+    )
+    last_activity_at = models.DateTimeField(default=timezone.now, db_index=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["offer"],
+                condition=models.Q(status="open"),
+                name="unique_open_group_purchase_per_offer",
+            ),
+        ]
+        ordering = ["-last_activity_at", "-id"]
+
+    def __str__(self):
+        return f"{self.offer} ({self.get_status_display()})"
+
+
+class GroupPurchaseMember(models.Model):
+    group = models.ForeignKey(
+        GroupPurchase,
+        related_name="members",
+        on_delete=models.CASCADE,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="group_purchase_memberships",
+        on_delete=models.CASCADE,
+    )
+    shopping_list_item = models.OneToOneField(
+        ShoppingListItem,
+        related_name="group_purchase_membership",
+        on_delete=models.CASCADE,
+    )
+    quantity = models.PositiveIntegerField(default=1)
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "user"],
+                name="unique_group_purchase_member",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=1),
+                name="group_purchase_member_quantity_gte_1",
+            ),
+        ]
+        ordering = ["joined_at", "id"]
+
+    def __str__(self):
+        return f"{self.user} in {self.group}"
+
+
+class GroupPurchaseMessage(models.Model):
+    group = models.ForeignKey(
+        GroupPurchase,
+        related_name="messages",
+        on_delete=models.CASCADE,
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="group_purchase_messages",
+        on_delete=models.CASCADE,
+    )
+    body = models.CharField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.sender}: {self.body[:60]}"
 
 
 class DailySiteVisit(models.Model):
