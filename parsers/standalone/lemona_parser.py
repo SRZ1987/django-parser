@@ -142,6 +142,7 @@ def lupa_request(offset: int) -> dict[str, Any]:
         "searchText": "",
         "offset": offset,
         "limit": PAGE_SIZE,
+        "sort": [{"sku": "asc"}],
         "filters": {
             "sources": {"exists": True},
             "price": {"gt": 0},

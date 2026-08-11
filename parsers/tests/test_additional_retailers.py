@@ -142,6 +142,28 @@ class ApiCatalogRetailerTests(SimpleTestCase):
             )
         )
 
+    def test_stokker_catalog_continues_past_page_100(self):
+        requested_pages = []
+
+        async def fake_request_json(*args, params, **kwargs):
+            page = params["page"]
+            requested_pages.append(page)
+            return [{"ItemID": f"item-{page}"}] if page <= 100 else []
+
+        with (
+            patch.object(catalog_api_retailers_parser, "request_json", fake_request_json),
+            patch.object(catalog_api_retailers_parser, "STOKKER_PAGE_SIZE", 1),
+        ):
+            products = asyncio.run(
+                catalog_api_retailers_parser.fetch_stokker_products(
+                    None,
+                    catalog_api_retailers_parser.API_RETAILERS["stokker"],
+                )
+            )
+
+        self.assertEqual(len(products), 100)
+        self.assertIn(101, requested_pages)
+
 
 class SitemapCatalogRetailerTests(SimpleTestCase):
     def test_torujyri_jsonld_product_is_normalized(self):

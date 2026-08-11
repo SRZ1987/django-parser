@@ -50,6 +50,7 @@ BARCODE_KEYS = {
     "gtin13",
     "gtin14",
 }
+EXCEL_ILLEGAL_CHARACTERS_RE = re.compile(r"[\x00-\x08\x0b-\x0c\x0e-\x1f]")
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,7 @@ def clean_text(value: Any) -> str:
     if value in (None, ""):
         return ""
     value = html.unescape(str(value)).replace("\xa0", " ")
+    value = EXCEL_ILLEGAL_CHARACTERS_RE.sub("", value)
     value = re.sub(r"<[^>]+>", " ", value)
     return re.sub(r"\s+", " ", value).strip()
 

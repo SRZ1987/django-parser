@@ -1,7 +1,7 @@
 import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from django.test import SimpleTestCase
 
@@ -207,6 +207,22 @@ class OomipoodParserTests(SimpleTestCase):
             )
         )
 
+    def test_excel_forbidden_control_character_is_removed(self):
+        html = OOMIPOOD_HTML.replace(
+            "Stable laboratory power supply",
+            r"Stable\b laboratory power supply",
+        )
+        row = oomipood_parser.parse_product_page(
+            html,
+            "https://www.oomipood.ee/product/test-power-supply",
+        )
+
+        self.assertEqual(row[11], "Stable laboratory power supply")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "oomipood.xlsx"
+            public_commerce_parser.save_excel([row], output_path)
+            self.assertTrue(output_path.exists())
+
     def test_adapter_creates_excel_and_counts_rows(self):
         async def fake_main(output_path, log_callback=None):
             row = oomipood_parser.parse_product_page(
@@ -228,6 +244,12 @@ class OomipoodParserTests(SimpleTestCase):
 
 
 class LemonaParserTests(SimpleTestCase):
+    def test_catalog_request_uses_stable_sku_sort(self):
+        self.assertEqual(
+            lemona_parser.lupa_request(0)["sort"],
+            [{"sku": "asc"}],
+        )
+
     def test_product_uses_public_sku_price_barcode_and_quantity_tier(self):
         rows, skipped = lemona_parser.build_rows(
             [lemona_product()],
@@ -326,6 +348,22 @@ class SitemapRetailerParserTests(SimpleTestCase):
             [],
         )
 
+    def test_product_redirect_to_store_home_is_treated_as_removed(self):
+        self.assertTrue(
+            sitemap_retailers_parser.redirected_to_store_home(
+                "https://www.vipex.ee/removed-product",
+                "https://www.vipex.ee/",
+                "https://www.vipex.ee/",
+            )
+        )
+        self.assertFalse(
+            sitemap_retailers_parser.redirected_to_store_home(
+                "https://www.vipex.ee/available-product",
+                "https://www.vipex.ee/available-product",
+                "https://www.vipex.ee/",
+            )
+        )
+
     def test_effex_variants_keep_separate_ids_barcodes_and_prices(self):
         rows = sitemap_retailers_parser.parse_effex_page(
             EFFEX_HTML,
@@ -342,6 +380,52 @@ class SitemapRetailerParserTests(SimpleTestCase):
         self.assertEqual(rows[1][2], "")
         self.assertEqual(rows[1][4], "8719514308657")
         self.assertEqual(rows[1][5], "effex-11-15667")
+
+    def test_missing_product_markup_is_retried_before_failing_catalog(self):
+        calls = 0
+
+        async def fake_request_text(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return "<html><body>No product markup</body></html>" if calls == 1 else EFFEX_HTML
+
+        logs = []
+        store = sitemap_retailers_parser.SITEMAP_RETAILERS["effex"]
+        with (
+            patch.object(sitemap_retailers_parser, "request_text", fake_request_text),
+            patch.object(sitemap_retailers_parser.asyncio, "sleep", AsyncMock()),
+        ):
+            rows, skipped = asyncio.run(
+                sitemap_retailers_parser.fetch_rows(
+                    None,
+                    store,
+                    [("https://effex.ee/et/led-gu10/11-led-spots.html", "")],
+                    logs.append,
+                )
+            )
+
+        self.assertEqual(calls, 2)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(skipped, 0)
+        self.assertTrue(any("product JSON-LD is missing" in entry for entry in logs))
+
+    def test_persistently_missing_product_markup_fails_catalog(self):
+        async def fake_request_text(*args, **kwargs):
+            return "<html><body>No product markup</body></html>"
+
+        store = sitemap_retailers_parser.SITEMAP_RETAILERS["effex"]
+        with (
+            patch.object(sitemap_retailers_parser, "request_text", fake_request_text),
+            patch.object(sitemap_retailers_parser.asyncio, "sleep", AsyncMock()),
+        ):
+            with self.assertRaises(sitemap_retailers_parser.ProductMarkupMissing):
+                asyncio.run(
+                    sitemap_retailers_parser.fetch_rows(
+                        None,
+                        store,
+                        [("https://effex.ee/et/led-gu10/missing.html", "")],
+                    )
+                )
 
     def test_sitemap_adapters_create_excel_and_count_rows(self):
         async def fake_main(store_code, output_path, log_callback=None):

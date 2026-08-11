@@ -32,6 +32,7 @@ from .public_commerce_parser import (
 
 CONCURRENCY = 5
 REQUEST_TIMEOUT = 45
+PRODUCT_MARKUP_RETRIES = 3
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,21 @@ SITEMAP_RETAILERS = {
 
 class ProductPageMissing(Exception):
     pass
+
+
+class ProductMarkupMissing(RuntimeError):
+    pass
+
+
+def redirected_to_store_home(requested_url: str, final_url: str, base_url: str) -> bool:
+    requested = urlparse(requested_url)
+    final = urlparse(final_url)
+    base = urlparse(base_url)
+    return bool(
+        requested.path.rstrip("/")
+        and final.netloc.casefold() == base.netloc.casefold()
+        and final.path.rstrip("/") == base.path.rstrip("/")
+    )
 
 
 def _local_name(tag: str) -> str:
@@ -101,6 +117,8 @@ async def request_text(
         try:
             async with session.get(url) as response:
                 if response.status == 200:
+                    if redirected_to_store_home(url, str(response.url), store.base_url):
+                        raise ProductPageMissing(url)
                     return await response.text()
                 if response.status == 404:
                     raise ProductPageMissing(url)
@@ -198,7 +216,7 @@ def parse_vipex_page(html_text: str, product_url: str, fallback_image: str = "")
     soup = BeautifulSoup(html_text, "html.parser")
     product, breadcrumbs = extract_jsonld(soup)
     if not product:
-        raise RuntimeError(f"Vipex product JSON-LD is missing: {product_url}")
+        raise ProductMarkupMissing(f"Vipex product JSON-LD is missing: {product_url}")
 
     offer = first_offer(product)
     if not is_in_stock(offer):
@@ -283,7 +301,7 @@ def parse_effex_page(html_text: str, product_url: str, fallback_image: str = "")
     soup = BeautifulSoup(html_text, "html.parser")
     product, _breadcrumbs = extract_jsonld(soup)
     if not product:
-        raise RuntimeError(f"Effex product JSON-LD is missing: {product_url}")
+        raise ProductMarkupMissing(f"Effex product JSON-LD is missing: {product_url}")
 
     offer = first_offer(product)
     if not is_in_stock(offer):
@@ -381,20 +399,38 @@ async def fetch_rows(
         nonlocal completed, missing, skipped
         product_url, fallback_image = product
         try:
-            async with limiter:
-                html_text = await request_text(
-                    session,
-                    product_url,
-                    store=store,
-                    label=f"product {index}/{len(products)}",
-                    log_callback=log_callback,
-                )
-            rows = parser(html_text, product_url, fallback_image)
+            for markup_attempt in range(1, PRODUCT_MARKUP_RETRIES + 1):
+                async with limiter:
+                    html_text = await request_text(
+                        session,
+                        product_url,
+                        store=store,
+                        label=f"product {index}/{len(products)}",
+                        log_callback=log_callback,
+                    )
+                try:
+                    rows = parser(html_text, product_url, fallback_image)
+                    break
+                except ProductMarkupMissing as exc:
+                    if markup_attempt >= PRODUCT_MARKUP_RETRIES:
+                        raise
+                    delay = RETRY_BASE_DELAY * (2 ** (markup_attempt - 1))
+                    log(
+                        f"WARNING: {exc}; retry={markup_attempt}/{PRODUCT_MARKUP_RETRIES}, "
+                        f"delay={delay:.1f}s",
+                        log_callback,
+                    )
+                    await asyncio.sleep(delay)
             if not rows:
                 skipped += 1
             return rows
         except ProductPageMissing:
             missing += 1
+            log(
+                f"WARNING: {store.name} product was removed or redirected to the store home: "
+                f"{product_url}",
+                log_callback,
+            )
             return []
         finally:
             async with progress_lock:
