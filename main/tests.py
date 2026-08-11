@@ -1473,7 +1473,7 @@ class MainCatalogTests(TestCase):
             price=Decimal("19.56"),
         )
         cheaper = self.create_offer(
-            name="Murutrimmer Trolla 350W/25cm",
+            name="Murutrimmer Trolla 350W",
             shop=handymann,
             category=None,
             sku="139-131319",

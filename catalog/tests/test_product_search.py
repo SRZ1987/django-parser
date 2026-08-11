@@ -407,6 +407,27 @@ class ProductSearchTests(TestCase):
 
         self.assertFalse(offers_are_comparable(source, shoulder_strap))
 
+    def test_powered_tool_can_match_when_secondary_size_is_missing(self):
+        source = self.offer(
+            "Elektrimootoriga murutrimmer QT6045 Jasper 350W/25cm",
+            sku="DEPO-MURUTRIMMER-WITH-WIDTH",
+        )
+        same_type_and_power = self.offer(
+            "Murutrimmer Trolla 350W",
+            shop=self.depo,
+            category=None,
+            sku="HANDYMANN-MURUTRIMMER-350W",
+        )
+        conflicting_width = self.offer(
+            "Murutrimmer Trolla 350W/30cm",
+            shop=self.bauhof,
+            category=None,
+            sku="BAUHOF-MURUTRIMMER-350W-30CM",
+        )
+
+        self.assertTrue(offers_are_comparable(source, same_type_and_power))
+        self.assertFalse(offers_are_comparable(source, conflicting_width))
+
     def test_same_model_does_not_override_product_type_and_power(self):
         source = self.offer(
             "Elektrimootoriga murutrimmer QT6045 Jasper 350W/25cm",

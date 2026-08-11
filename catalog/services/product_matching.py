@@ -45,6 +45,9 @@ TEXT_MATCH_NONE = 0
 TEXT_MATCH_COMPOUND = 1
 TEXT_MATCH_EXACT_WORD = 2
 
+SECONDARY_POWERED_TOOL_MEASUREMENTS = frozenset({"length", "area"})
+POWERED_TOOL_MEASUREMENTS = frozenset({"power", "voltage", "battery_capacity"})
+
 
 @dataclass(frozen=True)
 class MatchResult:
@@ -542,9 +545,10 @@ def _required_structured_attributes_match(
 
     source_measurements = _measurement_groups(source)
     candidate_measurements = _measurement_groups(candidate)
+    required_measurement_kinds = _required_measurement_kinds(source_measurements)
     for kind, source_values in source_measurements.items():
         candidate_values = candidate_measurements.get(kind, set())
-        if require_source_specs and not candidate_values:
+        if require_source_specs and kind in required_measurement_kinds and not candidate_values:
             return False
         if (
             candidate_values
@@ -578,6 +582,13 @@ def _measurement_groups(attributes: ProductAttributes) -> dict[str, set]:
             kind, amount = canonical
             result.setdefault(kind, set()).add(amount)
     return result
+
+
+def _required_measurement_kinds(source_measurements: dict[str, set]) -> set[str]:
+    required = set(source_measurements)
+    if POWERED_TOOL_MEASUREMENTS & required:
+        required -= SECONDARY_POWERED_TOOL_MEASUREMENTS
+    return required
 
 
 def _structured_value_equal(left, right) -> bool:
