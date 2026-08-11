@@ -15,6 +15,7 @@ KNOWN_BRANDS = {
     "fiskars",
     "karcher",
     "gardena",
+    "jasper",
     "knauf",
     "soudal",
     "tytan",

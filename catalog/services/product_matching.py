@@ -38,6 +38,7 @@ RANK_EXACT_IDENTIFIER_OR_MODEL = 6
 TEXT_MATCH_NONE = 0
 TEXT_MATCH_COMPOUND = 1
 TEXT_MATCH_EXACT_WORD = 2
+COMPARABLE_NAME_TOKEN_LIMIT = 3
 
 
 @dataclass(frozen=True)
@@ -340,12 +341,8 @@ def offers_are_comparable(source: ProductOffer, candidate: ProductOffer) -> bool
         for token in source_tokens
         if is_number_token(token) or parse_dimension_token(token) or parse_measure_token(token)
     }
-    text_tokens = source_tokens - structured_tokens
-    text_tokens.discard(source_attributes.brand)
-    text_tokens.discard(source_attributes.model)
-
     if structured_tokens:
-        if not any(_token_matches(token, candidate_tokens) for token in text_tokens):
+        if not _product_names_overlap(source_attributes, candidate_attributes):
             return False
         if _structured_attributes_conflict(source_attributes, candidate_attributes):
             return False
@@ -488,6 +485,12 @@ def _structured_attributes_conflict(
     source: ProductAttributes,
     candidate: ProductAttributes,
 ) -> bool:
+    if (
+        source.model
+        and candidate.model
+        and source.base_model != candidate.base_model
+    ):
+        return True
     scalar_pairs = (
         (source.power, candidate.power),
         (source.voltage, candidate.voltage),
@@ -508,6 +511,39 @@ def _structured_attributes_conflict(
         and not source_lengths.issubset(candidate_lengths)
         and not candidate_lengths.issubset(source_lengths)
     )
+
+
+def _product_names_overlap(
+    source: ProductAttributes,
+    candidate: ProductAttributes,
+) -> bool:
+    source_tokens = _comparable_name_tokens(source)
+    candidate_tokens = _comparable_name_tokens(candidate)
+    return any(
+        text_token_matches(source_token, candidate_token)
+        or text_token_matches(candidate_token, source_token)
+        for source_token in source_tokens
+        for candidate_token in candidate_tokens
+    )
+
+
+def _comparable_name_tokens(attributes: ProductAttributes) -> list[str]:
+    ignored_tokens = set(tokenize(attributes.brand)) | set(tokenize(attributes.model))
+    result = []
+    for token in tokenize(attributes.normalized_name):
+        if (
+            token in ignored_tokens
+            or not is_meaningful_query_token(token)
+            or is_number_token(token)
+            or parse_dimension_token(token)
+            or parse_measure_token(token)
+        ):
+            continue
+        if token not in result:
+            result.append(token)
+        if len(result) >= COMPARABLE_NAME_TOKEN_LIMIT:
+            break
+    return result
 
 
 def _length_measure_tokens(attributes: ProductAttributes) -> set[str]:

@@ -1483,6 +1483,17 @@ class MainCatalogTests(TestCase):
             model="",
             price=Decimal("14.99"),
         )
+        wrong_product = self.create_offer(
+            name="Elektriline tikksaag JS-HF55-1001/HF-JS03A-55 Jasper 350W",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="160453",
+            barcode="",
+            external_id="depo-jasper-jigsaw",
+            brand="",
+            model="",
+            price=Decimal("13.69"),
+        )
         item = add_offer_to_shopping_list(user, source)
 
         result = get_best_offer(item)
@@ -1490,6 +1501,7 @@ class MainCatalogTests(TestCase):
         self.assertEqual(result.best_offer, cheaper)
         self.assertEqual(result.best_price, Decimal("14.99"))
         self.assertEqual(result.potential_saving, Decimal("4.57"))
+        self.assertNotIn(wrong_product, result.other_offers)
 
     def test_best_offer_rejects_cheaper_trimmer_with_conflicting_power(self):
         user = self.create_user()
