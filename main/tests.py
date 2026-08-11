@@ -1385,6 +1385,32 @@ class MainCatalogTests(TestCase):
         self.assertEqual(result.best_price, Decimal("105.00"))
         self.assertEqual(result.price_difference, Decimal("15.00"))
 
+    def test_best_offer_ignores_alternative_from_selected_shop(self):
+        user = self.create_user()
+        source = self.create_offer(
+            name="Makita DDF482Z",
+            barcode="4000000000199",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("120.00"),
+        )
+        same_shop_cheaper = self.create_offer(
+            name="Makita DDF482Z kampaania",
+            sku="ESPAK-DDF482-CAMPAIGN",
+            barcode="4000000000199",
+            external_id="espak-ddf482-campaign",
+            brand="Makita",
+            model="DDF482Z",
+            price=Decimal("80.00"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, source)
+        self.assertEqual(result.potential_saving, Decimal("0.00"))
+        self.assertNotIn(same_shop_cheaper, result.other_offers)
+
     def test_best_offer_compares_matching_measurements_across_distinct_shops(self):
         user = self.create_user()
         fere = Shop.objects.create(name="FERE", code="fere")
@@ -1740,6 +1766,17 @@ class MainCatalogTests(TestCase):
             model="",
             price=Decimal("3.70"),
         )
+        drain_cleaner = self.create_offer(
+            name="Kanalisatsioonipuhastusvahend Krots EWOL 5L",
+            shop=Shop.objects.create(name="DEPO 2", code="depo-2"),
+            category=None,
+            sku="DEPO-EWOL-DRAIN-CLEANER",
+            barcode="",
+            external_id="depo-ewol-drain-cleaner",
+            brand="",
+            model="",
+            price=Decimal("4.73"),
+        )
         item = add_offer_to_shopping_list(user, source)
 
         result = get_best_offer(item)
@@ -1747,6 +1784,7 @@ class MainCatalogTests(TestCase):
         self.assertEqual(result.best_offer, source)
         self.assertEqual(result.potential_saving, Decimal("0.00"))
         self.assertNotIn(glass_cleaner, result.other_offers)
+        self.assertNotIn(drain_cleaner, result.other_offers)
 
     def test_purchase_plan_saving_uses_selected_price_instead_of_highest_offer(self):
         user = self.create_user()

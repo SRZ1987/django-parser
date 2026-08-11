@@ -143,6 +143,7 @@ def get_best_offer(item):
         match.offer
         for match in candidate_matches
         if match.offer.current_price is not None
+        and match.offer.shop_id != item.source_offer.shop_id
         and offers_are_comparable(item.source_offer, match.offer)
     ]
 

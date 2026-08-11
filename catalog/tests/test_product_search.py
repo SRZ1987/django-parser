@@ -766,6 +766,12 @@ class AttributeExtractionTests(TestCase):
 
         self.assertEqual(wood_cleaner.application_tokens, frozenset({"wood"}))
         self.assertEqual(glass_cleaner.application_tokens, frozenset({"glass"}))
+        self.assertEqual(
+            extract_product_attributes(
+                "Kanalisatsioonipuhastusvahend Krots EWOL 5L"
+            ).application_tokens,
+            frozenset({"drain"}),
+        )
 
     def test_normalizes_area_light_and_rotation_units(self):
         self.assertEqual(

@@ -204,6 +204,7 @@ APPLICATION_STEMS = {
     "leather": ("nahk", "leather"),
     "textile": ("tekstiil", "textile", "fabric"),
     "vehicle": ("auto", "vehicle"),
+    "drain": ("kanalis", "kanal", "torupuhast", "drain", "sewer"),
 }
 
 
