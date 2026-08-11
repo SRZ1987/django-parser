@@ -93,6 +93,13 @@ query products($categoryId: Int, $rows: Int, $start: Int) {
         primaryBarcode
         thumbnailPictureUrl
         cardThumbnailPictureUrl
+        breadcrumb {
+          categoryBreadcrumb {
+            id
+            name
+            parentCategoryId
+          }
+        }
         prices {
           yellow { priceWithVat }
           orange { priceWithVat priceQuantity }
@@ -264,6 +271,11 @@ class DepoParser:
         for edge in products_data.get("edges") or []:
             product = edge.get("node") or {}
             product_id = self.normalize_text(product.get("id"))
+            category_breadcrumb = (
+                (product.get("breadcrumb") or {}).get("categoryBreadcrumb")
+                or []
+            )
+            product_category = category_breadcrumb[-1] if category_breadcrumb else {}
             prices = product.get("prices") or {}
             yellow = prices.get("yellow") or {}
             orange = prices.get("orange") or {}
@@ -282,8 +294,11 @@ class DepoParser:
                 "Ссылка": f"{SITE_URL}/product/{product_id}" if product_id else "",
                 "Минимальное количество для скидки": self.normalize_quantity(orange.get("priceQuantity")),
                 "SKU": product_id,
-                "Category": "",
-                "Category ID": str(category_id),
+                "Category": self.normalize_text(product_category.get("name")),
+                "Category ID": (
+                    self.normalize_text(product_category.get("id"))
+                    or str(category_id)
+                ),
                 "Description": "",
                 "Brand": "",
                 "Model": "",

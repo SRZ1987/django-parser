@@ -145,6 +145,9 @@ class ExcelImportTests(TestCase):
                         "https://img.test/depo.jpg",
                         "https://online.depo.ee/product/DEPO-1",
                         6,
+                        "DEPO-1",
+                        "Kruvid ja kinnitusvahendid",
+                        "5731",
                     ]
                 ],
             )
@@ -166,6 +169,9 @@ class ExcelImportTests(TestCase):
                         "https://img.test/depo.jpg",
                         "https://online.depo.ee/product/DEPO-1",
                         10,
+                        "DEPO-1",
+                        "Kruvid ja kinnitusvahendid",
+                        "5731",
                     ]
                 ],
             )
@@ -180,6 +186,8 @@ class ExcelImportTests(TestCase):
         self.assertIsNone(offer.sale_price)
         self.assertEqual(str(offer.quantity_price), "7.75")
         self.assertEqual(offer.quantity_price_min_quantity, 10)
+        self.assertEqual(offer.category.name, "Kruvid ja kinnitusvahendid")
+        self.assertEqual(offer.category.external_id, "5731")
         self.assertEqual(offer.price_for_quantity(9), offer.price)
         self.assertEqual(offer.price_for_quantity(10), offer.quantity_price)
         self.assertEqual(offer.price_history.count(), 2)
@@ -1031,6 +1039,15 @@ class DepoAdapterTests(TestCase):
                                     "id": "DEPO-1",
                                     "name": "DEPO construction screw",
                                     "primaryBarcode": "4740000000001",
+                                    "breadcrumb": {
+                                        "categoryBreadcrumb": [
+                                            {
+                                                "id": "22787",
+                                                "name": "Ehituspuhastusvahendid",
+                                                "parentCategoryId": 22714,
+                                            }
+                                        ]
+                                    },
                                     "prices": {
                                         "yellow": {"priceWithVat": 10},
                                         "orange": {"priceWithVat": 8.5, "priceQuantity": 6},
@@ -1049,6 +1066,33 @@ class DepoAdapterTests(TestCase):
         self.assertEqual(rows[0][depo_parser.COLUMNS[3]], 8.5)
         self.assertEqual(rows[0][depo_parser.COLUMNS[8]], 6)
         self.assertEqual(rows[0]["SKU"], "DEPO-1")
+        self.assertEqual(rows[0]["Category"], "Ehituspuhastusvahendid")
+        self.assertEqual(rows[0]["Category ID"], "22787")
+
+    def test_product_page_falls_back_to_requested_category_id_without_breadcrumb(self):
+        parser = depo_parser.DepoParser()
+        parser.post_graphql = AsyncMock(
+            return_value={
+                "data": {
+                    "products": {
+                        "pageInfo": {"totalCount": 1},
+                        "edges": [
+                            {
+                                "node": {
+                                    "id": "DEPO-2",
+                                    "name": "DEPO product",
+                                    "prices": {"yellow": {"priceWithVat": 5}},
+                                }
+                            }
+                        ],
+                    }
+                }
+            }
+        )
+
+        _total, rows = asyncio.run(parser.get_products_page(None, 8570, 0))
+
+        self.assertEqual(rows[0]["Category"], "")
         self.assertEqual(rows[0]["Category ID"], "8570")
 
     def test_first_category_pages_are_processed_by_the_worker_queue(self):

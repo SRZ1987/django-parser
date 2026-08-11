@@ -449,6 +449,31 @@ class ProductSearchTests(TestCase):
         self.assertTrue(offers_are_comparable(source, wood_cleaner))
         self.assertFalse(offers_are_comparable(source, glass_cleaner))
 
+    def test_category_application_rejects_cleaners_for_different_uses(self):
+        wood_cleaners = Category.objects.create(
+            shop=self.espak,
+            external_id="wood-cleaners",
+            name="Puidupindade puhastusvahendid",
+        )
+        drain_cleaners = Category.objects.create(
+            shop=self.depo,
+            external_id="drain-cleaners",
+            name="Kanalisatsioonitorude ja sifooni puhastusvahendid",
+        )
+        source = self.offer(
+            "Professional Cleaner 5L",
+            category=wood_cleaners,
+            sku="WOOD-CLEANER-5L",
+        )
+        drain_cleaner = self.offer(
+            "Professional Cleaner 5L",
+            shop=self.depo,
+            category=drain_cleaners,
+            sku="DRAIN-CLEANER-5L",
+        )
+
+        self.assertFalse(offers_are_comparable(source, drain_cleaner))
+
     def test_same_model_does_not_override_product_type_and_power(self):
         source = self.offer(
             "Elektrimootoriga murutrimmer QT6045 Jasper 350W/25cm",
