@@ -135,7 +135,6 @@
                                 {% else %}
                                     <a class="list-button" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">+ {% translate "Add to list" %}</a>
                                 {% endif %}
-                                <a class="store-link" href="{% url 'offer_detail' offer.pk %}">{% translate "Details" %}</a>
                                 {% if offer.product_url %}
                                     <a class="external-link" href="{% url 'store_click' offer.pk %}" target="_blank" rel="noopener noreferrer">
                                         {% translate "Go to store" %}

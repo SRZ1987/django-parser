@@ -1468,7 +1468,9 @@ class MainCatalogTests(TestCase):
         response = self.client.get(reverse("catalog"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
 
         self.assertContains(response, reverse("offer_detail", args=[offer.pk]))
-        self.assertContains(response, "Подробнее")
+        self.assertNotContains(response, "Подробнее")
+        self.assertContains(response, "+ В список")
+        self.assertContains(response, "В магазин")
 
     def test_offer_detail_active_available_offer_opens(self):
         offer = self.create_offer(name="Bosch drill")
