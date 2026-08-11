@@ -353,6 +353,12 @@ def offers_are_comparable(source: ProductOffer, candidate: ProductOffer) -> bool
     candidate_attributes = build_offer_attributes(candidate)
     if source_attributes.is_accessory != candidate_attributes.is_accessory:
         return False
+    if (
+        source_attributes.application_tokens
+        and candidate_attributes.application_tokens
+        and source_attributes.application_tokens.isdisjoint(candidate_attributes.application_tokens)
+    ):
+        return False
     if source_attributes.brand and candidate_attributes.brand and source_attributes.brand != candidate_attributes.brand:
         return False
     if (

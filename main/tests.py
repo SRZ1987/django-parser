@@ -1715,6 +1715,39 @@ class MainCatalogTests(TestCase):
         self.assertEqual(result.potential_saving, Decimal("0.00"))
         self.assertNotIn(compatible_spool, result.other_offers)
 
+    def test_best_offer_does_not_replace_wood_cleaner_with_glass_cleaner(self):
+        user = self.create_user()
+        decora = Shop.objects.create(name="Decora", code="decora")
+        source = self.create_offer(
+            name="Puhastusvahend puidule Pinotex Terrace&Wood Cleaner 5L",
+            shop=decora,
+            category=None,
+            sku="DECORA-PINOTEX-CLEANER",
+            barcode="",
+            external_id="decora-pinotex-cleaner",
+            brand="Pinotex",
+            model="",
+            price=Decimal("19.17"),
+        )
+        glass_cleaner = self.create_offer(
+            name="Klaasipuhastusvahend EWOL 5L",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-EWOL-GLASS-CLEANER",
+            barcode="",
+            external_id="depo-ewol-glass-cleaner",
+            brand="",
+            model="",
+            price=Decimal("3.70"),
+        )
+        item = add_offer_to_shopping_list(user, source)
+
+        result = get_best_offer(item)
+
+        self.assertEqual(result.best_offer, source)
+        self.assertEqual(result.potential_saving, Decimal("0.00"))
+        self.assertNotIn(glass_cleaner, result.other_offers)
+
     def test_purchase_plan_saving_uses_selected_price_instead_of_highest_offer(self):
         user = self.create_user()
         source = self.create_offer(

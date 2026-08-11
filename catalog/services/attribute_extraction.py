@@ -188,6 +188,23 @@ ACCESSORY_PREFIXES = (
     "pool",
     "trimmerijõhv",
 )
+APPLICATION_STEMS = {
+    "wood": ("puit", "puid", "wood", "timber", "terrass", "terrace"),
+    "glass": ("klaas", "aken", "akna", "glass", "window"),
+    "metal": ("metall", "metal", "teras", "steel", "raud", "iron"),
+    "concrete": ("betoon", "concrete"),
+    "stone": ("kivi", "stone", "masonry"),
+    "tile": ("plaat", "keraam", "tile"),
+    "floor": ("põrand", "parkett", "floor"),
+    "roof": ("katus", "roof"),
+    "facade": ("fassaad", "facade"),
+    "bathroom": ("vannituba", "vannitoa", "bathroom"),
+    "kitchen": ("köök", "köögi", "kitchen"),
+    "plastic": ("plast", "plastic"),
+    "leather": ("nahk", "leather"),
+    "textile": ("tekstiil", "textile", "fabric"),
+    "vehicle": ("auto", "vehicle"),
+}
 
 
 @dataclass(frozen=True)
@@ -196,6 +213,7 @@ class ProductAttributes:
     tokens: set[str] = field(default_factory=set)
     product_type_tokens: tuple[str, ...] = ()
     category_tokens: set[str] = field(default_factory=set)
+    application_tokens: frozenset[str] = frozenset()
     measurements: frozenset[str] = frozenset()
     brand: str = ""
     model: str = ""
@@ -261,6 +279,7 @@ def extract_product_attributes(
             normalized_model,
         ),
         category_tokens=category_tokens,
+        application_tokens=_extract_application_tokens(normalized_name, normalized_category),
         measurements=measurements,
         brand=normalized_brand,
         model=normalized_model,
@@ -442,4 +461,14 @@ def _is_accessory(normalized_name: str, normalized_category: str) -> bool:
     return any(
         token.endswith(ACCESSORY_SUFFIXES) or token.startswith(ACCESSORY_PREFIXES)
         for token in name_tokens
+    )
+
+
+def _extract_application_tokens(normalized_name: str, normalized_category: str) -> frozenset[str]:
+    tokens = set(tokenize(normalized_name))
+    tokens.update(tokenize(normalized_category))
+    return frozenset(
+        application
+        for application, stems in APPLICATION_STEMS.items()
+        if any(token.startswith(stem) for token in tokens for stem in stems)
     )

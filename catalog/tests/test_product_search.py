@@ -428,6 +428,27 @@ class ProductSearchTests(TestCase):
         self.assertTrue(offers_are_comparable(source, same_type_and_power))
         self.assertFalse(offers_are_comparable(source, conflicting_width))
 
+    def test_cleaners_for_different_surfaces_are_not_comparable(self):
+        source = self.offer(
+            "Puhastusvahend puidule Pinotex Terrace&Wood Cleaner 5L",
+            sku="DECORA-PINOTEX-WOOD-CLEANER",
+        )
+        wood_cleaner = self.offer(
+            "Terrassi ja puidu puhastusvahend 5 l",
+            shop=self.bauhof,
+            category=None,
+            sku="BAUHOF-WOOD-CLEANER",
+        )
+        glass_cleaner = self.offer(
+            "Klaasipuhastusvahend EWOL 5L",
+            shop=self.depo,
+            category=None,
+            sku="DEPO-GLASS-CLEANER",
+        )
+
+        self.assertTrue(offers_are_comparable(source, wood_cleaner))
+        self.assertFalse(offers_are_comparable(source, glass_cleaner))
+
     def test_same_model_does_not_override_product_type_and_power(self):
         source = self.offer(
             "Elektrimootoriga murutrimmer QT6045 Jasper 350W/25cm",
@@ -736,6 +757,15 @@ class AttributeExtractionTests(TestCase):
             attributes.measurements,
             frozenset({"3.6m3h", "10bar", "1.2kw", "230v", "75db"}),
         )
+
+    def test_extracts_product_application_surface(self):
+        wood_cleaner = extract_product_attributes(
+            "Puhastusvahend puidule Pinotex Terrace&Wood Cleaner 5L"
+        )
+        glass_cleaner = extract_product_attributes("Klaasipuhastusvahend EWOL 5L")
+
+        self.assertEqual(wood_cleaner.application_tokens, frozenset({"wood"}))
+        self.assertEqual(glass_cleaner.application_tokens, frozenset({"glass"}))
 
     def test_normalizes_area_light_and_rotation_units(self):
         self.assertEqual(
