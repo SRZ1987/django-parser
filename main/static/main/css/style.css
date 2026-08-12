@@ -918,7 +918,8 @@ select {
 }
 
 .catalog-filters select option {
-    color: #111827;
+    color: #f4f4f1;
+    background-color: #0f0f0f;
 }
 
 .filter-actions {

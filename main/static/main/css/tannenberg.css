@@ -163,6 +163,10 @@ body::before {
     background: #0f0f0f;
 }
 
+.catalog-filters select {
+    color-scheme: dark;
+}
+
 .search-panel input {
     background: transparent;
 }
