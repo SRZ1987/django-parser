@@ -36,7 +36,7 @@
 
         <label>
             <span>{% translate "Category" %}</span>
-            <select name="category">
+            <select name="category" {% if not selected_shop_code %}disabled{% endif %}>
                 <option value="">{% translate "All categories" %}</option>
                 {% for category in categories %}
                     <option value="{{ category.pk }}" {% if category.pk|stringformat:"s" == selected_category_id %}selected{% endif %}>

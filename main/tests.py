@@ -321,6 +321,18 @@ class MainCatalogTests(TestCase):
         self.assertEqual(item.source_offer, offer)
         self.assertEqual(item.product, offer.product)
 
+    def test_navigation_uses_precomputed_shopping_list_count(self):
+        user = self.create_user("navigation-count-user")
+        offer = self.create_offer(name="Navigation count offer")
+        add_offer_to_shopping_list(user, offer)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.context["shopping_list_item_count"], 1)
+        self.assertContains(response, f'{reverse("shopping_list")}">', html=False)
+        self.assertContains(response, "(1)")
+
     def test_duplicate_item_is_not_created(self):
         user = self.create_user()
         self.client.force_login(user)
@@ -1215,6 +1227,41 @@ class MainCatalogTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Каталог товаров")
+
+    def test_catalog_does_not_render_categories_until_store_is_selected(self):
+        self.create_offer(name="ESPAK drill", external_id="espak-category-offer")
+        self.create_offer(
+            name="DEPO drill",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-CATEGORY",
+            barcode="DEPO-CATEGORY-EAN",
+            external_id="depo-category-offer",
+        )
+
+        response = self.client.get(reverse("catalog"), HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(list(response.context["categories"]), [])
+        self.assertContains(response, 'select name="category" disabled', html=False)
+
+    def test_catalog_renders_only_selected_store_categories(self):
+        self.create_offer(name="ESPAK drill", external_id="espak-category-offer")
+        self.create_offer(
+            name="DEPO drill",
+            shop=self.other_shop,
+            category=self.other_category,
+            sku="DEPO-CATEGORY",
+            barcode="DEPO-CATEGORY-EAN",
+            external_id="depo-category-offer",
+        )
+
+        response = self.client.get(
+            reverse("catalog"),
+            {"shop": self.shop.code},
+            HTTP_HOST="127.0.0.1",
+        )
+
+        self.assertEqual(list(response.context["categories"]), [self.category])
 
     def test_catalog_shows_only_active_and_available_offers(self):
         visible = self.create_offer(name="Visible Bosch", external_id="visible")

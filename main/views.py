@@ -72,16 +72,9 @@ def product_offer_search_query(query):
     normalized_query = normalize_product_name(query)
     tokens = [token for token in tokenize(normalized_query) if len(token) >= 2][:6]
     phrase_query = (
-        Q(original_name__icontains=query)
-        | Q(original_name__icontains=normalized_query)
-        | Q(normalized_name__icontains=normalized_query)
-        | Q(search_text__icontains=normalized_query)
-        | Q(sku__icontains=query)
-        | Q(barcode__icontains=query)
+        Q(search_text__icontains=normalized_query)
         | Q(external_id__icontains=query)
-        | Q(product__name__icontains=query)
-        | Q(product__brand__icontains=query)
-        | Q(product__model__icontains=query)
+        | Q(product__normalized_name__icontains=normalized_query)
     )
     if not tokens:
         return phrase_query
@@ -90,13 +83,8 @@ def product_offer_search_query(query):
     for token in tokens:
         token_query &= (
             build_token_candidate_query(token)
-            | Q(original_name__icontains=token)
-            | Q(sku__icontains=token)
-            | Q(barcode__icontains=token)
             | Q(external_id__icontains=token)
-            | Q(product__name__icontains=token)
-            | Q(product__brand__icontains=token)
-            | Q(product__model__icontains=token)
+            | Q(product__normalized_name__icontains=token)
         )
     return phrase_query | token_query
 
@@ -293,6 +281,16 @@ def catalog_view(request):
 
     shops = Shop.objects.filter(is_active=True).order_by("name")
     selected_shop = shops.filter(code=shop_code).first() if shop_code else None
+    selected_category = None
+    if category_id.isdigit():
+        selected_category = (
+            active_categories(selected_shop)
+            .select_related("shop")
+            .filter(pk=int(category_id))
+            .first()
+        )
+        if selected_category and selected_shop is None:
+            selected_shop = selected_category.shop
 
     offers = available_offers().select_related("shop", "category", "product")
 
@@ -302,12 +300,13 @@ def catalog_view(request):
     if selected_shop:
         offers = offers.filter(shop=selected_shop)
 
-    categories = active_categories(selected_shop)
-    selected_category = None
-    if category_id.isdigit():
-        selected_category = categories.filter(pk=int(category_id)).first()
-        if selected_category:
-            offers = offers.filter(category=selected_category)
+    if selected_shop:
+        categories = active_categories(selected_shop)
+    else:
+        categories = Category.objects.none()
+
+    if selected_category:
+        offers = offers.filter(category=selected_category)
 
     offers = apply_catalog_sorting(offers, sort, query)
 
