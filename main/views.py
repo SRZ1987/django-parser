@@ -9,7 +9,6 @@ from django.db.models import Case, Count, DecimalField, F, IntegerField, Q, Sum,
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_str
@@ -417,22 +416,6 @@ def statistics_dashboard(request):
     )
 
 
-@staff_member_required(login_url="admin:login")
-@require_GET
-def statistics_data(request):
-    context = build_analytics_dashboard()
-    return JsonResponse(
-        {
-            "html": render_to_string(
-                "main/includes/statistics_live.html",
-                context,
-                request=request,
-            ),
-            "updated_at": timezone.localtime().isoformat(),
-        }
-    )
-
-
 @login_required
 def shopping_list(request):
     cleanup_group_purchases()
@@ -450,13 +433,6 @@ def shopping_list(request):
 def update_shopping_list_price_alerts(request):
     user_list = get_or_create_shopping_list(request.user)
     set_shopping_list_price_alerts(user_list, request.POST.get("enabled") == "1")
-    if is_ajax_request(request):
-        return shopping_list_json_response(
-            request,
-            user_list,
-            message=_("Notification settings saved."),
-            enabled=user_list.price_alerts_enabled,
-        )
     return redirect("shopping_list")
 
 
@@ -488,23 +464,14 @@ def add_to_shopping_list(request, offer_pk):
         pk=offer_pk,
     )
     if request.method == "POST":
-        item = add_offer_to_shopping_list(request.user, offer)
-        if is_ajax_request(request):
-            return shopping_list_json_response(
-                request,
-                item.shopping_list,
-                message=_("Product added to the list."),
-                offer_id=offer.pk,
-                in_list_label=_("In list"),
-            )
+        add_offer_to_shopping_list(request.user, offer)
     return redirect(get_safe_next_url(request, request.POST.get("next") or request.GET.get("next")) or "shopping_list")
 
 
 @login_required
 def remove_from_shopping_list(request, item_pk):
-    user_list = get_or_create_shopping_list(request.user)
     if request.method == "POST":
-        item = get_object_or_404(ShoppingListItem, pk=item_pk, shopping_list=user_list)
+        item = get_object_or_404(ShoppingListItem, pk=item_pk, shopping_list__user=request.user)
         record_shopping_list_event(
             request.user,
             item.source_offer,
@@ -513,19 +480,12 @@ def remove_from_shopping_list(request, item_pk):
         )
         detach_group_purchase_membership(item)
         item.delete()
-        if is_ajax_request(request):
-            return shopping_list_json_response(
-                request,
-                user_list,
-                message=_("Product removed from the list."),
-            )
     return redirect("shopping_list")
 
 
 @login_required
 @require_POST
 def clear_shopping_list(request):
-    user_list = get_or_create_shopping_list(request.user)
     items = list(
         ShoppingListItem.objects.filter(shopping_list__user=request.user).select_related(
             "source_offer",
@@ -552,12 +512,6 @@ def clear_shopping_list(request):
     ShoppingListItem.objects.filter(pk__in=[item.pk for item in items]).delete()
     for group_id in set(group_ids):
         close_group_if_empty(group_id)
-    if is_ajax_request(request):
-        return shopping_list_json_response(
-            request,
-            user_list,
-            message=_("Shopping list cleared."),
-        )
     return redirect("shopping_list")
 
 
@@ -707,18 +661,9 @@ def replace_with_best_offer(request, item_pk):
         pk=item_pk,
         shopping_list__user=request.user,
     )
-    user_list = item.shopping_list
     result = get_best_offer(item)
-    replaced = False
     if result.best_offer and result.best_offer.pk != item.source_offer_id and result.potential_saving > 0:
         replace_shopping_list_offer(item, result.best_offer)
-        replaced = True
-    if is_ajax_request(request):
-        return shopping_list_json_response(
-            request,
-            user_list,
-            message=_("Product replaced.") if replaced else _("Shopping list updated."),
-        )
     return redirect("shopping_list")
 
 
@@ -742,13 +687,6 @@ def toggle_shopping_list_item(request, item_pk):
         ),
         item.name,
     )
-    if is_ajax_request(request):
-        return shopping_list_json_response(
-            request,
-            item.shopping_list,
-            message=_("Shopping list updated."),
-            is_purchased=item.is_purchased,
-        )
     return redirect("shopping_list")
 
 
@@ -811,28 +749,6 @@ def build_shopping_list_context(request, user_list, *, editable):
         "email_share_url": f"mailto:?{email_query}",
         "messenger_share_links": messenger_share_links,
     }
-
-
-def is_ajax_request(request):
-    return request.headers.get("x-requested-with") == "XMLHttpRequest"
-
-
-def shopping_list_json_response(request, user_list, *, message, **extra):
-    item_count = user_list.items.count()
-    payload = {
-        "ok": True,
-        "message": message,
-        "item_count": item_count,
-        **extra,
-    }
-    if request.headers.get("x-shopping-list-fragment") == "1":
-        context = build_shopping_list_context(request, user_list, editable=True)
-        payload["shopping_list_html"] = render_to_string(
-            "main/includes/shopping_list_live.html",
-            context,
-            request=request,
-        )
-    return JsonResponse(payload)
 
 
 def get_safe_next_url(request, next_url):

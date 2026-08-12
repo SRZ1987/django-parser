@@ -321,41 +321,6 @@ class MainCatalogTests(TestCase):
         self.assertEqual(item.source_offer, offer)
         self.assertEqual(item.product, offer.product)
 
-    def test_ajax_add_to_shopping_list_returns_json_without_redirect(self):
-        user = self.create_user("ajax-add-user")
-        self.client.force_login(user)
-        offer = self.create_offer(name="Ajax Makita drill")
-
-        response = self.client.post(
-            reverse("add_to_shopping_list", args=[offer.pk]),
-            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "application/json")
-        self.assertEqual(response.json()["item_count"], 1)
-        self.assertEqual(response.json()["offer_id"], offer.pk)
-        self.assertTrue(ShoppingListItem.objects.filter(shopping_list__user=user, source_offer=offer).exists())
-
-    def test_ajax_remove_returns_refreshed_shopping_list_fragment(self):
-        user = self.create_user("ajax-remove-user")
-        offer = self.create_offer(name="Ajax removable drill")
-        item = add_offer_to_shopping_list(user, offer)
-        self.client.force_login(user)
-
-        response = self.client.post(
-            reverse("remove_from_shopping_list", args=[item.pk]),
-            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
-            HTTP_X_SHOPPING_LIST_FRAGMENT="1",
-        )
-
-        payload = response.json()
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(payload["item_count"], 0)
-        self.assertIn("shopping_list_html", payload)
-        self.assertIn("empty-state", payload["shopping_list_html"])
-        self.assertFalse(ShoppingListItem.objects.filter(pk=item.pk).exists())
-
     def test_duplicate_item_is_not_created(self):
         user = self.create_user()
         self.client.force_login(user)
@@ -996,29 +961,6 @@ class MainCatalogTests(TestCase):
         self.assertEqual(staff_response.status_code, 200)
         self.assertTemplateUsed(staff_response, "main/statistics_dashboard.html")
         self.assertContains(staff_home, reverse("statistics_dashboard"))
-
-    def test_statistics_data_refresh_is_staff_only_and_not_counted_as_pageview(self):
-        regular_user = self.create_user("statistics-api-regular")
-        self.client.force_login(regular_user)
-        regular_response = self.client.get(reverse("statistics_data"))
-        self.assertEqual(regular_response.status_code, 302)
-
-        staff_user = self.create_user("statistics-api-staff")
-        staff_user.is_staff = True
-        staff_user.save(update_fields=["is_staff"])
-        self.client.force_login(staff_user)
-        visits_before = DailySiteVisit.objects.count()
-
-        response = self.client.get(
-            reverse("statistics_data"),
-            HTTP_USER_AGENT="Mozilla/5.0 Test Browser",
-            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("statistics-summary", response.json()["html"])
-        self.assertIn("updated_at", response.json())
-        self.assertEqual(DailySiteVisit.objects.count(), visits_before)
 
     def test_shared_shopping_list_is_public_and_read_only(self):
         user = self.create_user("private-share-owner")

@@ -7,12 +7,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Tannenberg{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'main/css/style.css' %}?v=9">
-    <link rel="stylesheet" href="{% static 'main/css/tannenberg.css' %}?v=7">
+    <link rel="stylesheet" href="{% static 'main/css/tannenberg.css' %}?v=6">
     <link rel="stylesheet" href="{% static 'main/css/barcode-scanner.css' %}?v=2">
     <script src="{% static 'main/js/menu.js' %}?v=1" defer></script>
     <script src="{% static 'main/js/search-suggestions.js' %}?v=3" defer></script>
     <script src="{% static 'main/js/barcode-scanner.js' %}?v=2" type="module"></script>
-    <script src="{% static 'main/js/shopping-list-live.js' %}?v=3" type="module"></script>
     {% block extra_scripts %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -29,9 +28,7 @@
                 <a class="nav-link" href="{% url 'home' %}">{% translate "Home" %}</a>
                 <a class="nav-link" href="{% url 'catalog' %}">{% translate "Catalog" %}</a>
                 {% if user.is_authenticated %}
-                    <a class="nav-link" href="{% url 'shopping_list' %}" data-shopping-list-nav>
-                        {% translate "My list" %} <span data-shopping-list-count>({% if user.shopping_list %}{{ user.shopping_list.items.count }}{% else %}0{% endif %})</span>
-                    </a>
+                    <a class="nav-link" href="{% url 'shopping_list' %}">{% translate "My list" %}{% if user.shopping_list %} ({{ user.shopping_list.items.count }}){% endif %}</a>
                     <a class="nav-link" href="{% url 'group_purchase_list' %}">{% translate "Group purchases" %}</a>
                     {% if user.is_staff %}
                         <a class="nav-link" href="{% url 'statistics_dashboard' %}">{% translate "Statistics" %}</a>
@@ -72,15 +69,6 @@
     </header>
 
     {% block content %}{% endblock %}
-    <div
-        class="site-toast"
-        role="status"
-        aria-live="polite"
-        data-site-toast
-        data-error-message="{% translate 'Could not complete the action. Please try again.' %}"
-        data-clear-confirm="{% translate 'Remove all products from the list?' %}"
-        hidden
-    ></div>
     {% include "main/includes/barcode_scanner.html" %}
 </body>
 </html>
