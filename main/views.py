@@ -71,22 +71,17 @@ CATALOG_SORT_OPTIONS = {
 def product_offer_search_query(query):
     normalized_query = normalize_product_name(query)
     tokens = [token for token in tokenize(normalized_query) if len(token) >= 2][:6]
-    phrase_query = (
-        Q(search_text__icontains=normalized_query)
-        | Q(external_id__icontains=query)
-        | Q(product__normalized_name__icontains=normalized_query)
-    )
+    identifier_query = Q(external_id__icontains=query)
     if not tokens:
-        return phrase_query
+        return Q(search_text__icontains=normalized_query) | identifier_query
 
     token_query = Q()
     for token in tokens:
         token_query &= (
             build_token_candidate_query(token)
             | Q(external_id__icontains=token)
-            | Q(product__normalized_name__icontains=token)
         )
-    return phrase_query | token_query
+    return identifier_query | token_query
 
 
 def available_offers():
