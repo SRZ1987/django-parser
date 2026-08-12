@@ -301,6 +301,50 @@ body::before {
     background: #272727;
 }
 
+.item-quantity-form {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.item-quantity-form label,
+.plan-item-quantity {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.item-quantity-form input {
+    width: 72px;
+    min-height: 34px;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #f4f4f1;
+    background: #0f0f0f;
+    font: inherit;
+}
+
+.item-quantity-form button {
+    min-height: 34px;
+    padding: 6px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 6px;
+    color: #ededeb;
+    background: #202020;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.item-quantity-form button:hover,
+.item-quantity-form button:focus-visible {
+    border-color: #fff;
+    background: #292929;
+}
+
 .price-comparison,
 .quantity-price {
     color: #51514e;

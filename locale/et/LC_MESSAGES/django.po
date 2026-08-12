@@ -712,6 +712,24 @@ msgstr "tk"
 msgid "pcs."
 msgstr "tk"
 
+msgid "Quantity"
+msgstr "Kogus"
+
+msgid "Update"
+msgstr "Uuenda"
+
+msgid "Quantity: %(quantity)s pcs."
+msgstr "Kogus: %(quantity)s tk"
+
+msgid "Your quantity: %(quantity)s pcs."
+msgstr "Sinu kogus: %(quantity)s tk"
+
+msgid "Regular total: %(total)s %(currency)s"
+msgstr "Tavahinnaga kokku: %(total)s %(currency)s"
+
+msgid "At group price: %(total)s %(currency)s"
+msgstr "Grupihinnaga kokku: %(total)s %(currency)s"
+
 msgid "%(count)s participant"
 msgid_plural "%(count)s participants"
 msgstr[0] "%(count)s osaleja"

@@ -33,9 +33,19 @@
                                         <span class="plan-offer-label">{% blocktranslate with shop=source.shop.name %}Selected at {{ shop }}{% endblocktranslate %}</span>
                                         <h4>{{ item.name }}</h4>
                                         {% if row.source_price %}
-                                            <strong class="plan-offer-price">{{ row.source_price }} {{ source.currency }}</strong>
+                                            <strong class="plan-offer-price">{{ row.source_price }} {{ source.currency }}/{% translate "pc." %}</strong>
                                         {% else %}
                                             <span class="plan-price-missing">{% translate "Price not specified" %}</span>
+                                        {% endif %}
+                                        {% if editable %}
+                                            <form class="item-quantity-form" method="post" action="{% url 'update_shopping_list_item_quantity' item.pk %}">
+                                                {% csrf_token %}
+                                                <label for="quantity-{{ item.pk }}">{% translate "Quantity" %}</label>
+                                                <input id="quantity-{{ item.pk }}" name="quantity" type="number" min="1" max="9999" step="1" value="{{ item.quantity }}" inputmode="numeric" required>
+                                                <button type="submit">{% translate "Update" %}</button>
+                                            </form>
+                                        {% else %}
+                                            <span class="plan-item-quantity">{% blocktranslate with quantity=item.quantity %}Quantity: {{ quantity }} pcs.{% endblocktranslate %}</span>
                                         {% endif %}
                                         {% if source.product_url %}
                                             <a class="plan-text-link" href="{% url 'store_click' source.pk %}" target="_blank" rel="noopener noreferrer">{% blocktranslate with shop=source.shop.name %}Open at {{ shop }}{% endblocktranslate %}</a>
@@ -67,7 +77,7 @@
                                         <div class="plan-offer-info">
                                             <span class="plan-offer-label">{% blocktranslate with shop=offer.shop.name saving=row.potential_saving currency=offer.currency %}{{ saving }} {{ currency }} cheaper at {{ shop }}{% endblocktranslate %}</span>
                                             <h4>{{ offer.original_name }}</h4>
-                                            <strong class="plan-offer-price">{{ row.best_price }} {{ offer.currency }}</strong>
+                                            <strong class="plan-offer-price">{{ row.best_price }} {{ offer.currency }}/{% translate "pc." %}</strong>
                                             <div class="plan-offer-actions">
                                                 {% if offer.product_url %}
                                                     <a class="plan-text-link" href="{% url 'store_click' offer.pk %}" target="_blank" rel="noopener noreferrer">{% blocktranslate with shop=offer.shop.name %}Open at {{ shop }}{% endblocktranslate %}</a>
@@ -96,13 +106,16 @@
 
                                 <div class="purchase-row-total">
                                     <span>{% translate "Now" %}</span>
-                                    {% if row.source_price %}
-                                        <strong>{{ row.source_price }} {{ source.currency }}</strong>
+                                    {% if row.source_total %}
+                                        <strong>{{ row.source_total }} {{ source.currency }}</strong>
+                                        {% if item.quantity > 1 %}
+                                            <small>{{ item.quantity }} × {{ row.source_price }} {{ source.currency }}</small>
+                                        {% endif %}
                                     {% else %}
                                         <strong>—</strong>
                                     {% endif %}
                                     {% if offer and row.potential_saving %}
-                                        <small>{% blocktranslate with price=row.best_price currency=offer.currency %}After replacement {{ price }} {{ currency }}{% endblocktranslate %}</small>
+                                        <small>{% blocktranslate with price=row.best_total currency=offer.currency %}After replacement {{ price }} {{ currency }}{% endblocktranslate %}</small>
                                     {% endif %}
                                     {% if editable %}
                                         <div class="purchase-row-controls">

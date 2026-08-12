@@ -320,6 +320,65 @@ class MainCatalogTests(TestCase):
         item = ShoppingListItem.objects.get(shopping_list__user=user)
         self.assertEqual(item.source_offer, offer)
         self.assertEqual(item.product, offer.product)
+        self.assertEqual(item.quantity, 1)
+
+    def test_user_can_update_item_quantity(self):
+        user = self.create_user("quantity-owner")
+        offer = self.create_offer(name="Quantity product")
+        item = add_offer_to_shopping_list(user, offer)
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("update_shopping_list_item_quantity", args=[item.pk]),
+            {"quantity": "4"},
+        )
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        item.refresh_from_db()
+        self.assertEqual(item.quantity, 4)
+
+        list_response = self.client.get(reverse("shopping_list"), HTTP_ACCEPT_LANGUAGE="en")
+        self.assertContains(
+            list_response,
+            reverse("update_shopping_list_item_quantity", args=[item.pk]),
+        )
+        self.assertContains(list_response, 'name="quantity"', html=False)
+        self.assertContains(list_response, 'value="4"', html=False)
+
+        print_response = self.client.get(
+            reverse("print_shopping_list", args=[user.shopping_list.share_token]),
+            HTTP_ACCEPT_LANGUAGE="en",
+        )
+        self.assertContains(print_response, "4 pcs.")
+
+    def test_invalid_item_quantity_is_not_saved(self):
+        user = self.create_user("invalid-quantity-owner")
+        item = add_offer_to_shopping_list(user, self.create_offer(name="Quantity limits"))
+        self.client.force_login(user)
+
+        for value in ("0", "10000", "not-a-number"):
+            with self.subTest(value=value):
+                self.client.post(
+                    reverse("update_shopping_list_item_quantity", args=[item.pk]),
+                    {"quantity": value},
+                )
+                item.refresh_from_db()
+                self.assertEqual(item.quantity, 1)
+
+    def test_user_cannot_update_another_users_item_quantity(self):
+        owner = self.create_user("quantity-private-owner")
+        other = self.create_user("quantity-private-other")
+        item = add_offer_to_shopping_list(owner, self.create_offer(name="Private quantity"))
+        self.client.force_login(other)
+
+        response = self.client.post(
+            reverse("update_shopping_list_item_quantity", args=[item.pk]),
+            {"quantity": "3"},
+        )
+
+        self.assertEqual(response.status_code, 404)
+        item.refresh_from_db()
+        self.assertEqual(item.quantity, 1)
 
     def test_navigation_uses_precomputed_shopping_list_count(self):
         user = self.create_user("navigation-count-user")
@@ -377,6 +436,33 @@ class MainCatalogTests(TestCase):
         self.assertEqual(group.target_quantity, 3)
         self.assertEqual(group.quantity_price, Decimal("8.50"))
         self.assertEqual(membership.shopping_list_item, item)
+        self.assertEqual(membership.quantity, 1)
+
+    def test_quantity_update_is_reflected_in_group_purchase(self):
+        user = self.create_user("group-quantity-owner")
+        offer = self.create_offer(
+            name="DEPO quantity group product",
+            price=Decimal("10.00"),
+            quantity_price=Decimal("8.00"),
+            quantity_price_min_quantity=3,
+        )
+        item = add_offer_to_shopping_list(user, offer)
+        group = GroupPurchase.objects.get(offer=offer, status=GroupPurchase.Status.OPEN)
+        self.client.force_login(user)
+
+        self.client.post(
+            reverse("update_shopping_list_item_quantity", args=[item.pk]),
+            {"quantity": "4"},
+        )
+
+        membership = GroupPurchaseMember.objects.get(group=group, user=user)
+        self.assertEqual(membership.quantity, 4)
+        response = self.client.get(reverse("group_purchase_list"))
+        rendered_group = response.context["page_obj"].object_list[0]
+        self.assertEqual(rendered_group.quantity_count, 4)
+        self.assertEqual(rendered_group.user_quantity, 4)
+        self.assertEqual(rendered_group.regular_total, Decimal("40.00"))
+        self.assertEqual(rendered_group.group_total, Decimal("32.00"))
 
     def test_group_purchase_is_bound_to_exact_store_offer(self):
         first = self.create_user("exact-offer-first")
@@ -1080,6 +1166,28 @@ class MainCatalogTests(TestCase):
         self.assertEqual(len(groups["depo"].rows), 1)
         self.assertEqual(groups["depo"].selected_total, Decimal("5.00"))
 
+    def test_purchase_plan_uses_quantity_and_quantity_price(self):
+        user = self.create_user("quantity-plan-owner")
+        offer = self.create_offer(
+            name="Quantity-priced screws",
+            price=Decimal("10.00"),
+            quantity_price=Decimal("8.00"),
+            quantity_price_min_quantity=3,
+        )
+        item = add_offer_to_shopping_list(user, offer)
+        item.quantity = 3
+        item.save(update_fields=["quantity"])
+
+        plan = build_purchase_plan(user.shopping_list)
+        row = plan.rows[0]
+
+        self.assertEqual(row.source_price, Decimal("8.00"))
+        self.assertEqual(row.source_total, Decimal("24.00"))
+        self.assertEqual(row.best_total, Decimal("24.00"))
+        self.assertEqual(plan.total_source_cost, Decimal("24.00"))
+        self.assertEqual(plan.total_best_cost, Decimal("24.00"))
+        self.assertEqual(plan.groups[0].selected_total, Decimal("24.00"))
+
     def test_user_can_toggle_purchased_state(self):
         user = self.create_user()
         item = add_offer_to_shopping_list(user, self.create_offer(name="Makita drill"))
@@ -1213,13 +1321,18 @@ class MainCatalogTests(TestCase):
         )
         source_item = add_offer_to_shopping_list(user, source)
         existing_item = add_offer_to_shopping_list(user, cheaper)
+        source_item.quantity = 2
+        source_item.save(update_fields=["quantity"])
+        existing_item.quantity = 3
+        existing_item.save(update_fields=["quantity"])
         self.client.force_login(user)
 
         response = self.client.post(reverse("replace_with_best_offer", args=[source_item.pk]))
 
         self.assertRedirects(response, reverse("shopping_list"))
         self.assertFalse(ShoppingListItem.objects.filter(pk=source_item.pk).exists())
-        self.assertTrue(ShoppingListItem.objects.filter(pk=existing_item.pk).exists())
+        existing_item.refresh_from_db()
+        self.assertEqual(existing_item.quantity, 5)
         self.assertEqual(ShoppingListItem.objects.filter(shopping_list__user=user).count(), 1)
 
     def test_catalog_page_opens(self):

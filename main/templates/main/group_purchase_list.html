@@ -43,6 +43,11 @@
                         <div class="group-product-progress">
                             <strong>{% blocktranslate with current=group.quantity_count target=group.target_quantity %}{{ current }} of {{ target }} pcs.{% endblocktranslate %}</strong>
                             <span>{% blocktranslate count count=group.participant_count %}{{ count }} participant{% plural %}{{ count }} participants{% endblocktranslate %}</span>
+                            {% if group.user_is_member %}
+                                <span>{% blocktranslate with quantity=group.user_quantity %}Your quantity: {{ quantity }} pcs.{% endblocktranslate %}</span>
+                            {% endif %}
+                            <span>{% blocktranslate with total=group.regular_total currency=offer.currency %}Regular total: {{ total }} {{ currency }}{% endblocktranslate %}</span>
+                            <span>{% blocktranslate with total=group.group_total currency=offer.currency %}At group price: {{ total }} {{ currency }}{% endblocktranslate %}</span>
                             {% if group.quantity_reached %}
                                 <span class="group-ready-state">{% translate "Target quantity reached" %}</span>
                             {% else %}

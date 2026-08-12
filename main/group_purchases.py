@@ -130,14 +130,23 @@ def ensure_group_purchase_membership(item):
     membership, created = GroupPurchaseMember.objects.get_or_create(
         group=group,
         user=item.shopping_list.user,
-        defaults={"shopping_list_item": item},
+        defaults={"shopping_list_item": item, "quantity": item.quantity},
     )
+    membership_fields = []
     if membership.shopping_list_item_id != item.pk:
         membership.shopping_list_item = item
-        membership.save(update_fields=["shopping_list_item"])
-    if created:
+        membership_fields.append("shopping_list_item")
+    if membership.quantity != item.quantity:
+        membership.quantity = item.quantity
+        membership_fields.append("quantity")
+    if membership_fields:
+        membership.save(update_fields=membership_fields)
         group.last_activity_at = now
         fields_to_update.append("last_activity_at")
+    if created:
+        group.last_activity_at = now
+        if "last_activity_at" not in fields_to_update:
+            fields_to_update.append("last_activity_at")
     if fields_to_update:
         group.save(update_fields=[*fields_to_update, "updated_at"])
     return membership

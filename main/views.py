@@ -5,6 +5,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Case, Count, DecimalField, F, IntegerField, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
@@ -34,6 +35,7 @@ from .group_purchases import (
     cleanup_group_purchases,
     close_group_if_empty,
     detach_group_purchase_membership,
+    ensure_group_purchase_membership,
     sync_shopping_list_group_memberships,
     touch_group_purchase,
 )
@@ -479,6 +481,29 @@ def remove_from_shopping_list(request, item_pk):
 
 @login_required
 @require_POST
+@transaction.atomic
+def update_shopping_list_item_quantity(request, item_pk):
+    item = get_object_or_404(
+        ShoppingListItem.objects.select_related("shopping_list", "source_offer"),
+        pk=item_pk,
+        shopping_list__user=request.user,
+    )
+    try:
+        quantity = int(request.POST.get("quantity", ""))
+    except (TypeError, ValueError):
+        return redirect("shopping_list")
+    if not 1 <= quantity <= 9999:
+        return redirect("shopping_list")
+
+    if item.quantity != quantity:
+        item.quantity = quantity
+        item.save(update_fields=["quantity"])
+        ensure_group_purchase_membership(item)
+    return redirect("shopping_list")
+
+
+@login_required
+@require_POST
 def clear_shopping_list(request):
     items = list(
         ShoppingListItem.objects.filter(shopping_list__user=request.user).select_related(
@@ -526,16 +551,19 @@ def group_purchase_list(request):
         .order_by("-last_activity_at", "offer__original_name", "id")
     )
     page_obj = Paginator(groups, 24).get_page(request.GET.get("page"))
-    member_group_ids = set(
+    member_quantities = dict(
         GroupPurchaseMember.objects.filter(
             user=request.user,
             group_id__in=[group.pk for group in page_obj.object_list],
-        ).values_list("group_id", flat=True)
+        ).values_list("group_id", "quantity")
     )
     for group in page_obj.object_list:
-        group.user_is_member = group.pk in member_group_ids
+        group.user_is_member = group.pk in member_quantities
+        group.user_quantity = member_quantities.get(group.pk, 0)
         group.remaining_quantity = max(group.target_quantity - group.quantity_count, 0)
         group.quantity_reached = group.quantity_count >= group.target_quantity
+        group.regular_total = group.offer.current_price * group.quantity_count
+        group.group_total = group.quantity_price * group.quantity_count
 
     return render(
         request,
@@ -575,7 +603,7 @@ def group_purchase_chat(request, group_pk):
         ),
         pk=group_pk,
     )
-    get_object_or_404(GroupPurchaseMember, group=group, user=request.user)
+    current_membership = get_object_or_404(GroupPurchaseMember, group=group, user=request.user)
 
     chat_error = ""
     if request.method == "POST":
@@ -609,6 +637,9 @@ def group_purchase_chat(request, group_pk):
             "quantity_count": quantity_count,
             "remaining_quantity": max(group.target_quantity - quantity_count, 0),
             "quantity_reached": quantity_count >= group.target_quantity,
+            "current_membership": current_membership,
+            "regular_total": group.offer.current_price * quantity_count,
+            "group_total": group.quantity_price * quantity_count,
             "chat_error": chat_error,
         },
     )

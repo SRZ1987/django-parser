@@ -1,6 +1,7 @@
 import uuid
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -42,6 +43,10 @@ class ShoppingListItem(models.Model):
         on_delete=models.CASCADE,
     )
     name = models.CharField(max_length=500)
+    quantity = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(9999)],
+    )
     is_purchased = models.BooleanField(default=False)
     price_alert_source_price = models.DecimalField(
         max_digits=12,
@@ -70,6 +75,10 @@ class ShoppingListItem(models.Model):
             models.UniqueConstraint(
                 fields=["shopping_list", "source_offer"],
                 name="unique_shopping_list_source_offer",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=1, quantity__lte=9999),
+                name="shopping_list_item_quantity_range",
             ),
         ]
         ordering = ["name", "id"]

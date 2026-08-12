@@ -48,14 +48,16 @@
                                     <dl>
                                         <div><dt>SKU</dt><dd>{{ source.sku|default:"—" }}</dd></div>
                                         <div><dt>{% translate "Barcode" %}</dt><dd>{{ source.barcode|default:"—" }}</dd></div>
+                                        <div><dt>{% translate "Quantity" %}</dt><dd>{{ item.quantity }} {% translate "pcs." %}</dd></div>
                                     </dl>
                                     {% if offer and row.potential_saving %}
                                         <p>{% blocktranslate with shop=offer.shop.name price=row.best_price saving=row.potential_saving currency=offer.currency %}Cheaper at {{ shop }}: {{ price }} {{ currency }} (−{{ saving }} {{ currency }}){% endblocktranslate %}</p>
                                     {% endif %}
                                 </div>
                                 <div class="print-price">
-                                    {% if row.source_price %}
-                                        <strong>{{ row.source_price }} {{ source.currency }}</strong>
+                                    {% if row.source_total %}
+                                        <strong>{{ row.source_total }} {{ source.currency }}</strong>
+                                        {% if item.quantity > 1 %}<small>{{ item.quantity }} × {{ row.source_price }} {{ source.currency }}</small>{% endif %}
                                     {% else %}
                                         <span>{% translate "Price not specified" %}</span>
                                     {% endif %}

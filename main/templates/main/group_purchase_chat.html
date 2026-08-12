@@ -28,6 +28,9 @@
         <div class="group-chat-deal">
             <span>{% translate "Group price" %}</span>
             <strong>{{ group.quantity_price }} {{ group.offer.currency }}/{% translate "pc." %}</strong>
+            <span>{% blocktranslate with quantity=current_membership.quantity %}Your quantity: {{ quantity }} pcs.{% endblocktranslate %}</span>
+            <span>{% blocktranslate with total=regular_total currency=group.offer.currency %}Regular total: {{ total }} {{ currency }}{% endblocktranslate %}</span>
+            <span>{% blocktranslate with total=group_total currency=group.offer.currency %}At group price: {{ total }} {{ currency }}{% endblocktranslate %}</span>
             {% if quantity_reached %}
                 <span class="group-ready-state">{% blocktranslate with current=quantity_count target=group.target_quantity %}Collected {{ current }} of {{ target }} pcs.{% endblocktranslate %}</span>
             {% else %}

@@ -25,6 +25,8 @@ class BestOfferResult:
     highest_price: Decimal | None = None
     price_difference: Decimal | None = None
     potential_saving: Decimal = Decimal("0.00")
+    source_total: Decimal | None = None
+    best_total: Decimal | None = None
     group_purchase: GroupPurchase | None = None
     group_participant_count: int = 0
     group_quantity_count: int = 0
@@ -96,9 +98,12 @@ def replace_shopping_list_offer(item, offer):
         .first()
     )
     if existing_item:
+        existing_item.quantity = min(9999, existing_item.quantity + item.quantity)
+        fields_to_update = ["quantity"]
         if item.is_purchased and not existing_item.is_purchased:
             existing_item.is_purchased = True
-            existing_item.save(update_fields=["is_purchased"])
+            fields_to_update.append("is_purchased")
+        existing_item.save(update_fields=fields_to_update)
         item.delete()
         _ensure_group_membership_safely(existing_item)
         record_shopping_list_event(
@@ -151,7 +156,7 @@ def get_best_offer(item):
     offers = [
         match.offer
         for match in candidate_matches
-        if match.offer.current_price is not None
+        if match.offer.price_for_quantity(item.quantity) is not None
         and match.offer.shop_id != item.source_offer.shop_id
         and offers_are_comparable(item.source_offer, match.offer)
     ]
@@ -168,12 +173,22 @@ def get_best_offer(item):
             group_quantity_count=quantity_count,
         )
 
-    offers = sorted(offers, key=lambda offer: (offer.current_price, offer.shop.name, offer.original_name))
+    offers = sorted(
+        offers,
+        key=lambda offer: (
+            offer.price_for_quantity(item.quantity),
+            offer.shop.name,
+            offer.original_name,
+        ),
+    )
     best_offer = offers[0]
-    highest_price = max(offer.current_price for offer in offers)
-    best_price = best_offer.current_price
-    source_price = item.source_offer.current_price
-    potential_saving = max(Decimal("0.00"), (source_price or best_price) - best_price)
+    offer_prices = [offer.price_for_quantity(item.quantity) for offer in offers]
+    highest_price = max(offer_prices)
+    best_price = best_offer.price_for_quantity(item.quantity)
+    source_price = item.source_offer.price_for_quantity(item.quantity)
+    source_total = (source_price or best_price) * item.quantity
+    best_total = best_price * item.quantity
+    potential_saving = max(Decimal("0.00"), source_total - best_total)
     other_offers_by_shop = {}
     for offer in offers[1:]:
         if offer.shop_id != best_offer.shop_id:
@@ -188,6 +203,8 @@ def get_best_offer(item):
         highest_price=highest_price,
         price_difference=highest_price - best_price,
         potential_saving=potential_saving,
+        source_total=source_total,
+        best_total=best_total,
         group_purchase=group_purchase,
         group_participant_count=participant_count,
         group_quantity_count=quantity_count,
@@ -217,10 +234,10 @@ def build_purchase_plan(shopping_list):
         grouped_rows.setdefault(row.item.source_offer.shop, []).append(row)
         if row.best_offer is None or row.best_price is None:
             continue
-        total_best_cost += row.best_price
-        total_source_cost += row.source_price or row.best_price
+        total_best_cost += row.best_total
+        total_source_cost += row.source_total
         if not row.item.is_purchased:
-            remaining_best_cost += row.best_price
+            remaining_best_cost += row.best_total
 
     groups = []
     for shop, shop_rows in grouped_rows.items():
@@ -229,7 +246,7 @@ def build_purchase_plan(shopping_list):
                 shop=shop,
                 rows=shop_rows,
                 selected_total=sum(
-                    (row.source_price or row.best_price or Decimal("0.00") for row in shop_rows),
+                    (row.source_total or Decimal("0.00") for row in shop_rows),
                     Decimal("0.00"),
                 ),
             )

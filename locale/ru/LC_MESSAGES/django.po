@@ -712,6 +712,24 @@ msgstr "шт."
 msgid "pcs."
 msgstr "шт."
 
+msgid "Quantity"
+msgstr "Количество"
+
+msgid "Update"
+msgstr "Обновить"
+
+msgid "Quantity: %(quantity)s pcs."
+msgstr "Количество: %(quantity)s шт."
+
+msgid "Your quantity: %(quantity)s pcs."
+msgstr "Ваше количество: %(quantity)s шт."
+
+msgid "Regular total: %(total)s %(currency)s"
+msgstr "Обычная сумма: %(total)s %(currency)s"
+
+msgid "At group price: %(total)s %(currency)s"
+msgstr "По групповой цене: %(total)s %(currency)s"
+
 msgid "%(count)s participant"
 msgid_plural "%(count)s participants"
 msgstr[0] "%(count)s участник"
