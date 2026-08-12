@@ -7,6 +7,38 @@
 <main>
     <section class="hero-section simple-hero search-workspace" aria-labelledby="page-title">
         <div class="hero-content">
+            <div class="home-guide{% if user.is_authenticated %} is-single{% endif %}" aria-label="{% translate 'How to use Tannenberg' %}">
+                <section class="home-guide-item home-search-guide">
+                    <span class="home-guide-number" aria-hidden="true">1</span>
+                    <div>
+                        <h2>{% translate "Find the right product" %}</h2>
+                        <p>
+                            {% blocktranslate trimmed %}
+                                Search in Estonian, for example “ehitusnael 100”, then choose an offer. You can also enter a barcode or store code (SKU), or scan a barcode with the camera.
+                            {% endblocktranslate %}
+                        </p>
+                    </div>
+                </section>
+
+                {% if not user.is_authenticated %}
+                    <section class="home-guide-item home-account-guide" data-guest-account-guide>
+                        <span class="home-guide-number" aria-hidden="true">2</span>
+                        <div>
+                            <h2>{% translate "Get more with a free account" %}</h2>
+                            <p>
+                                {% blocktranslate trimmed %}
+                                    Create shopping lists, print or share them, see cheaper alternatives from other stores, and join DEPO group purchases for quantity discounts.
+                                {% endblocktranslate %}
+                            </p>
+                            <div class="home-guide-actions">
+                                <a href="{% url 'register' %}?next={{ request.path|urlencode }}">{% translate "Register" %}</a>
+                                <a href="{% url 'login' %}?next={{ request.path|urlencode }}">{% translate "Log in" %}</a>
+                            </div>
+                        </div>
+                    </section>
+                {% endif %}
+            </div>
+
             <h1 id="page-title">{% translate "Product search" %}</h1>
 
             <form class="search-panel" method="get" action="{% url 'product_search' %}" role="search" data-search-form data-barcode-search-form>

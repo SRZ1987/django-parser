@@ -123,6 +123,36 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, f'action="{reverse("product_search")}"')
         self.assertContains(response, "Название товара, SKU или штрихкод")
 
+    def test_home_shows_compact_search_guide_and_guest_account_benefits(self):
+        response = self.client.get(
+            reverse("home"),
+            HTTP_HOST="127.0.0.1",
+            HTTP_ACCEPT_LANGUAGE="en",
+        )
+
+        self.assertContains(response, "Find the right product")
+        self.assertContains(response, "ehitusnael 100")
+        self.assertContains(response, "scan a barcode with the camera")
+        self.assertContains(response, "Get more with a free account")
+        self.assertContains(response, "DEPO group purchases")
+        self.assertContains(response, 'data-guest-account-guide', html=False)
+        self.assertContains(response, reverse("register"))
+        self.assertContains(response, reverse("login"))
+
+    def test_home_hides_account_guide_from_authenticated_users(self):
+        self.client.force_login(self.create_user("home-guide-user"))
+
+        response = self.client.get(
+            reverse("home"),
+            HTTP_HOST="127.0.0.1",
+            HTTP_ACCEPT_LANGUAGE="en",
+        )
+
+        self.assertContains(response, "Find the right product")
+        self.assertContains(response, 'class="home-guide is-single"', html=False)
+        self.assertNotContains(response, "Get more with a free account")
+        self.assertNotContains(response, 'data-guest-account-guide', html=False)
+
     def test_home_search_includes_accessible_barcode_scanner(self):
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
 
@@ -2463,6 +2493,19 @@ class MultilingualInterfaceTests(TestCase):
                 response = self.client.get(reverse("home"))
                 self.assertContains(response, f'<html lang="{language}">')
                 self.assertContains(response, heading)
+
+    def test_home_guide_is_translated_in_all_supported_languages(self):
+        expected_guides = {
+            "et": "Leia õige toode",
+            "ru": "Найдите нужный товар",
+            "en": "Find the right product",
+        }
+
+        for language, guide_title in expected_guides.items():
+            with self.subTest(language=language):
+                self.select_language(language)
+                response = self.client.get(reverse("home"))
+                self.assertContains(response, guide_title)
 
     def test_product_name_stays_estonian_in_every_interface_language(self):
         translated_store_labels = {

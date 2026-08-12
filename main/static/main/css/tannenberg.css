@@ -128,6 +128,86 @@ body::before {
     margin-bottom: 14px;
 }
 
+.home-guide {
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.home-guide.is-single {
+    grid-template-columns: 1fr;
+}
+
+.home-guide-item {
+    min-width: 0;
+    padding: 14px 16px;
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #121212;
+}
+
+.home-guide-number {
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 50%;
+    color: #f1f1ed;
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+
+.home-guide-item h2 {
+    margin: 1px 0 5px;
+    color: #f1f1ed;
+    font-size: 0.9rem;
+    line-height: 1.3;
+}
+
+.home-guide-item p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.home-guide-actions {
+    margin-top: 9px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.home-guide-actions a {
+    min-height: 30px;
+    padding: 5px 10px;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 6px;
+    color: #ededeb;
+    font-size: 0.76rem;
+    font-weight: 750;
+    text-decoration: none;
+}
+
+.home-guide-actions a:first-child {
+    color: #111;
+    border-color: #ededeb;
+    background: #ededeb;
+}
+
+.home-guide-actions a:hover,
+.home-guide-actions a:focus-visible {
+    border-color: #fff;
+}
+
 .search-workspace .search-panel {
     margin-top: 0;
 }
@@ -1207,7 +1287,16 @@ body::before {
     .simple-hero,
     .search-workspace {
         min-height: 0;
-        padding: 106px 0 54px;
+        padding: 88px 0 54px;
+    }
+
+    .home-guide {
+        margin-bottom: 20px;
+        grid-template-columns: 1fr;
+    }
+
+    .home-guide-item {
+        padding: 12px;
     }
 
     .compact-page-head {
