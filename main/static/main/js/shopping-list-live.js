@@ -3,13 +3,12 @@ export class ShoppingListLiveController {
         documentRef = globalThis.document,
         fetchRef = globalThis.fetch,
         formEncoder = encodeForm,
-        submitFallback = (form) => form.submit(),
     } = {}) {
         this.document = documentRef;
         this.fetch = fetchRef;
         this.formEncoder = formEncoder;
-        this.submitFallback = submitFallback;
         this.toastTimer = null;
+        this.pendingForms = new WeakSet();
         this.handleSubmit = this.handleSubmit.bind(this);
     }
 
@@ -27,16 +26,21 @@ export class ShoppingListLiveController {
             return;
         }
 
-        const toast = this.document.querySelector("[data-site-toast]");
         event.preventDefault();
+        if (this.pendingForms.has(form)) {
+            return;
+        }
+        this.pendingForms.add(form);
+
         const submitter = event.submitter || form.querySelector("button[type='submit']");
         if (submitter) {
             submitter.disabled = true;
             submitter.setAttribute("aria-busy", "true");
         }
 
+        const liveRegion = this.document.querySelector("[data-shopping-list-live]");
+        let payload;
         try {
-            const liveRegion = this.document.querySelector("[data-shopping-list-live]");
             const response = await this.fetch(form.action, {
                 method: "POST",
                 body: this.formEncoder(form),
@@ -51,17 +55,27 @@ export class ShoppingListLiveController {
             if (!response.ok) {
                 throw new Error(`Shopping list request failed: ${response.status}`);
             }
-            const payload = await response.json();
-            this.applyPayload(payload, form, liveRegion);
+            payload = await response.json();
         } catch (error) {
-            console.error("Shopping list live update failed; submitting the form normally.", error);
+            console.error("Shopping list request failed.", error);
+            const toast = this.document.querySelector("[data-site-toast]");
             this.showToast(toast?.dataset.errorMessage || "Could not complete the action. Please try again.", true);
-            this.submitFallback(form);
+            return;
         } finally {
+            this.pendingForms.delete(form);
             if (submitter?.isConnected) {
                 submitter.disabled = false;
                 submitter.removeAttribute("aria-busy");
             }
+        }
+
+        try {
+            this.applyPayload(payload, form, liveRegion);
+        } catch (error) {
+            // The server has already committed the action. Never replay this POST.
+            console.error("Shopping list was updated, but the page could not be refreshed.", error);
+            this.updateCount(payload.item_count);
+            this.showToast(payload.message || "Shopping list updated.");
         }
     }
 
@@ -69,14 +83,29 @@ export class ShoppingListLiveController {
         this.updateCount(payload.item_count);
         if (liveRegion && typeof payload.shopping_list_html === "string") {
             liveRegion.innerHTML = payload.shopping_list_html;
-            this.document.dispatchEvent(new CustomEvent("shopping-list:updated"));
+            this.notifyUpdated();
         } else if (form.dataset.listAction === "add") {
             const state = this.document.createElement("span");
             state.className = "list-state";
-            state.textContent = `✓ ${payload.in_list_label || "In list"}`;
-            form.replaceWith(state);
+            state.textContent = `\u2713 ${payload.in_list_label || "In list"}`;
+            if (typeof form.replaceWith === "function") {
+                form.replaceWith(state);
+            } else {
+                form.parentNode?.replaceChild?.(state, form);
+            }
         }
         this.showToast(payload.message || "");
+    }
+
+    notifyUpdated() {
+        try {
+            const CustomEventClass = this.document.defaultView?.CustomEvent || globalThis.CustomEvent;
+            if (typeof CustomEventClass === "function") {
+                this.document.dispatchEvent(new CustomEventClass("shopping-list:updated"));
+            }
+        } catch (error) {
+            console.warn("Shopping list controls could not be reinitialized.", error);
+        }
     }
 
     updateCount(count) {
@@ -95,7 +124,7 @@ export class ShoppingListLiveController {
         }
         toast.textContent = message;
         toast.hidden = false;
-        toast.classList.toggle("is-error", isError);
+        toast.classList?.toggle?.("is-error", isError);
         clearTimeout(this.toastTimer);
         this.toastTimer = setTimeout(() => {
             toast.hidden = true;

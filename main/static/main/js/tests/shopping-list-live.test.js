@@ -66,25 +66,64 @@ test("adding a product updates the list count and button without navigation", as
     await controller.handleSubmit(event);
 
     assert.equal(documentRef.count.textContent, "(1)");
-    assert.equal(form.replacement.textContent, "✓ In list");
+    assert.equal(form.replacement.textContent, "\u2713 In list");
     assert.equal(documentRef.toast.textContent, "Added");
 });
 
-test("a live request failure submits the original Django form", async () => {
+test("a live request failure is not replayed as a second POST", async () => {
     const documentRef = buildDocument();
     const form = buildForm("add");
-    let fallbackForm = null;
+    let requestCount = 0;
     const controller = new ShoppingListLiveController({
         documentRef,
-        fetchRef: async () => { throw new Error("Network unavailable"); },
-        submitFallback: (submittedForm) => { fallbackForm = submittedForm; },
+        fetchRef: async () => {
+            requestCount += 1;
+            throw new Error("Network unavailable");
+        },
     });
     const event = { target: form, defaultPrevented: false, preventDefault: () => {} };
 
     await controller.handleSubmit(event);
 
-    assert.equal(fallbackForm, form);
+    assert.equal(requestCount, 1);
+    assert.equal(form.replacement, undefined);
     assert.equal(documentRef.toast.textContent, "Error");
+});
+
+test("a rendering failure after success never repeats the server action", async () => {
+    const documentRef = buildDocument();
+    const form = buildForm("add");
+    let requestCount = 0;
+    const controller = new ShoppingListLiveController({
+        documentRef,
+        fetchRef: async () => {
+            requestCount += 1;
+            return {
+                ok: true,
+                json: async () => ({ item_count: 1, message: "Added" }),
+            };
+        },
+    });
+    controller.applyPayload = () => { throw new Error("DOM update failed"); };
+
+    await controller.handleSubmit({ target: form, defaultPrevented: false, preventDefault: () => {} });
+
+    assert.equal(requestCount, 1);
+    assert.equal(documentRef.count.textContent, "(1)");
+    assert.equal(documentRef.toast.textContent, "Added");
+    assert.equal(documentRef.toast.hidden, false);
+});
+
+test("fragment update succeeds when CustomEvent is unavailable", () => {
+    const liveRegion = { innerHTML: "old" };
+    const documentRef = buildDocument({ liveRegion });
+    documentRef.defaultView = {};
+    const controller = new ShoppingListLiveController({ documentRef, fetchRef: async () => {} });
+
+    controller.applyPayload({ item_count: 0, shopping_list_html: "<section>Empty</section>" }, buildForm("remove"), liveRegion);
+
+    assert.equal(liveRegion.innerHTML, "<section>Empty</section>");
+    assert.equal(documentRef.count.textContent, "(0)");
 });
 
 test("a shopping list fragment replaces only the live region", () => {
