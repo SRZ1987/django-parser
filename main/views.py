@@ -186,7 +186,19 @@ def product_search_view(request):
 
     page_params = request.GET.copy()
     page_params.pop("page", None)
-    list_offer_ids = get_list_offer_ids(request.user)
+    list_offer_ids = set()
+    if request.user.is_authenticated:
+        list_items = list(
+            ShoppingListItem.objects.filter(shopping_list__user=request.user).only(
+                "id",
+                "source_offer_id",
+                "quantity",
+            )
+        )
+        list_items_by_offer = {item.source_offer_id: item for item in list_items}
+        list_offer_ids = set(list_items_by_offer)
+        for match in results_page.object_list:
+            match.offer.user_list_item = list_items_by_offer.get(match.offer.pk)
 
     return render(
         request,
@@ -454,13 +466,19 @@ def print_shopping_list(request, share_token):
 
 
 @login_required
+@transaction.atomic
 def add_to_shopping_list(request, offer_pk):
     offer = get_object_or_404(
         available_offers().select_related("shop", "category", "product"),
         pk=offer_pk,
     )
     if request.method == "POST":
-        add_offer_to_shopping_list(request.user, offer)
+        try:
+            quantity = int(request.POST.get("quantity", "1"))
+        except (TypeError, ValueError):
+            quantity = 0
+        if 1 <= quantity <= 9999:
+            add_offer_to_shopping_list(request.user, offer, quantity=quantity)
     return redirect(get_safe_next_url(request, request.POST.get("next") or request.GET.get("next")) or "shopping_list")
 
 
@@ -483,6 +501,7 @@ def remove_from_shopping_list(request, item_pk):
 @require_POST
 @transaction.atomic
 def update_shopping_list_item_quantity(request, item_pk):
+    next_url = get_safe_next_url(request, request.POST.get("next"))
     item = get_object_or_404(
         ShoppingListItem.objects.select_related("shopping_list", "source_offer"),
         pk=item_pk,
@@ -491,15 +510,15 @@ def update_shopping_list_item_quantity(request, item_pk):
     try:
         quantity = int(request.POST.get("quantity", ""))
     except (TypeError, ValueError):
-        return redirect("shopping_list")
+        return redirect(next_url or "shopping_list")
     if not 1 <= quantity <= 9999:
-        return redirect("shopping_list")
+        return redirect(next_url or "shopping_list")
 
     if item.quantity != quantity:
         item.quantity = quantity
         item.save(update_fields=["quantity"])
         ensure_group_purchase_membership(item)
-    return redirect("shopping_list")
+    return redirect(next_url or "shopping_list")
 
 
 @login_required

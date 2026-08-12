@@ -59,12 +59,25 @@
                             {% endif %}
                         </div>
                         {% if user.is_authenticated %}
-                            {% if offer.pk in list_offer_ids %}
-                                <span class="list-state">✓ {% translate "In list" %}</span>
-                            {% else %}
-                                <form method="post" action="{% url 'add_to_shopping_list' offer.pk %}">
+                            {% if offer.user_list_item %}
+                                <form class="search-quantity-form" method="post" action="{% url 'update_shopping_list_item_quantity' offer.user_list_item.pk %}">
                                     {% csrf_token %}
                                     <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                    <label for="search-quantity-{{ offer.pk }}">
+                                        <span>{% translate "Quantity" %}</span>
+                                        <input id="search-quantity-{{ offer.pk }}" name="quantity" type="number" min="1" max="9999" step="1" value="{{ offer.user_list_item.quantity }}" inputmode="numeric" required>
+                                    </label>
+                                    <button class="list-button" type="submit">{% translate "Update" %}</button>
+                                </form>
+                                <span class="list-state">✓ {% translate "In list" %}</span>
+                            {% else %}
+                                <form class="search-quantity-form" method="post" action="{% url 'add_to_shopping_list' offer.pk %}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                    <label for="search-quantity-{{ offer.pk }}">
+                                        <span>{% translate "Quantity" %}</span>
+                                        <input id="search-quantity-{{ offer.pk }}" name="quantity" type="number" min="1" max="9999" step="1" value="1" inputmode="numeric" required>
+                                    </label>
                                     <button class="list-button" type="submit">+ {% translate "Add to list" %}</button>
                                 </form>
                             {% endif %}

@@ -322,6 +322,76 @@ class MainCatalogTests(TestCase):
         self.assertEqual(item.product, offer.product)
         self.assertEqual(item.quantity, 1)
 
+    def test_search_quantity_control_is_visible_only_to_authenticated_users(self):
+        offer = self.create_offer(name="Search quantity product")
+
+        guest_response = self.client.get(
+            reverse("product_search"),
+            {"q": "Search quantity product"},
+            HTTP_ACCEPT_LANGUAGE="en",
+        )
+
+        self.assertNotContains(guest_response, f'id="search-quantity-{offer.pk}"', html=False)
+
+        user = self.create_user("search-quantity-user")
+        self.client.force_login(user)
+        user_response = self.client.get(
+            reverse("product_search"),
+            {"q": "Search quantity product"},
+            HTTP_ACCEPT_LANGUAGE="en",
+        )
+
+        self.assertContains(user_response, f'id="search-quantity-{offer.pk}"', html=False)
+        self.assertContains(user_response, 'name="quantity"', html=False)
+        self.assertContains(user_response, reverse("add_to_shopping_list", args=[offer.pk]))
+
+    def test_search_adds_requested_quantity_and_updates_group_membership(self):
+        user = self.create_user("search-group-quantity-user")
+        offer = self.create_offer(
+            name="Search group quantity product",
+            price=Decimal("10.00"),
+            quantity_price=Decimal("8.00"),
+            quantity_price_min_quantity=3,
+        )
+        self.client.force_login(user)
+        next_url = f'{reverse("product_search")}?q=Search+group+quantity+product'
+
+        response = self.client.post(
+            reverse("add_to_shopping_list", args=[offer.pk]),
+            {"quantity": "5", "next": next_url},
+        )
+
+        self.assertRedirects(response, next_url)
+        item = ShoppingListItem.objects.get(shopping_list__user=user, source_offer=offer)
+        membership = GroupPurchaseMember.objects.get(user=user, group__offer=offer)
+        self.assertEqual(item.quantity, 5)
+        self.assertEqual(membership.quantity, 5)
+
+        search_response = self.client.get(
+            next_url,
+            HTTP_ACCEPT_LANGUAGE="en",
+        )
+        self.assertContains(
+            search_response,
+            reverse("update_shopping_list_item_quantity", args=[item.pk]),
+        )
+        self.assertContains(search_response, 'value="5"', html=False)
+
+    def test_search_does_not_add_invalid_quantity(self):
+        user = self.create_user("search-invalid-quantity-user")
+        offer = self.create_offer(name="Invalid search quantity")
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("add_to_shopping_list", args=[offer.pk]),
+            {"quantity": "10000"},
+        )
+
+        self.assertRedirects(response, reverse("shopping_list"))
+        self.assertFalse(
+            ShoppingListItem.objects.filter(shopping_list__user=user, source_offer=offer).exists()
+        )
+
     def test_user_can_update_item_quantity(self):
         user = self.create_user("quantity-owner")
         offer = self.create_offer(name="Quantity product")

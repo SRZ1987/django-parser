@@ -195,6 +195,41 @@ body::before {
     transform: none;
 }
 
+.search-quantity-form {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: end;
+    gap: 8px;
+}
+
+.search-quantity-form label {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+    color: #5b5b58;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.search-quantity-form input[type="number"] {
+    width: 100%;
+    min-height: 40px;
+    padding: 6px 8px;
+    border: 1px solid #cfcfca;
+    border-radius: 7px;
+    color: #111827;
+    background: #fff;
+    font: inherit;
+}
+
+.search-quantity-form .list-button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 8px;
+    white-space: nowrap;
+}
+
 .compact-page-title {
     margin-bottom: 14px;
 }

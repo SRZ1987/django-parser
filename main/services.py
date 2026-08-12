@@ -54,7 +54,10 @@ def get_or_create_shopping_list(user):
     return shopping_list
 
 
-def add_offer_to_shopping_list(user, offer):
+def add_offer_to_shopping_list(user, offer, *, quantity=1):
+    quantity = int(quantity)
+    if not 1 <= quantity <= 9999:
+        raise ValueError("Shopping list quantity must be between 1 and 9999.")
     shopping_list = get_or_create_shopping_list(user)
     item, created = ShoppingListItem.objects.get_or_create(
         shopping_list=shopping_list,
@@ -62,6 +65,7 @@ def add_offer_to_shopping_list(user, offer):
         defaults={
             "product": offer.product,
             "name": offer.original_name,
+            "quantity": quantity,
         },
     )
     if created:
