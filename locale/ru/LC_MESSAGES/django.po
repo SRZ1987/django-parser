@@ -717,3 +717,23 @@ msgid_plural "%(count)s participants"
 msgstr[0] "%(count)s участник"
 msgstr[1] "%(count)s участника"
 msgstr[2] "%(count)s участников"
+msgid "Could not complete the action. Please try again."
+msgstr "Не удалось выполнить действие. Попробуйте ещё раз."
+
+msgid "Notification settings saved."
+msgstr "Настройки уведомлений сохранены."
+
+msgid "Product added to the list."
+msgstr "Товар добавлен в список."
+
+msgid "Product removed from the list."
+msgstr "Товар удалён из списка."
+
+msgid "Shopping list cleared."
+msgstr "Список покупок очищен."
+
+msgid "Product replaced."
+msgstr "Товар заменён."
+
+msgid "Shopping list updated."
+msgstr "Список покупок обновлён."

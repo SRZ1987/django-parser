@@ -29,5 +29,6 @@ urlpatterns = [
     path('offer/<int:pk>/', views.offer_detail, name='offer_detail'),
     path('out/<int:offer_pk>/', views.store_click, name='store_click'),
     path('statistics/', views.statistics_dashboard, name='statistics_dashboard'),
+    path('statistics/data/', views.statistics_data, name='statistics_data'),
     path('search/suggestions/', views.search_suggestions, name='search_suggestions'),
 ]

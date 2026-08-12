@@ -1,0 +1,34 @@
+{% load i18n %}
+<section class="price-alert-settings" aria-labelledby="price-alert-title">
+    <form method="post" action="{% url 'update_shopping_list_price_alerts' %}" data-price-alert-form data-list-action="alerts">
+        {% csrf_token %}
+        <input type="hidden" name="enabled" value="0">
+        <label class="price-alert-toggle" for="price-alert-enabled">
+            <input
+                id="price-alert-enabled"
+                name="enabled"
+                type="checkbox"
+                value="1"
+                role="switch"
+                data-price-alert-toggle
+                {% if shopping_list.price_alerts_enabled %}checked{% endif %}
+            >
+            <span class="price-alert-switch" aria-hidden="true"></span>
+            <span class="price-alert-copy">
+                <strong id="price-alert-title">{% translate "Price change notifications" %}</strong>
+                <small>{{ user.email }}</small>
+            </span>
+        </label>
+    </form>
+</section>
+
+{% if plan.rows %}
+    {% include 'main/includes/shopping_list_actions.html' %}
+    {% include 'main/includes/purchase_plan.html' %}
+{% else %}
+    <section class="empty-state">
+        <h2>{% translate "Your list is empty" %}</h2>
+        <p>{% translate "Find a product and add it to the list to see where it can be bought cheaper." %}</p>
+        <a class="store-link" href="{% url 'home' %}">{% translate "Find a product" %}</a>
+    </section>
+{% endif %}

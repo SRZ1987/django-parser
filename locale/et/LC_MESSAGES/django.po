@@ -716,3 +716,23 @@ msgid "%(count)s participant"
 msgid_plural "%(count)s participants"
 msgstr[0] "%(count)s osaleja"
 msgstr[1] "%(count)s osalejat"
+msgid "Could not complete the action. Please try again."
+msgstr "Toimingut ei saanud lõpule viia. Proovige uuesti."
+
+msgid "Notification settings saved."
+msgstr "Teavituste seaded on salvestatud."
+
+msgid "Product added to the list."
+msgstr "Toode lisati nimekirja."
+
+msgid "Product removed from the list."
+msgstr "Toode eemaldati nimekirjast."
+
+msgid "Shopping list cleared."
+msgstr "Ostunimekiri on tühjendatud."
+
+msgid "Product replaced."
+msgstr "Toode asendati."
+
+msgid "Shopping list updated."
+msgstr "Ostunimekiri on uuendatud."

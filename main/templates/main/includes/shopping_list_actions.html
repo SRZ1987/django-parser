@@ -31,7 +31,7 @@
         </div>
     </details>
     {% if editable %}
-        <form class="shopping-list-clear-form" method="post" action="{% url 'clear_shopping_list' %}" data-clear-list-form>
+        <form class="shopping-list-clear-form" method="post" action="{% url 'clear_shopping_list' %}" data-clear-list-form data-list-action="clear">
             {% csrf_token %}
             <button class="list-action-button list-action-danger" type="submit">{% translate "Clear entire list" %}</button>
         </form>

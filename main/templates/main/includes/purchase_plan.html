@@ -75,7 +75,7 @@
                                                     <a class="plan-text-link" href="{% url 'offer_detail' offer.pk %}">{% translate "Open cheaper product" %}</a>
                                                 {% endif %}
                                                 {% if editable %}
-                                                    <form method="post" action="{% url 'replace_with_best_offer' item.pk %}">
+                                                    <form method="post" action="{% url 'replace_with_best_offer' item.pk %}" data-list-action="replace">
                                                         {% csrf_token %}
                                                         <button class="plan-replace-button" type="submit">{% translate "Replace" %}</button>
                                                     </form>
@@ -106,7 +106,7 @@
                                     {% endif %}
                                     {% if editable %}
                                         <div class="purchase-row-controls">
-                                            <form method="post" action="{% url 'remove_from_shopping_list' item.pk %}">
+                                            <form method="post" action="{% url 'remove_from_shopping_list' item.pk %}" data-list-action="remove">
                                                 {% csrf_token %}
                                                 <button class="purchase-delete" type="submit">{% translate "Remove" %}</button>
                                             </form>

@@ -62,7 +62,7 @@
                             {% if offer.pk in list_offer_ids %}
                                 <span class="list-state">✓ {% translate "In list" %}</span>
                             {% else %}
-                                <form method="post" action="{% url 'add_to_shopping_list' offer.pk %}">
+                                <form method="post" action="{% url 'add_to_shopping_list' offer.pk %}" data-list-action="add">
                                     {% csrf_token %}
                                     <input type="hidden" name="next" value="{{ request.get_full_path }}">
                                     <button class="list-button" type="submit">+ {% translate "Add to list" %}</button>

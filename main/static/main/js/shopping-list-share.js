@@ -125,10 +125,10 @@ export function initializeShoppingListShare(documentRef = globalThis.document, n
             }
         });
     }
-
     return controller;
 }
 
 if (typeof document !== "undefined") {
     initializeShoppingListShare();
+    document.addEventListener("shopping-list:updated", () => initializeShoppingListShare());
 }
