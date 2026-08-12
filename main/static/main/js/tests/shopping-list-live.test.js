@@ -36,6 +36,9 @@ function buildForm(action = "add") {
     return {
         action: `/my-list/${action}/1/`,
         dataset: { listAction: action },
+        elements: [
+            { name: "csrfmiddlewaretoken", value: "csrf-token", type: "hidden", disabled: false },
+        ],
         matches: () => true,
         closest: function () { return this; },
         querySelector: () => submitter,
@@ -49,11 +52,14 @@ test("adding a product updates the list count and button without navigation", as
     const form = buildForm("add");
     const controller = new ShoppingListLiveController({
         documentRef,
-        fetchRef: async () => ({
-            ok: true,
-            json: async () => ({ item_count: 1, in_list_label: "In list", message: "Added" }),
-        }),
-        formDataFactory: () => ({}),
+        fetchRef: async (_url, options) => {
+            assert.equal(options.body, "csrfmiddlewaretoken=csrf-token");
+            assert.equal(options.headers["Content-Type"], "application/x-www-form-urlencoded;charset=UTF-8");
+            return {
+                ok: true,
+                json: async () => ({ item_count: 1, in_list_label: "In list", message: "Added" }),
+            };
+        },
     });
     const event = { target: form, defaultPrevented: false, preventDefault: () => {} };
 
@@ -62,6 +68,23 @@ test("adding a product updates the list count and button without navigation", as
     assert.equal(documentRef.count.textContent, "(1)");
     assert.equal(form.replacement.textContent, "✓ In list");
     assert.equal(documentRef.toast.textContent, "Added");
+});
+
+test("a live request failure submits the original Django form", async () => {
+    const documentRef = buildDocument();
+    const form = buildForm("add");
+    let fallbackForm = null;
+    const controller = new ShoppingListLiveController({
+        documentRef,
+        fetchRef: async () => { throw new Error("Network unavailable"); },
+        submitFallback: (submittedForm) => { fallbackForm = submittedForm; },
+    });
+    const event = { target: form, defaultPrevented: false, preventDefault: () => {} };
+
+    await controller.handleSubmit(event);
+
+    assert.equal(fallbackForm, form);
+    assert.equal(documentRef.toast.textContent, "Error");
 });
 
 test("a shopping list fragment replaces only the live region", () => {
