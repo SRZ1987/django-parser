@@ -29,6 +29,8 @@ PAGE_SIZE = 30
 BATCH_SIZE = 100
 CONCURRENCY = 5
 REQUEST_TIMEOUT = 45
+MAX_TOLERATED_MISSING_AVAILABILITY = 10
+MAX_TOLERATED_MISSING_AVAILABILITY_RATIO = 0.001
 
 
 def parse_top_categories(xml_text: str) -> list[dict[str, str]]:
@@ -271,6 +273,72 @@ def availability_by_code(items: list[dict[str, Any]]) -> dict[str, dict[str, Any
     }
 
 
+async def recover_missing_availability(
+    session: aiohttp.ClientSession,
+    product_codes: list[str],
+    availability_items: list[dict[str, Any]],
+    *,
+    log_callback=None,
+) -> dict[str, dict[str, Any]]:
+    availability = availability_by_code(availability_items)
+    missing = sorted(set(product_codes) - set(availability))
+    if not missing:
+        return availability
+
+    log(
+        f"WARNING: Motonet availability response omitted {len(missing)} products; "
+        "retrying only the missing product codes.",
+        log_callback,
+    )
+    try:
+        retry_items = await fetch_batch_data(
+            session,
+            missing,
+            endpoint="stocksAndAvailability/availabilities",
+            payload_key="productCodes",
+            label="availability recovery",
+            log_callback=log_callback,
+        )
+    except RuntimeError as exc:
+        log(
+            f"WARNING: Motonet availability recovery failed: {exc}",
+            log_callback,
+        )
+    else:
+        availability.update(availability_by_code(retry_items))
+    return availability
+
+
+def validate_availability_coverage(
+    product_codes: list[str],
+    availability: dict[str, dict[str, Any]],
+    *,
+    log_callback=None,
+) -> list[str]:
+    missing = sorted(set(product_codes) - set(availability))
+    if not missing:
+        return []
+
+    missing_ratio = len(missing) / max(len(set(product_codes)), 1)
+    if (
+        len(missing) > MAX_TOLERATED_MISSING_AVAILABILITY
+        or missing_ratio > MAX_TOLERATED_MISSING_AVAILABILITY_RATIO
+    ):
+        raise RuntimeError(
+            "Motonet availability response is incomplete: "
+            f"missing={len(missing)}, ratio={missing_ratio:.4%}."
+        )
+
+    sample = ", ".join(missing[:5])
+    log(
+        "WARNING: Motonet availability remains missing for "
+        f"{len(missing)}/{len(set(product_codes))} products after recovery; "
+        f"treating them as unavailable. sample={sample}",
+        log_callback,
+    )
+    return missing
+
+
 def prices_by_code(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     result = {}
     for item in items:
@@ -398,14 +466,19 @@ async def main(output_path: str | Path, log_callback=None) -> None:
                 log_callback=log_callback,
             ),
         )
-
-    availability = availability_by_code(availability_items)
-    prices = prices_by_code(price_items)
-    missing_availability = set(product_codes) - set(availability)
-    if missing_availability:
-        raise RuntimeError(
-            f"Motonet availability response is incomplete: missing={len(missing_availability)}."
+        availability = await recover_missing_availability(
+            session,
+            product_codes,
+            availability_items,
+            log_callback=log_callback,
         )
+
+    prices = prices_by_code(price_items)
+    validate_availability_coverage(
+        product_codes,
+        availability,
+        log_callback=log_callback,
+    )
     rows, skipped = build_rows(products, availability, prices)
     if not rows:
         raise RuntimeError("Motonet catalog contains no available priced products.")

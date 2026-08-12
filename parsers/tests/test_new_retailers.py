@@ -540,6 +540,58 @@ class MotonetParserTests(SimpleTestCase):
         self.assertEqual(price, 19.99)
         self.assertEqual(sale_price, 14.99)
 
+    def test_missing_availability_is_retried_for_only_missing_products(self):
+        logs = []
+        initial_items = [{"productCode": "one", "webstoreDeliverable": True}]
+        recovered_items = [{"productCode": "two", "webstoreDeliverable": True}]
+
+        with patch(
+            "parsers.standalone.motonet_parser.fetch_batch_data",
+            new=AsyncMock(return_value=recovered_items),
+        ) as fetch_mock:
+            availability = asyncio.run(
+                motonet_parser.recover_missing_availability(
+                    None,
+                    ["one", "two"],
+                    initial_items,
+                    log_callback=logs.append,
+                )
+            )
+
+        self.assertEqual(set(availability), {"one", "two"})
+        self.assertEqual(fetch_mock.await_args.args[1], ["two"])
+        self.assertIn("retrying only the missing product codes", logs[0])
+
+    def test_tiny_availability_gap_is_treated_as_unavailable(self):
+        product_codes = [f"product-{index}" for index in range(3000)]
+        availability = {
+            product_code: {"productCode": product_code}
+            for product_code in product_codes[:-2]
+        }
+        logs = []
+
+        missing = motonet_parser.validate_availability_coverage(
+            product_codes,
+            availability,
+            log_callback=logs.append,
+        )
+
+        self.assertEqual(missing, product_codes[-2:])
+        self.assertIn("treating them as unavailable", logs[0])
+
+    def test_significant_availability_gap_still_fails_import(self):
+        product_codes = [f"product-{index}" for index in range(100)]
+        availability = {
+            product_code: {"productCode": product_code}
+            for product_code in product_codes[:-2]
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "response is incomplete"):
+            motonet_parser.validate_availability_coverage(
+                product_codes,
+                availability,
+            )
+
     def test_adapter_creates_excel_and_counts_rows(self):
         async def fake_main(output_path, log_callback=None):
             rows, _skipped = motonet_parser.build_rows(
