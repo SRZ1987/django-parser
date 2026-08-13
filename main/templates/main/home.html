@@ -9,7 +9,6 @@
         <div class="hero-content">
             <div class="home-guide{% if user.is_authenticated %} is-single{% endif %}" aria-label="{% translate 'How to use Tannenberg' %}">
                 <section class="home-guide-item home-search-guide">
-                    <span class="home-guide-number" aria-hidden="true">1</span>
                     <div>
                         <h2>{% translate "Find the right product" %}</h2>
                         <p>
@@ -22,7 +21,6 @@
 
                 {% if not user.is_authenticated %}
                     <section class="home-guide-item home-account-guide" data-guest-account-guide>
-                        <span class="home-guide-number" aria-hidden="true">2</span>
                         <div>
                             <h2>{% translate "Get more with a free account" %}</h2>
                             <p>

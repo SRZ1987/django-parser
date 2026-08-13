@@ -262,6 +262,18 @@ class MainCatalogTests(TestCase):
         self.assertIn(".search-workspace .search-panel {\n    width: 100%;", css_path.read_text(encoding="utf-8"))
         self.assertIn("window.setInterval(scrollToNextCard, 6500)", javascript_path.read_text(encoding="utf-8"))
 
+    def test_home_search_guide_is_unnumbered_centered_and_spaced(self):
+        response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
+        css_path = settings.BASE_DIR / "main" / "static" / "main" / "css" / "tannenberg.css"
+        css = css_path.read_text(encoding="utf-8")
+
+        self.assertNotContains(response, "home-guide-number", html=False)
+        self.assertIn("margin-bottom: 30px;", css)
+        self.assertIn("font-size: 1.1rem;", css)
+        self.assertIn("font-size: 0.94rem;", css)
+        self.assertIn("text-align: center;", css)
+        self.assertContains(response, "tannenberg.css?v=13", html=False)
+
     def test_home_shows_compact_search_guide_and_guest_account_benefits(self):
         response = self.client.get(
             reverse("home"),

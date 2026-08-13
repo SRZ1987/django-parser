@@ -126,6 +126,8 @@ body::before {
 
 .search-workspace .hero-content h1 {
     margin-bottom: 14px;
+    font-size: 1rem;
+    text-align: center;
 }
 
 .price-carousel {
@@ -134,7 +136,7 @@ body::before {
 
 @media (min-width: 1025px) {
     .price-carousel {
-        margin: 0 0 14px;
+        margin: 0 0 30px;
         display: block;
     }
 
@@ -265,10 +267,10 @@ body::before {
 }
 
 .home-guide {
-    margin-bottom: 24px;
+    margin-bottom: 30px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    gap: 30px;
 }
 
 .home-guide.is-single {
@@ -277,45 +279,31 @@ body::before {
 
 .home-guide-item {
     min-width: 0;
-    padding: 14px 16px;
-    display: grid;
-    grid-template-columns: 26px minmax(0, 1fr);
-    align-items: start;
-    gap: 10px;
+    padding: 18px 20px;
+    text-align: center;
     border: 1px solid var(--border);
     border-radius: 10px;
     background: #121212;
 }
 
-.home-guide-number {
-    width: 26px;
-    height: 26px;
-    display: grid;
-    place-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    border-radius: 50%;
-    color: #f1f1ed;
-    font-size: 0.75rem;
-    font-weight: 800;
-}
-
 .home-guide-item h2 {
-    margin: 1px 0 5px;
+    margin: 0 0 8px;
     color: #f1f1ed;
-    font-size: 0.9rem;
-    line-height: 1.3;
+    font-size: 1.1rem;
+    line-height: 1.35;
 }
 
 .home-guide-item p {
     margin: 0;
     color: var(--muted);
-    font-size: 0.78rem;
-    line-height: 1.5;
+    font-size: 0.94rem;
+    line-height: 1.55;
 }
 
 .home-guide-actions {
     margin-top: 9px;
     display: flex;
+    justify-content: center;
     flex-wrap: wrap;
     gap: 7px;
 }
