@@ -8,6 +8,7 @@ from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.core.cache import cache
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -42,6 +43,7 @@ from main.services import add_offer_to_shopping_list, build_purchase_plan, get_b
 )
 class MainCatalogTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.shop = Shop.objects.create(name="ESPAK", code="espak")
         self.other_shop = Shop.objects.create(name="DEPO", code="depo")
         self.category = Category.objects.create(
@@ -122,6 +124,118 @@ class MainCatalogTests(TestCase):
 
         self.assertContains(response, f'action="{reverse("product_search")}"')
         self.assertContains(response, "Название товара, SKU или штрихкод")
+
+    def test_home_price_carousel_groups_same_barcode_and_sorts_by_price(self):
+        expensive = self.create_offer(
+            name="Makita DDF482Z drill",
+            barcode="4000000000001",
+            price=Decimal("119.00"),
+        )
+        cheaper = self.create_offer(
+            name="Akutrell Makita DDF482Z",
+            shop=self.other_shop,
+            category=self.other_category,
+            external_id="depo-ddf482-carousel",
+            sku="DEPO-DDF482-CAROUSEL",
+            barcode="4000000000001",
+            price=Decimal("89.00"),
+        )
+
+        response = self.client.get(
+            reverse("home"),
+            HTTP_HOST="127.0.0.1",
+            HTTP_ACCEPT_LANGUAGE="en",
+        )
+
+        comparison = next(
+            group
+            for group in response.context["price_comparisons"]
+            if {offer["id"] for offer in group["offers"]} == {expensive.pk, cheaper.pk}
+        )
+        self.assertEqual([offer["id"] for offer in comparison["offers"]], [cheaper.pk, expensive.pk])
+        self.assertContains(response, "data-price-carousel", html=False)
+        self.assertContains(response, "DEPO")
+        self.assertContains(response, "89.00 EUR")
+
+    def test_home_price_carousel_matches_complete_name_in_any_word_order(self):
+        first = self.create_offer(
+            name="Makita akutrell DDF482Z",
+            barcode="",
+            price=Decimal("100.00"),
+        )
+        second = self.create_offer(
+            name="DDF482Z akutrell Makita",
+            shop=self.other_shop,
+            category=self.other_category,
+            external_id="depo-name-order-carousel",
+            sku="DEPO-NAME-ORDER",
+            barcode="",
+            price=Decimal("95.00"),
+        )
+
+        response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
+
+        matching_groups = [
+            group
+            for group in response.context["price_comparisons"]
+            if {offer["id"] for offer in group["offers"]} == {first.pk, second.pk}
+        ]
+        self.assertEqual(len(matching_groups), 1)
+        self.assertEqual(matching_groups[0]["match_type"], "name")
+
+    def test_home_price_carousel_uses_lower_sale_price(self):
+        regular = self.create_offer(
+            name="Bosch carousel tool",
+            barcode="4000000000002",
+            price=Decimal("20.00"),
+        )
+        sale = self.create_offer(
+            name="Bosch carousel tool",
+            shop=self.other_shop,
+            category=self.other_category,
+            external_id="depo-sale-carousel",
+            sku="DEPO-SALE-CAROUSEL",
+            barcode="4000000000002",
+            price=Decimal("25.00"),
+            sale_price=Decimal("15.00"),
+        )
+
+        response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
+
+        comparison = next(
+            group
+            for group in response.context["price_comparisons"]
+            if {offer["id"] for offer in group["offers"]} == {regular.pk, sale.pk}
+        )
+        self.assertEqual([offer["id"] for offer in comparison["offers"]], [sale.pk, regular.pk])
+        self.assertEqual(comparison["offers"][0]["price"], Decimal("15.00"))
+
+    def test_home_price_carousel_does_not_group_partial_name_match(self):
+        first = self.create_offer(name="Makita akutrell DDF482Z", barcode="")
+        second = self.create_offer(
+            name="Makita akutrell DDF482Z battery",
+            shop=self.other_shop,
+            category=self.other_category,
+            external_id="depo-partial-name-carousel",
+            sku="DEPO-PARTIAL-NAME",
+            barcode="",
+        )
+
+        response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
+
+        self.assertFalse(
+            any(
+                {offer["id"] for offer in group["offers"]} == {first.pk, second.pk}
+                for group in response.context["price_comparisons"]
+            )
+        )
+
+    def test_home_price_carousel_is_desktop_only(self):
+        css_path = settings.BASE_DIR / "main" / "static" / "main" / "css" / "tannenberg.css"
+        css = css_path.read_text(encoding="utf-8")
+
+        self.assertIn(".price-carousel {\n    display: none;", css)
+        self.assertIn("@media (min-width: 1025px)", css)
 
     def test_home_shows_compact_search_guide_and_guest_account_benefits(self):
         response = self.client.get(

@@ -39,6 +39,7 @@ from .group_purchases import (
     sync_shopping_list_group_memberships,
     touch_group_purchase,
 )
+from .home_comparisons import get_home_price_comparisons
 from .models import (
     GroupPurchase,
     GroupPurchaseMember,
@@ -98,6 +99,7 @@ def home(request):
         "main/home.html",
         {
             "query": query,
+            "price_comparisons": get_home_price_comparisons(),
         },
     )
 
