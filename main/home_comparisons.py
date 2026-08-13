@@ -6,7 +6,7 @@ from catalog.models import ProductOffer
 
 COMPARISON_CACHE_KEY = "home-price-comparisons:v2"
 COMPARISON_CACHE_SECONDS = 30 * 60
-BARCODE_GROUP_LIMIT = 6
+BARCODE_GROUP_LIMIT = 12
 GROUP_CANDIDATE_LIMIT = 30
 
 

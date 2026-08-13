@@ -110,7 +110,7 @@ body::before {
 }
 
 .hero-content {
-    width: min(820px, calc(100% - 32px));
+    width: var(--container);
 }
 
 .search-workspace .hero-content h1,
@@ -142,8 +142,6 @@ body::before {
         margin-bottom: 8px;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 16px;
     }
 
     .price-carousel-head h2 {
@@ -151,31 +149,6 @@ body::before {
         color: #f1f1ed;
         font-size: 0.88rem;
         line-height: 1.3;
-    }
-
-    .price-carousel-controls {
-        display: flex;
-        gap: 6px;
-    }
-
-    .price-carousel-controls button {
-        width: 32px;
-        height: 32px;
-        padding: 0;
-        display: grid;
-        place-items: center;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        color: #f1f1ed;
-        background: #151515;
-        cursor: pointer;
-    }
-
-    .price-carousel-controls button:hover,
-    .price-carousel-controls button:focus-visible {
-        color: #111;
-        border-color: #ededeb;
-        background: #ededeb;
     }
 
     .price-carousel-viewport {
@@ -372,6 +345,7 @@ body::before {
 }
 
 .search-workspace .search-panel {
+    width: 100%;
     margin-top: 0;
 }
 

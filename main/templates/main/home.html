@@ -39,16 +39,10 @@
                 {% endif %}
             </div>
 
-            <h1 id="page-title">{% translate "Product search" %}</h1>
-
             {% if price_comparisons %}
                 <section class="price-carousel" aria-labelledby="price-carousel-title" data-price-carousel>
                     <div class="price-carousel-head">
                         <h2 id="price-carousel-title">{% translate "Price comparison" %}</h2>
-                        <div class="price-carousel-controls" aria-label="{% translate 'Carousel controls' %}">
-                            <button type="button" aria-label="{% translate 'Previous' %}" data-carousel-previous>&larr;</button>
-                            <button type="button" aria-label="{% translate 'Next' %}" data-carousel-next>&rarr;</button>
-                        </div>
                     </div>
                     <div class="price-carousel-viewport" data-carousel-viewport>
                         <div class="price-carousel-track">
@@ -88,6 +82,8 @@
                 </section>
             {% endif %}
 
+            <h1 id="page-title">{% translate "Product search" %}</h1>
+
             <form class="search-panel" method="get" action="{% url 'product_search' %}" role="search" data-search-form data-barcode-search-form>
                 <label class="visually-hidden" for="search-input">{% translate "Search for a product" %}</label>
                 <div class="search-input-wrap">
@@ -125,5 +121,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-    <script src="{% static 'main/js/price-comparison-carousel.js' %}?v=1" defer></script>
+    <script src="{% static 'main/js/price-comparison-carousel.js' %}?v=2" defer></script>
 {% endblock %}

@@ -236,6 +236,32 @@ class MainCatalogTests(TestCase):
         self.assertIn(".price-carousel {\n    display: none;", css)
         self.assertIn("@media (min-width: 1025px)", css)
 
+    def test_home_price_carousel_autoplays_before_full_width_search(self):
+        self.create_offer(barcode="4000000000003")
+        self.create_offer(
+            name="Second store carousel offer",
+            shop=self.other_shop,
+            category=self.other_category,
+            external_id="depo-autoplay-carousel",
+            sku="DEPO-AUTOPLAY-CAROUSEL",
+            barcode="4000000000003",
+        )
+
+        response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
+        html = response.content.decode()
+        css_path = settings.BASE_DIR / "main" / "static" / "main" / "css" / "tannenberg.css"
+        javascript_path = (
+            settings.BASE_DIR / "main" / "static" / "main" / "js" / "price-comparison-carousel.js"
+        )
+
+        self.assertLess(html.index("data-price-carousel"), html.index('id="page-title"'))
+        self.assertLess(html.index('id="page-title"'), html.index('class="search-panel"'))
+        self.assertNotIn("data-carousel-previous", html)
+        self.assertNotIn("data-carousel-next", html)
+        self.assertContains(response, "price-comparison-carousel.js?v=2", html=False)
+        self.assertIn(".search-workspace .search-panel {\n    width: 100%;", css_path.read_text(encoding="utf-8"))
+        self.assertIn("window.setInterval(scrollToNextCard, 6500)", javascript_path.read_text(encoding="utf-8"))
+
     def test_home_shows_compact_search_guide_and_guest_account_benefits(self):
         response = self.client.get(
             reverse("home"),
