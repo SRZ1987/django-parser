@@ -1,23 +1,30 @@
 from django.core.cache import cache
 from django.db.models import Count, Q
+from django.utils import timezone
 
 from catalog.models import ProductOffer
 
 
-COMPARISON_CACHE_KEY = "home-price-comparisons:v2"
-COMPARISON_CACHE_SECONDS = 30 * 60
+COMPARISON_CACHE_KEY = "home-price-comparisons:v3"
+COMPARISON_ROTATION_SECONDS = 30 * 60
+COMPARISON_CACHE_SECONDS = COMPARISON_ROTATION_SECONDS
 BARCODE_GROUP_LIMIT = 12
-GROUP_CANDIDATE_LIMIT = 30
 
 
-def get_home_price_comparisons():
-    cached = cache.get(COMPARISON_CACHE_KEY)
+def get_home_price_comparisons(rotation_bucket=None):
+    rotation_bucket = _rotation_bucket() if rotation_bucket is None else rotation_bucket
+    cache_key = f"{COMPARISON_CACHE_KEY}:{rotation_bucket}"
+    cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
-    comparisons = _barcode_comparison_groups()
-    cache.set(COMPARISON_CACHE_KEY, comparisons, COMPARISON_CACHE_SECONDS)
+    comparisons = _barcode_comparison_groups(rotation_bucket)
+    cache.set(cache_key, comparisons, COMPARISON_CACHE_SECONDS)
     return comparisons
+
+
+def _rotation_bucket():
+    return int(timezone.now().timestamp() // COMPARISON_ROTATION_SECONDS)
 
 
 def _base_offers():
@@ -28,8 +35,8 @@ def _base_offers():
     ).filter(Q(price__isnull=False) | Q(sale_price__isnull=False))
 
 
-def _barcode_comparison_groups():
-    barcode_keys = list(
+def _barcode_comparison_groups(rotation_bucket):
+    eligible_groups = (
         _base_offers()
         .exclude(barcode="")
         .order_by()
@@ -37,8 +44,16 @@ def _barcode_comparison_groups():
         .annotate(shop_count=Count("shop_id", distinct=True))
         .filter(shop_count__gte=2)
         .order_by("barcode")
-        .values_list("barcode", flat=True)[:GROUP_CANDIDATE_LIMIT]
     )
+    group_count = eligible_groups.count()
+    if not group_count:
+        return []
+
+    offset = (rotation_bucket * BARCODE_GROUP_LIMIT) % group_count
+    barcode_values = eligible_groups.values_list("barcode", flat=True)
+    barcode_keys = list(barcode_values[offset:offset + BARCODE_GROUP_LIMIT])
+    if len(barcode_keys) < BARCODE_GROUP_LIMIT:
+        barcode_keys.extend(list(barcode_values[:BARCODE_GROUP_LIMIT - len(barcode_keys)]))
     if not barcode_keys:
         return []
 

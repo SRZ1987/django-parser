@@ -38,44 +38,17 @@
             </div>
 
             {% if price_comparisons %}
-                <section class="price-carousel" aria-labelledby="price-carousel-title" data-price-carousel>
+                <section
+                    class="price-carousel"
+                    aria-labelledby="price-carousel-title"
+                    data-price-carousel
+                    data-refresh-url="{% url 'price_comparisons' %}"
+                >
                     <div class="price-carousel-head">
                         <h2 id="price-carousel-title">{% translate "Price comparison" %}</h2>
                     </div>
                     <div class="price-carousel-viewport" data-carousel-viewport>
-                        <div class="price-carousel-track">
-                            {% for comparison in price_comparisons %}
-                                <article class="price-comparison-card">
-                                    <a class="price-comparison-image" href="{% url 'offer_detail' comparison.detail_offer_id %}" aria-label="{{ comparison.name }}">
-                                        {% if comparison.image_url %}
-                                            <img src="{{ comparison.image_url }}" alt="" loading="lazy">
-                                        {% else %}
-                                            <span>{% translate "No image" %}</span>
-                                        {% endif %}
-                                    </a>
-                                    <div class="price-comparison-content">
-                                        <h3><a href="{% url 'offer_detail' comparison.detail_offer_id %}">{{ comparison.name }}</a></h3>
-                                        <ul>
-                                            {% for offer in comparison.offers %}
-                                                <li{% if offer.is_cheapest %} class="is-cheapest"{% endif %}>
-                                                    {% if offer.product_url %}
-                                                        <a href="{{ offer.product_url }}" target="_blank" rel="noopener noreferrer">
-                                                            <span>{{ offer.shop }}</span>
-                                                            <strong>{{ offer.price|floatformat:2 }} {{ offer.currency }}</strong>
-                                                        </a>
-                                                    {% else %}
-                                                        <span class="price-comparison-row">
-                                                            <span>{{ offer.shop }}</span>
-                                                            <strong>{{ offer.price|floatformat:2 }} {{ offer.currency }}</strong>
-                                                        </span>
-                                                    {% endif %}
-                                                </li>
-                                            {% endfor %}
-                                        </ul>
-                                    </div>
-                                </article>
-                            {% endfor %}
-                        </div>
+                        {% include "main/includes/price_comparison_track.html" %}
                     </div>
                 </section>
             {% endif %}
@@ -119,5 +92,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-    <script src="{% static 'main/js/price-comparison-carousel.js' %}?v=2" defer></script>
+    <script src="{% static 'main/js/price-comparison-carousel.js' %}?v=3" defer></script>
 {% endblock %}

@@ -16,6 +16,7 @@ from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext as _
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from catalog.models import Category, ProductOffer, Shop
@@ -101,6 +102,16 @@ def home(request):
             "query": query,
             "price_comparisons": get_home_price_comparisons(),
         },
+    )
+
+
+@require_GET
+@never_cache
+def price_comparisons(request):
+    return render(
+        request,
+        "main/includes/price_comparison_track.html",
+        {"price_comparisons": get_home_price_comparisons()},
     )
 
 

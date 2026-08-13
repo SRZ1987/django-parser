@@ -18,6 +18,7 @@ from django.utils.http import urlsafe_base64_encode
 
 from catalog.models import Category, Product, ProductOffer, Shop
 from main.email_verification import email_verification_token
+from main.home_comparisons import get_home_price_comparisons
 from main.models import (
     DailySiteVisit,
     GroupPurchase,
@@ -258,9 +259,58 @@ class MainCatalogTests(TestCase):
         self.assertLess(html.index('id="page-title"'), html.index('class="search-panel"'))
         self.assertNotIn("data-carousel-previous", html)
         self.assertNotIn("data-carousel-next", html)
-        self.assertContains(response, "price-comparison-carousel.js?v=2", html=False)
+        self.assertContains(response, "price-comparison-carousel.js?v=3", html=False)
         self.assertIn(".search-workspace .search-panel {\n    width: 100%;", css_path.read_text(encoding="utf-8"))
-        self.assertIn("window.setInterval(scrollToNextCard, 6500)", javascript_path.read_text(encoding="utf-8"))
+        javascript = javascript_path.read_text(encoding="utf-8")
+        self.assertIn("window.setInterval(scrollToNextCard, 6500)", javascript)
+        self.assertIn("const REFRESH_INTERVAL_MS = 30 * 60 * 1000", javascript)
+        self.assertIn("await fetch(refreshUrl", javascript)
+        self.assertIn("viewport.replaceChildren(nextTrack)", javascript)
+
+    def test_home_price_carousel_rotates_groups_between_half_hour_buckets(self):
+        for index in range(24):
+            barcode = f"474000000{index:03d}"
+            self.create_offer(
+                name=f"Rotating product {index}",
+                barcode=barcode,
+                sku=f"ROTATE-A-{index}",
+                external_id=f"rotate-a-{index}",
+            )
+            self.create_offer(
+                name=f"Rotating product {index}",
+                shop=self.other_shop,
+                category=self.other_category,
+                barcode=barcode,
+                sku=f"ROTATE-B-{index}",
+                external_id=f"rotate-b-{index}",
+            )
+
+        first_batch = get_home_price_comparisons(rotation_bucket=0)
+        second_batch = get_home_price_comparisons(rotation_bucket=1)
+        first_offer_ids = {group["detail_offer_id"] for group in first_batch}
+        second_offer_ids = {group["detail_offer_id"] for group in second_batch}
+
+        self.assertEqual(len(first_batch), 12)
+        self.assertEqual(len(second_batch), 12)
+        self.assertTrue(first_offer_ids.isdisjoint(second_offer_ids))
+
+    def test_price_comparison_refresh_endpoint_returns_uncached_track(self):
+        self.create_offer(barcode="4741234567890")
+        self.create_offer(
+            name="Second store refresh offer",
+            shop=self.other_shop,
+            category=self.other_category,
+            external_id="depo-refresh-carousel",
+            sku="DEPO-REFRESH-CAROUSEL",
+            barcode="4741234567890",
+        )
+
+        response = self.client.get(reverse("price_comparisons"), HTTP_HOST="127.0.0.1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="price-carousel-track"', html=False)
+        self.assertContains(response, "Second store refresh offer")
+        self.assertIn("no-cache", response.headers["Cache-Control"])
 
     def test_home_search_guide_is_unnumbered_centered_and_spaced(self):
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
