@@ -157,7 +157,7 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, "DEPO")
         self.assertContains(response, "89.00 EUR")
 
-    def test_home_price_carousel_matches_complete_name_in_any_word_order(self):
+    def test_home_price_carousel_does_not_group_names_without_matching_barcode(self):
         first = self.create_offer(
             name="Makita akutrell DDF482Z",
             barcode="",
@@ -175,13 +175,12 @@ class MainCatalogTests(TestCase):
 
         response = self.client.get(reverse("home"), HTTP_HOST="127.0.0.1")
 
-        matching_groups = [
-            group
-            for group in response.context["price_comparisons"]
-            if {offer["id"] for offer in group["offers"]} == {first.pk, second.pk}
-        ]
-        self.assertEqual(len(matching_groups), 1)
-        self.assertEqual(matching_groups[0]["match_type"], "name")
+        self.assertFalse(
+            any(
+                {offer["id"] for offer in group["offers"]} == {first.pk, second.pk}
+                for group in response.context["price_comparisons"]
+            )
+        )
 
     def test_home_price_carousel_uses_lower_sale_price(self):
         regular = self.create_offer(
