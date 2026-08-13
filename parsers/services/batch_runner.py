@@ -31,6 +31,40 @@ class ParserCancelled(Exception):
     pass
 
 
+def enqueue_all_parsers(trigger=ParserRun.TRIGGER_SCHEDULE):
+    """Queue one all-parsers job without racing another scheduler process."""
+    recover_stale_parser_state()
+    try:
+        with transaction.atomic():
+            try:
+                ParserBatchLock.objects.select_for_update().get(name="nightly_parser_batch")
+            except ParserBatchLock.DoesNotExist as exc:
+                raise ParserBatchLockMissing(
+                    "Parser batch lock is missing. Run migrations to create the 'nightly_parser_batch' lock row."
+                ) from exc
+
+            active_job = (
+                ParserQueueJob.objects.filter(
+                    run_all=True,
+                    status__in=[ParserQueueJob.STATUS_PENDING, ParserQueueJob.STATUS_RUNNING],
+                )
+                .order_by("created_at")
+                .first()
+            )
+            if active_job is not None:
+                return active_job, False
+
+            running_batch = ParserBatch.objects.filter(status=ParserBatch.STATUS_RUNNING).first()
+            if running_batch is not None:
+                raise ParserBatchAlreadyRunning("Parser batch is already running.")
+
+            return ParserQueueJob.objects.create(run_all=True, trigger=trigger), True
+    except OperationalError as exc:
+        if "locked" in str(exc).lower():
+            raise ParserBatchAlreadyRunning("Parser batch scheduler is locked by another process.") from exc
+        raise
+
+
 def run_all_parsers(trigger=ParserRun.TRIGGER_COMMAND, force=False):
     recover_stale_parser_state()
     batch = start_batch(trigger=trigger, force=force)
@@ -227,7 +261,11 @@ def process_next_queue_job():
             if job.run_all:
                 batch = run_all_parsers(trigger=job.trigger)
                 job.batch = batch
-                job.status = ParserQueueJob.STATUS_SUCCESS
+                if batch.status == ParserBatch.STATUS_SUCCESS:
+                    job.status = ParserQueueJob.STATUS_SUCCESS
+                else:
+                    job.status = ParserQueueJob.STATUS_FAILED
+                    job.error_message = f"Parser batch completed with status={batch.status}."
             else:
                 run = run_excel_parser(job.parser_config, trigger=job.trigger)
                 job.parser_run = run

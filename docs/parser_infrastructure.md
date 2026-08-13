@@ -5,12 +5,13 @@ requests.
 
 ## Railway
 
-Use two separate Railway processes:
+Use two separate Railway processes. The scheduler must only enqueue work and
+exit; the always-on worker performs the long-running batch.
 
-1. Scheduler, once per day at `00:00 Europe/Tallinn`:
+1. Scheduler, once per day:
 
 ```bash
-python manage.py run_all_parsers
+python manage.py run_nightly_parsers
 ```
 
 2. Worker, always running as a separate service:
@@ -18,6 +19,11 @@ python manage.py run_all_parsers
 ```bash
 python manage.py parser_worker
 ```
+
+Railway cron expressions use UTC. Configure the Railway schedule with the
+desired Tallinn UTC offset and adjust it when daylight-saving time changes.
+`run_nightly_parsers` is idempotent while an all-parsers job is pending or
+running, so overlapping scheduler calls do not duplicate a nightly batch.
 
 The Django web process must not execute parsers inside admin HTTP requests.
 Admin actions create `ParserQueueJob` records only; `parser_worker` processes
