@@ -125,7 +125,9 @@ body::before {
 }
 
 .search-workspace .hero-content h1 {
-    margin-bottom: 14px;
+    width: 100%;
+    max-width: none;
+    margin: 0 0 14px;
     font-size: 1rem;
     text-align: center;
 }

@@ -272,7 +272,8 @@ class MainCatalogTests(TestCase):
         self.assertIn("font-size: 1.1rem;", css)
         self.assertIn("font-size: 0.94rem;", css)
         self.assertIn("text-align: center;", css)
-        self.assertContains(response, "tannenberg.css?v=13", html=False)
+        self.assertIn("max-width: none;", css)
+        self.assertContains(response, "tannenberg.css?v=14", html=False)
 
     def test_home_shows_compact_search_guide_and_guest_account_benefits(self):
         response = self.client.get(
