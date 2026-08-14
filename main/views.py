@@ -8,7 +8,7 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Case, Count, DecimalField, F, IntegerField, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
-from django.http import JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -50,6 +50,15 @@ from .models import (
     ShoppingListItem,
 )
 from .price_alerts import set_shopping_list_price_alerts
+from .seo import (
+    absolute_url,
+    canonical_url,
+    effective_price,
+    is_valid_barcode,
+    json_ld,
+    product_comparison_schema,
+    product_offer_schema,
+)
 from .services import (
     add_offer_to_shopping_list,
     build_purchase_plan,
@@ -293,16 +302,22 @@ def _with_effective_price(offers):
     )
 
 
-def catalog_view(request):
+def catalog_view(request, shop_code=None, category_pk=None):
     query = request.GET.get("q", "").strip()
-    shop_code = request.GET.get("shop", "").strip()
-    category_id = request.GET.get("category", "").strip()
+    is_category_route = shop_code is not None and category_pk is not None
+    if not is_category_route:
+        shop_code = request.GET.get("shop", "").strip()
+        category_id = request.GET.get("category", "").strip()
+    else:
+        category_id = str(category_pk)
     sort = request.GET.get("sort", "relevance").strip()
     if sort not in CATALOG_SORT_OPTIONS:
         sort = "relevance"
 
     shops = Shop.objects.filter(is_active=True).order_by("name")
     selected_shop = shops.filter(code=shop_code).first() if shop_code else None
+    if is_category_route and selected_shop is None:
+        raise Http404
     selected_category = None
     if category_id.isdigit():
         selected_category = (
@@ -313,6 +328,8 @@ def catalog_view(request):
         )
         if selected_category and selected_shop is None:
             selected_shop = selected_category.shop
+    if is_category_route and selected_category is None:
+        raise Http404
 
     offers = available_offers().select_related("shop", "category", "product")
 
@@ -338,6 +355,32 @@ def catalog_view(request):
     page_params = request.GET.copy()
     page_params.pop("page", None)
 
+    if is_category_route:
+        canonical_path = reverse(
+            "category_catalog",
+            args=[selected_shop.code, selected_category.pk],
+        )
+        seo_title = f"{selected_category.name} — {selected_shop.name} | Tannenberg"
+        seo_description = _(
+            "Compare prices for %(category)s products from %(shop)s."
+        ) % {
+            "category": selected_category.name,
+            "shop": selected_shop.name,
+        }
+    else:
+        canonical_path = reverse("catalog")
+        seo_title = _("Product catalog — Tannenberg")
+        seo_description = _(
+            "Browse current product offers and prices from Estonian stores."
+        )
+
+    non_page_params = request.GET.copy()
+    non_page_params.pop("page", None)
+    seo_robots = "noindex,follow" if non_page_params else "index,follow"
+    page_number = request.GET.get("page", "").strip()
+    if page_number.isdigit() and int(page_number) > 1 and not non_page_params:
+        canonical_path = f"{canonical_path}?page={int(page_number)}"
+
     return render(
         request,
         "main/catalog.html",
@@ -360,6 +403,12 @@ def catalog_view(request):
             "page_params": page_params.urlencode(),
             "page_range": paginator.get_elided_page_range(page_obj.number),
             "list_offer_ids": get_list_offer_ids(request.user),
+            "catalog_form_action": reverse("catalog"),
+            "seo_category": selected_category if is_category_route else None,
+            "seo_title": seo_title,
+            "seo_description": seo_description,
+            "seo_canonical_url": absolute_url(request, canonical_path),
+            "seo_robots": seo_robots,
         },
     )
 
@@ -407,14 +456,126 @@ def offer_detail(request, pk):
         available_offers().select_related("shop", "category", "product"),
         pk=pk,
     )
+    detail_path = reverse("offer_detail", args=[offer.pk])
+    comparison_offers = _get_barcode_comparison_offers(offer.barcode)
+    comparison_url = None
+    seo_robots = "index,follow"
+    if len(comparison_offers) >= 2:
+        comparison_path = reverse("barcode_product_detail", args=[offer.barcode])
+        comparison_url = absolute_url(request, comparison_path)
+        seo_canonical_url = comparison_url
+        seo_robots = "noindex,follow"
+        seo_json_ld = None
+    else:
+        seo_canonical_url = canonical_url(request, detail_path)
+        seo_json_ld = json_ld(product_offer_schema(offer, seo_canonical_url))
+
     return render(
         request,
         "main/offer_detail.html",
         {
             "offer": offer,
             "list_offer_ids": get_list_offer_ids(request.user),
+            "comparison_url": comparison_url,
+            "seo_title": f"{offer.original_name} | Tannenberg",
+            "seo_description": _("Current price for %(product)s at %(shop)s.")
+            % {"product": offer.original_name, "shop": offer.shop.name},
+            "seo_canonical_url": seo_canonical_url,
+            "seo_robots": seo_robots,
+            "seo_json_ld": seo_json_ld,
+            "seo_image_url": offer.image_url,
         },
     )
+
+
+@require_GET
+def barcode_product_detail(request, barcode):
+    if not is_valid_barcode(barcode):
+        raise Http404
+
+    offers = _get_barcode_comparison_offers(barcode)
+    if len(offers) < 2:
+        raise Http404
+
+    page_path = reverse("barcode_product_detail", args=[barcode])
+    page_url = canonical_url(request, page_path)
+    representative = next((offer for offer in offers if offer.image_url), offers[0])
+    prices = [offer.seo_price for offer in offers]
+    return render(
+        request,
+        "main/product_comparison.html",
+        {
+            "barcode": barcode,
+            "offers": offers,
+            "representative": representative,
+            "lowest_price": min(prices),
+            "highest_price": max(prices),
+            "seo_title": _("%(product)s price comparison | Tannenberg")
+            % {"product": representative.original_name},
+            "seo_description": _(
+                "Compare %(product)s prices in %(count)s Estonian stores by exact barcode %(barcode)s."
+            )
+            % {
+                "product": representative.original_name,
+                "count": len(offers),
+                "barcode": barcode,
+            },
+            "seo_canonical_url": page_url,
+            "seo_robots": "index,follow",
+            "seo_json_ld": json_ld(product_comparison_schema(offers, page_url)),
+            "seo_image_url": representative.image_url,
+        },
+    )
+
+
+def _get_barcode_comparison_offers(barcode):
+    if not is_valid_barcode(barcode):
+        return []
+
+    candidates = list(
+        available_offers()
+        .filter(shop__is_active=True, barcode=barcode)
+        .filter(Q(price__isnull=False) | Q(sale_price__isnull=False))
+        .select_related("shop", "category", "product")
+        .order_by("shop__name", "id")
+    )
+    cheapest_by_shop = {}
+    for offer in candidates:
+        price = effective_price(offer)
+        if price is None:
+            continue
+        current = cheapest_by_shop.get(offer.shop_id)
+        if current is None or price < current.seo_price or (
+            price == current.seo_price and offer.pk < current.pk
+        ):
+            offer.seo_price = price
+            cheapest_by_shop[offer.shop_id] = offer
+
+    return sorted(
+        cheapest_by_shop.values(),
+        key=lambda item: (item.seo_price, item.shop.name.casefold(), item.pk),
+    )
+
+
+@require_GET
+def robots_txt(request):
+    sitemap_url = absolute_url(request, reverse("sitemap-index"))
+    lines = [
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /admin/",
+        "Disallow: /accounts/",
+        "Disallow: /group-purchases/",
+        "Disallow: /my-list/",
+        "Disallow: /out/",
+        "Disallow: /price-comparisons/",
+        "Disallow: /products/",
+        "Disallow: /search/",
+        "Disallow: /shared-list/",
+        "Disallow: /statistics/",
+        f"Sitemap: {sitemap_url}",
+    ]
+    return HttpResponse("\n".join(lines) + "\n", content_type="text/plain")
 
 
 def store_click(request, offer_pk):

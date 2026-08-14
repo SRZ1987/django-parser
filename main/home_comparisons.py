@@ -96,6 +96,7 @@ def _serialize_group(offers):
 
     representative = next((offer for _price, offer in ranked if offer.image_url), ranked[0][1])
     return {
+        "barcode": representative.barcode,
         "name": representative.original_name,
         "image_url": representative.image_url,
         "detail_offer_id": representative.pk,

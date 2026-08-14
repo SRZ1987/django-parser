@@ -755,3 +755,61 @@ msgstr "Hinnavõrdlus"
 
 msgid "Carousel controls"
 msgstr "Karusselli juhtnupud"
+
+msgid "Compare prices in Estonian stores — Tannenberg"
+msgstr "Võrdle hindu Eesti kauplustes — Tannenberg"
+
+msgid "Compare current product prices across Estonian stores and find the best offer."
+msgstr "Võrdle toodete hindu Eesti kauplustes ja leia parim pakkumine."
+
+msgid "Compare product prices across Estonian stores by name, SKU or barcode."
+msgstr "Võrdle Eesti kaupluste hindu tootenime, SKU või vöötkoodi järgi."
+
+#, python-format
+msgid "Compare prices for %(category)s products from %(shop)s."
+msgstr "Võrdle kategooria %(category)s toodete hindu kaupluses %(shop)s."
+
+msgid "Product catalog — Tannenberg"
+msgstr "Tootekataloog — Tannenberg"
+
+msgid "Browse current product offers and prices from Estonian stores."
+msgstr "Sirvi Eesti kaupluste ajakohaseid tootepakkumisi ja hindu."
+
+#, python-format
+msgid "Current price for %(product)s at %(shop)s."
+msgstr "Toote %(product)s praegune hind kaupluses %(shop)s."
+
+#, python-format
+msgid "%(product)s price comparison | Tannenberg"
+msgstr "Toote %(product)s hinnavõrdlus | Tannenberg"
+
+#, python-format
+msgid "Compare %(product)s prices in %(count)s Estonian stores by exact barcode %(barcode)s."
+msgstr "Võrdle toote %(product)s hindu %(count)s Eesti kaupluses täpse vöötkoodi %(barcode)s järgi."
+
+msgid "Compare prices by barcode"
+msgstr "Võrdle hindu vöötkoodi järgi"
+
+msgid "Breadcrumb"
+msgstr "Asukohariba"
+
+msgid "Exact barcode match"
+msgstr "Täpne vöötkoodi vaste"
+
+msgid "Prices from"
+msgstr "Hinnad alates"
+
+msgid "up to"
+msgstr "kuni"
+
+msgid "Offers from stores"
+msgstr "Kaupluste pakkumised"
+
+#, python-format
+msgid "%(count)s store"
+msgid_plural "%(count)s stores"
+msgstr[0] "%(count)s kauplus"
+msgstr[1] "%(count)s kauplust"
+
+msgid "Lowest price"
+msgstr "Madalaim hind"

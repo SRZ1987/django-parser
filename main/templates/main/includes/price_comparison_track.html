@@ -2,7 +2,7 @@
 <div class="price-carousel-track">
     {% for comparison in price_comparisons %}
         <article class="price-comparison-card">
-            <a class="price-comparison-image" href="{% url 'offer_detail' comparison.detail_offer_id %}" aria-label="{{ comparison.name }}">
+            <a class="price-comparison-image" href="{% url 'barcode_product_detail' comparison.barcode %}" aria-label="{{ comparison.name }}">
                 {% if comparison.image_url %}
                     <img src="{{ comparison.image_url }}" alt="" loading="lazy">
                 {% else %}
@@ -10,7 +10,7 @@
                 {% endif %}
             </a>
             <div class="price-comparison-content">
-                <h3><a href="{% url 'offer_detail' comparison.detail_offer_id %}">{{ comparison.name }}</a></h3>
+                <h3><a href="{% url 'barcode_product_detail' comparison.barcode %}">{{ comparison.name }}</a></h3>
                 <ul>
                     {% for offer in comparison.offers %}
                         <li{% if offer.is_cheapest %} class="is-cheapest"{% endif %}>

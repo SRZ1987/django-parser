@@ -1,0 +1,70 @@
+{% extends 'main/base.html' %}
+{% load i18n %}
+
+{% block title %}{{ seo_title }}{% endblock %}
+{% block meta_description %}{{ seo_description }}{% endblock %}
+{% block og_type %}product{% endblock %}
+{% block og_title %}{{ seo_title }}{% endblock %}
+{% block structured_data %}<script type="application/ld+json">{{ seo_json_ld }}</script>{% endblock %}
+
+{% block content %}
+<main class="page-shell comparison-shell">
+    <nav class="comparison-breadcrumb" aria-label="{% translate 'Breadcrumb' %}">
+        <a href="{% url 'home' %}">{% translate "Home" %}</a>
+        <span aria-hidden="true">/</span>
+        <span>{% translate "Price comparison" %}</span>
+    </nav>
+
+    <header class="comparison-header">
+        <div class="comparison-main-image">
+            {% if representative.image_url %}
+                <img src="{{ representative.image_url }}" alt="{{ representative.original_name }}">
+            {% else %}
+                <span>{% translate "No image" %}</span>
+            {% endif %}
+        </div>
+        <div>
+            <p class="eyebrow">{% translate "Exact barcode match" %}</p>
+            <h1>{{ representative.original_name }}</h1>
+            <p class="comparison-barcode">{% translate "Barcode" %}: <strong>{{ barcode }}</strong></p>
+            {% if representative.product.brand %}<p>{{ representative.product.brand }}{% if representative.product.model %} · {{ representative.product.model }}{% endif %}</p>{% endif %}
+            <div class="comparison-range">
+                <span>{% translate "Prices from" %}</span>
+                <strong>{{ lowest_price|floatformat:2 }} {{ representative.currency }}</strong>
+                {% if highest_price != lowest_price %}
+                    <small>{% translate "up to" %} {{ highest_price|floatformat:2 }} {{ representative.currency }}</small>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    <section class="comparison-offers" aria-labelledby="comparison-offers-title">
+        <div class="comparison-section-head">
+            <h2 id="comparison-offers-title">{% translate "Offers from stores" %}</h2>
+            <span>{% blocktranslate count count=offers|length %}{{ count }} store{% plural %}{{ count }} stores{% endblocktranslate %}</span>
+        </div>
+        <ol>
+            {% for offer in offers %}
+                <li{% if forloop.first %} class="is-cheapest"{% endif %}>
+                    <div class="comparison-offer-rank">{{ forloop.counter }}</div>
+                    <div class="comparison-offer-shop">
+                        <strong>{{ offer.shop.name }}</strong>
+                        {% if offer.category %}
+                            <a href="{% url 'category_catalog' offer.shop.code offer.category.pk %}">{{ offer.category.name }}</a>
+                        {% endif %}
+                    </div>
+                    <div class="comparison-offer-price">
+                        <strong>{{ offer.seo_price|floatformat:2 }} {{ offer.currency }}</strong>
+                        {% if forloop.first %}<span>{% translate "Lowest price" %}</span>{% endif %}
+                    </div>
+                    {% if offer.product_url %}
+                        <a class="store-link" href="{% url 'store_click' offer.pk %}" target="_blank" rel="noopener noreferrer">
+                            {% translate "Go to store" %}
+                        </a>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ol>
+    </section>
+</main>
+{% endblock %}

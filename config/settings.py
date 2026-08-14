@@ -35,6 +35,7 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "127.0.0.1,localhost")
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 # Application definition
@@ -48,6 +49,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'django.contrib.sitemaps',
     'django.contrib.staticfiles',
 ]
 
@@ -59,6 +61,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'main.middleware.SeoHeadersMiddleware',
     'main.middleware.AnalyticsMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -77,6 +80,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'main.context_processors.shopping_list_summary',
+                'main.context_processors.seo_defaults',
             ],
         },
     },
@@ -163,6 +167,7 @@ EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False").lower() == "true"
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Tannenberg <no-reply@localhost>")
 SITE_URL = os.getenv("SITE_URL", "").rstrip("/")
+GOOGLE_SITE_VERIFICATION = os.getenv("GOOGLE_SITE_VERIFICATION", "").strip()
 GROUP_PURCHASE_INACTIVITY_DAYS = int(os.getenv("GROUP_PURCHASE_INACTIVITY_DAYS", "7"))
 PARSER_EXPORT_RETENTION_DAYS = int(os.getenv("PARSER_EXPORT_RETENTION_DAYS", "30"))
 PARSER_EXPORT_WORK_DIR = Path(os.getenv("PARSER_EXPORT_WORK_DIR", MEDIA_ROOT / "parser_export_work"))

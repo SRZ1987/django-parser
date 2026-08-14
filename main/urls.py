@@ -28,8 +28,15 @@ urlpatterns = [
     path('search/', views.product_search_view, name='product_search'),
     path('products/', views.product_search_view, name='products'),
     path('catalog/', views.catalog_view, name='catalog'),
+    path(
+        'catalog/<slug:shop_code>/category/<int:category_pk>/',
+        views.catalog_view,
+        name='category_catalog',
+    ),
+    path('product/ean/<str:barcode>/', views.barcode_product_detail, name='barcode_product_detail'),
     path('offer/<int:pk>/', views.offer_detail, name='offer_detail'),
     path('out/<int:offer_pk>/', views.store_click, name='store_click'),
     path('statistics/', views.statistics_dashboard, name='statistics_dashboard'),
     path('search/suggestions/', views.search_suggestions, name='search_suggestions'),
+    path('robots.txt', views.robots_txt, name='robots_txt'),
 ]

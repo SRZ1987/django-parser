@@ -6,12 +6,23 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Tannenberg{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}{{ seo_description }}{% endblock %}">
+    <meta name="robots" content="{{ seo_robots|default:'index,follow' }}">
+    <link rel="canonical" href="{{ seo_canonical_url }}">
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:site_name" content="Tannenberg">
+    <meta property="og:title" content="{% block og_title %}{{ seo_title }}{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}{{ seo_description }}{% endblock %}">
+    <meta property="og:url" content="{{ seo_canonical_url }}">
+    {% if seo_image_url %}<meta property="og:image" content="{{ seo_image_url }}">{% endif %}
+    {% if google_site_verification %}<meta name="google-site-verification" content="{{ google_site_verification }}">{% endif %}
     <link rel="stylesheet" href="{% static 'main/css/style.css' %}?v=10">
-    <link rel="stylesheet" href="{% static 'main/css/tannenberg.css' %}?v=14">
+    <link rel="stylesheet" href="{% static 'main/css/tannenberg.css' %}?v=16">
     <link rel="stylesheet" href="{% static 'main/css/barcode-scanner.css' %}?v=2">
     <script src="{% static 'main/js/menu.js' %}?v=1" defer></script>
     <script src="{% static 'main/js/search-suggestions.js' %}?v=3" defer></script>
     <script src="{% static 'main/js/barcode-scanner.js' %}?v=2" type="module"></script>
+    {% block structured_data %}{% endblock %}
     {% block extra_scripts %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">

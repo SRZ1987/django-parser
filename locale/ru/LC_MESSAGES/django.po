@@ -756,3 +756,62 @@ msgstr "Сравнение цен"
 
 msgid "Carousel controls"
 msgstr "Управление каруселью"
+
+msgid "Compare prices in Estonian stores — Tannenberg"
+msgstr "Сравнение цен в магазинах Эстонии — Tannenberg"
+
+msgid "Compare current product prices across Estonian stores and find the best offer."
+msgstr "Сравнивайте актуальные цены на товары в магазинах Эстонии и находите лучшее предложение."
+
+msgid "Compare product prices across Estonian stores by name, SKU or barcode."
+msgstr "Сравнивайте цены в магазинах Эстонии по названию, SKU или штрихкоду."
+
+#, python-format
+msgid "Compare prices for %(category)s products from %(shop)s."
+msgstr "Сравнивайте цены на товары категории %(category)s в магазине %(shop)s."
+
+msgid "Product catalog — Tannenberg"
+msgstr "Каталог товаров — Tannenberg"
+
+msgid "Browse current product offers and prices from Estonian stores."
+msgstr "Просматривайте актуальные предложения и цены магазинов Эстонии."
+
+#, python-format
+msgid "Current price for %(product)s at %(shop)s."
+msgstr "Актуальная цена товара %(product)s в магазине %(shop)s."
+
+#, python-format
+msgid "%(product)s price comparison | Tannenberg"
+msgstr "Сравнение цен на %(product)s | Tannenberg"
+
+#, python-format
+msgid "Compare %(product)s prices in %(count)s Estonian stores by exact barcode %(barcode)s."
+msgstr "Сравните цены на %(product)s в %(count)s магазинах Эстонии по точному штрихкоду %(barcode)s."
+
+msgid "Compare prices by barcode"
+msgstr "Сравнить цены по штрихкоду"
+
+msgid "Breadcrumb"
+msgstr "Навигационная цепочка"
+
+msgid "Exact barcode match"
+msgstr "Точное совпадение штрихкода"
+
+msgid "Prices from"
+msgstr "Цены от"
+
+msgid "up to"
+msgstr "до"
+
+msgid "Offers from stores"
+msgstr "Предложения магазинов"
+
+#, python-format
+msgid "%(count)s store"
+msgid_plural "%(count)s stores"
+msgstr[0] "%(count)s магазин"
+msgstr[1] "%(count)s магазина"
+msgstr[2] "%(count)s магазинов"
+
+msgid "Lowest price"
+msgstr "Самая низкая цена"

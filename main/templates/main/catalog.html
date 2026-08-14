@@ -1,19 +1,20 @@
 {% extends 'main/base.html' %}
 {% load i18n %}
 
-{% block title %}{% translate "Product catalog" %}{% endblock %}
+{% block title %}{{ seo_title }}{% endblock %}
+{% block meta_description %}{{ seo_description }}{% endblock %}
 
 {% block content %}
 <main class="page-shell catalog-shell">
     <section class="catalog-head" aria-labelledby="catalog-title">
-        <p class="eyebrow">{% translate "Offer catalog" %}</p>
-        <h1 id="catalog-title">{% translate "Product catalog" %}</h1>
+        <p class="eyebrow">{% if seo_category %}{{ seo_category.shop.name }}{% else %}{% translate "Offer catalog" %}{% endif %}</p>
+        <h1 id="catalog-title">{% if seo_category %}{{ seo_category.name }}{% else %}{% translate "Product catalog" %}{% endif %}</h1>
         <p>
             {% translate "Search by product name, SKU or barcode and filter by store and category." %}
         </p>
     </section>
 
-    <form class="catalog-filters" method="get" action="{% url 'catalog' %}" data-barcode-search-form>
+    <form class="catalog-filters" method="get" action="{{ catalog_form_action }}" data-barcode-search-form>
         <div class="catalog-search-control">
             <label for="catalog-search-input">{% translate "Search" %}</label>
             <div class="catalog-search-input-row">

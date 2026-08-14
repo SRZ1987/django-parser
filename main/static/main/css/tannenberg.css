@@ -1505,3 +1505,197 @@ body::before {
     background: #f1f1ef;
     color: #111;
 }
+
+/* Public barcode comparison pages */
+.comparison-shell {
+    max-width: 1080px;
+}
+
+.comparison-breadcrumb {
+    margin-bottom: 18px;
+    display: flex;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.comparison-breadcrumb a,
+.comparison-link {
+    color: #f2f2ef;
+}
+
+.comparison-header {
+    padding: 24px 0 30px;
+    display: grid;
+    grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+    gap: 34px;
+    border-bottom: 1px solid var(--border);
+}
+
+.comparison-main-image {
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 8px;
+    color: #666;
+    background: #f2f2ef;
+}
+
+.comparison-main-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.comparison-header h1 {
+    max-width: 760px;
+    margin: 8px 0 14px;
+    font-size: 2.35rem;
+    line-height: 1.12;
+}
+
+.comparison-header p,
+.comparison-range small,
+.comparison-section-head span,
+.comparison-offer-shop a {
+    color: var(--muted);
+}
+
+.comparison-range {
+    margin-top: 26px;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.comparison-range strong {
+    color: #f4f4f0;
+    font-size: 1.8rem;
+}
+
+.comparison-offers {
+    padding: 30px 0 50px;
+}
+
+.comparison-section-head {
+    margin-bottom: 12px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.comparison-section-head h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.comparison-offers ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--border);
+}
+
+.comparison-offers li {
+    min-height: 82px;
+    padding: 14px 0;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) minmax(150px, auto) auto;
+    align-items: center;
+    gap: 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+.comparison-offer-rank {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    color: var(--muted);
+}
+
+.comparison-offer-shop,
+.comparison-offer-price {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.comparison-offer-shop a {
+    overflow: hidden;
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.comparison-offer-price {
+    text-align: right;
+}
+
+.comparison-offer-price span {
+    color: #9fd0b7;
+    font-size: 0.72rem;
+}
+
+.comparison-link {
+    margin-top: 12px;
+    display: inline-flex;
+    font-weight: 700;
+}
+
+@media (max-width: 760px) {
+    .comparison-header {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .comparison-header h1 {
+        font-size: 1.7rem;
+    }
+
+    .comparison-main-image {
+        width: 100%;
+        height: 300px;
+        aspect-ratio: auto;
+    }
+
+    .comparison-section-head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .comparison-offers li {
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    .comparison-offer-rank {
+        grid-column: 1;
+        grid-row: 1 / span 3;
+        align-self: start;
+    }
+
+    .comparison-offer-shop,
+    .comparison-offer-price,
+    .comparison-offers li > .store-link {
+        grid-column: 2;
+    }
+
+    .comparison-offer-price {
+        text-align: left;
+    }
+
+    .comparison-offer-shop a {
+        white-space: normal;
+    }
+
+    .comparison-offers li > .store-link {
+        justify-self: start;
+    }
+}

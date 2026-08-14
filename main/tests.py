@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import timedelta
 from decimal import Decimal
@@ -29,6 +30,7 @@ from main.models import (
     StoreClick,
 )
 from main.price_alerts import send_shopping_list_price_alerts, set_shopping_list_price_alerts
+from main.sitemaps import BarcodeComparisonSitemap
 from main.services import add_offer_to_shopping_list, build_purchase_plan, get_best_offer
 
 
@@ -323,7 +325,7 @@ class MainCatalogTests(TestCase):
         self.assertIn("font-size: 0.94rem;", css)
         self.assertIn("text-align: center;", css)
         self.assertIn("max-width: none;", css)
-        self.assertContains(response, "tannenberg.css?v=14", html=False)
+        self.assertContains(response, "tannenberg.css?v=16", html=False)
 
     def test_home_shows_compact_search_guide_and_guest_account_benefits(self):
         response = self.client.get(
@@ -2722,3 +2724,231 @@ class MultilingualInterfaceTests(TestCase):
                 response = self.client.get(reverse("offer_detail", args=[self.offer.pk]))
                 self.assertContains(response, "Murutrimmer Trolle 350W")
                 self.assertContains(response, store_label)
+
+
+@override_settings(
+    SITE_URL="https://tannenberg.example",
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    },
+)
+class SeoTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.first_shop = Shop.objects.create(name="DEPO", code="depo")
+        self.second_shop = Shop.objects.create(name="Bauhof", code="bauhof")
+        self.first_category = Category.objects.create(
+            shop=self.first_shop,
+            external_id="drills",
+            name="Akutrellid",
+        )
+        self.second_category = Category.objects.create(
+            shop=self.second_shop,
+            external_id="cordless-drills",
+            name="Akutrellid ja kruvikeerajad",
+        )
+
+    def create_offer(
+        self,
+        *,
+        shop=None,
+        category=None,
+        external_id="seo-offer-1",
+        barcode="4740000000001",
+        price=Decimal("100.00"),
+        sale_price=None,
+        name="Akutrell Makita DDF482Z",
+    ):
+        shop = shop or self.first_shop
+        if category is None:
+            category = self.first_category if shop == self.first_shop else self.second_category
+        product = Product.objects.create(
+            name=name,
+            brand="Makita",
+            model="DDF482Z",
+            barcode=barcode,
+        )
+        return ProductOffer.objects.create(
+            shop=shop,
+            product=product,
+            category=category,
+            external_id=external_id,
+            sku=external_id.upper(),
+            barcode=barcode,
+            original_name=name,
+            description="18 V cordless drill",
+            price=price,
+            sale_price=sale_price,
+            currency="EUR",
+            product_url=f"https://{shop.code}.example/{external_id}",
+            image_url=f"https://{shop.code}.example/{external_id}.jpg",
+        )
+
+    def create_comparison(self):
+        expensive = self.create_offer(price=Decimal("120.00"))
+        cheaper = self.create_offer(
+            shop=self.second_shop,
+            external_id="seo-offer-2",
+            price=Decimal("110.00"),
+            sale_price=Decimal("89.00"),
+            name="Makita akutrell DDF482Z",
+        )
+        return expensive, cheaper
+
+    def test_barcode_comparison_page_uses_exact_ean_and_orders_by_price(self):
+        expensive, cheaper = self.create_comparison()
+        unrelated = self.create_offer(
+            external_id="different-ean",
+            barcode="4740000000002",
+            price=Decimal("1.00"),
+        )
+
+        response = self.client.get(
+            reverse("barcode_product_detail", args=[expensive.barcode]),
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([offer.pk for offer in response.context["offers"]], [cheaper.pk, expensive.pk])
+        self.assertNotContains(response, unrelated.original_name)
+        self.assertContains(response, "89.00")
+        self.assertContains(response, expensive.barcode)
+        self.assertEqual(
+            response.context["seo_canonical_url"],
+            f"https://tannenberg.example/product/ean/{expensive.barcode}/",
+        )
+
+    def test_barcode_comparison_schema_contains_aggregate_offer(self):
+        expensive, _cheaper = self.create_comparison()
+
+        response = self.client.get(reverse("barcode_product_detail", args=[expensive.barcode]))
+        schema = json.loads(str(response.context["seo_json_ld"]))
+        product = next(item for item in schema["@graph"] if item["@type"] == "Product")
+
+        self.assertEqual(product["gtin13"], expensive.barcode)
+        self.assertEqual(product["offers"]["@type"], "AggregateOffer")
+        self.assertEqual(product["offers"]["lowPrice"], "89.00")
+        self.assertEqual(product["offers"]["highPrice"], "120.00")
+        self.assertEqual(product["offers"]["offerCount"], 2)
+
+    def test_barcode_comparison_requires_valid_ean_and_two_stores(self):
+        single = self.create_offer()
+
+        invalid_response = self.client.get(reverse("barcode_product_detail", args=["EAN-1"]))
+        single_response = self.client.get(
+            reverse("barcode_product_detail", args=[single.barcode])
+        )
+
+        self.assertEqual(invalid_response.status_code, 404)
+        self.assertEqual(single_response.status_code, 404)
+
+    def test_offer_detail_canonicalizes_duplicate_ean_to_comparison(self):
+        expensive, _cheaper = self.create_comparison()
+
+        response = self.client.get(reverse("offer_detail", args=[expensive.pk]))
+
+        comparison_url = f"https://tannenberg.example/product/ean/{expensive.barcode}/"
+        self.assertEqual(response.context["seo_canonical_url"], comparison_url)
+        self.assertEqual(response.context["seo_robots"], "noindex,follow")
+        self.assertContains(response, f'<link rel="canonical" href="{comparison_url}">')
+        self.assertContains(response, 'class="comparison-link"')
+
+    def test_unique_offer_has_self_canonical_and_product_schema(self):
+        offer = self.create_offer()
+
+        response = self.client.get(reverse("offer_detail", args=[offer.pk]))
+        schema = json.loads(str(response.context["seo_json_ld"]))
+
+        self.assertEqual(
+            response.context["seo_canonical_url"],
+            f"https://tannenberg.example/offer/{offer.pk}/",
+        )
+        self.assertEqual(schema["@type"], "Product")
+        self.assertEqual(schema["offers"]["price"], "100.00")
+
+    def test_category_page_has_stable_url_and_canonical(self):
+        offer = self.create_offer()
+        url = reverse(
+            "category_catalog",
+            args=[self.first_shop.code, self.first_category.pk],
+        )
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.first_category.name)
+        self.assertContains(response, offer.original_name)
+        self.assertEqual(response.context["seo_robots"], "index,follow")
+        self.assertEqual(response.context["seo_canonical_url"], f"https://tannenberg.example{url}")
+
+    def test_filtered_catalog_and_search_are_noindex(self):
+        self.create_offer()
+
+        catalog_response = self.client.get(reverse("catalog"), {"shop": "depo"})
+        search_response = self.client.get(reverse("product_search"), {"q": "makita"})
+
+        self.assertEqual(catalog_response.context["seo_robots"], "noindex,follow")
+        self.assertContains(catalog_response, 'content="noindex,follow"')
+        self.assertEqual(search_response["X-Robots-Tag"], "noindex, nofollow")
+        self.assertContains(search_response, 'content="noindex,nofollow"')
+
+    def test_robots_lists_sitemap_and_private_paths(self):
+        response = self.client.get(reverse("robots_txt"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("text/plain"))
+        self.assertContains(response, "Disallow: /my-list/")
+        self.assertContains(response, "Sitemap: https://tannenberg.example/sitemap.xml")
+
+    def test_sitemap_index_contains_all_sections(self):
+        self.create_comparison()
+
+        response = self.client.get(reverse("sitemap-index"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "/sitemap-static.xml")
+        self.assertContains(response, "/sitemap-products.xml")
+        self.assertContains(response, "/sitemap-categories.xml")
+
+    @override_settings(SITE_URL="", ALLOWED_HOSTS=["tannenberg.example"])
+    def test_sitemap_uses_forwarded_https_in_production(self):
+        response = self.client.get(
+            reverse("sitemap-index"),
+            HTTP_HOST="tannenberg.example",
+            HTTP_X_FORWARDED_PROTO="https",
+        )
+
+        self.assertContains(response, "https://tannenberg.example/sitemap-static.xml")
+
+    def test_product_sitemap_only_contains_valid_multi_store_barcodes(self):
+        valid, _other = self.create_comparison()
+        self.create_offer(
+            external_id="single-store",
+            barcode="4740000000002",
+        )
+        self.create_offer(
+            shop=self.second_shop,
+            external_id="invalid-barcode",
+            barcode="EAN-INVALID",
+        )
+
+        items = list(BarcodeComparisonSitemap().items())
+        response = self.client.get(
+            reverse("django.contrib.sitemaps.views.sitemap", args=["products"])
+        )
+
+        self.assertEqual(items, [valid.barcode])
+        self.assertContains(response, reverse("barcode_product_detail", args=[valid.barcode]))
+        self.assertNotContains(response, "4740000000002")
+        self.assertNotContains(response, "EAN-INVALID")
+
+    def test_home_carousel_links_to_barcode_comparison_page(self):
+        expensive, _cheaper = self.create_comparison()
+
+        response = self.client.get(reverse("home"))
+
+        self.assertContains(
+            response,
+            reverse("barcode_product_detail", args=[expensive.barcode]),
+        )

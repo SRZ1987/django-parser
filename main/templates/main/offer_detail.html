@@ -2,6 +2,10 @@
 {% load i18n %}
 
 {% block title %}{{ offer.original_name }}{% endblock %}
+{% block meta_description %}{{ seo_description }}{% endblock %}
+{% block og_type %}product{% endblock %}
+{% block og_title %}{{ offer.original_name }} | Tannenberg{% endblock %}
+{% block structured_data %}{% if seo_json_ld %}<script type="application/ld+json">{{ seo_json_ld }}</script>{% endif %}{% endblock %}
 
 {% block content %}
 <main class="page-shell detail-shell">
@@ -79,6 +83,12 @@
             {% if offer.product_url %}
                 <a class="store-link detail-store-link" href="{% url 'store_click' offer.pk %}" target="_blank" rel="noopener noreferrer">
                     {% translate "Open in store" %}
+                </a>
+            {% endif %}
+
+            {% if comparison_url %}
+                <a class="comparison-link" href="{{ comparison_url }}">
+                    {% translate "Compare prices by barcode" %}
                 </a>
             {% endif %}
 
