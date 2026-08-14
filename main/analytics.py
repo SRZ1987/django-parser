@@ -1,12 +1,12 @@
 import hashlib
 import logging
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import DatabaseError
 from django.db.models import Count, F, Min, Q, Sum
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 
 from catalog.models import ProductOffer, Shop
@@ -77,6 +77,10 @@ def safely_record_site_visit(request):
 def build_analytics_dashboard(days=30):
     today = timezone.localdate()
     start_date = today - timedelta(days=days - 1)
+    start_at = timezone.make_aware(
+        datetime.combine(start_date, time.min),
+        timezone.get_current_timezone(),
+    )
     user_model = get_user_model()
 
     visit_totals = DailySiteVisit.objects.aggregate(
@@ -94,29 +98,50 @@ def build_analytics_dashboard(days=30):
         unique_visitors=Count("visitor_hash", distinct=True),
     )
 
-    shops = Shop.objects.annotate(
-        active_offers_count=Count(
-            "offers",
-            filter=Q(offers__is_active=True, offers__is_available=True),
-            distinct=True,
-        ),
-        clicks_count=Count("store_clicks", distinct=True),
-        clicks_30d_count=Count(
-            "store_clicks",
-            filter=Q(store_clicks__clicked_at__date__gte=start_date),
-            distinct=True,
-        ),
-        current_list_items_count=Count("offers__shopping_list_items", distinct=True),
-        list_users_count=Count(
-            "offers__shopping_list_items__shopping_list__user",
-            distinct=True,
-        ),
-        added_events_count=Count(
-            "shopping_list_events",
-            filter=Q(shopping_list_events__event_type=ShoppingListEvent.EventType.ADDED),
-            distinct=True,
-        ),
-    ).order_by("-clicks_count", "name")
+    active_offer_counts = dict(
+        ProductOffer.objects.filter(is_active=True, is_available=True)
+        .values_list("shop_id")
+        .annotate(total=Count("id"))
+    )
+    click_stats = {
+        row["shop_id"]: row
+        for row in StoreClick.objects.filter(shop_id__isnull=False)
+        .values("shop_id")
+        .annotate(
+            clicks_count=Count("id"),
+            clicks_30d_count=Count("id", filter=Q(clicked_at__gte=start_at)),
+        )
+    }
+    list_stats = {
+        row["source_offer__shop_id"]: row
+        for row in ShoppingListItem.objects.filter(source_offer__shop_id__isnull=False)
+        .values("source_offer__shop_id")
+        .annotate(
+            current_list_items_count=Count("id"),
+            list_users_count=Count("shopping_list__user_id", distinct=True),
+        )
+    }
+    added_event_counts = dict(
+        ShoppingListEvent.objects.filter(
+            shop_id__isnull=False,
+            event_type=ShoppingListEvent.EventType.ADDED,
+        )
+        .values_list("shop_id")
+        .annotate(total=Count("id"))
+    )
+
+    shops = list(Shop.objects.all())
+    for shop in shops:
+        shop.active_offers_count = active_offer_counts.get(shop.pk, 0)
+        shop.clicks_count = click_stats.get(shop.pk, {}).get("clicks_count", 0)
+        shop.clicks_30d_count = click_stats.get(shop.pk, {}).get("clicks_30d_count", 0)
+        shop.current_list_items_count = list_stats.get(shop.pk, {}).get(
+            "current_list_items_count",
+            0,
+        )
+        shop.list_users_count = list_stats.get(shop.pk, {}).get("list_users_count", 0)
+        shop.added_events_count = added_event_counts.get(shop.pk, 0)
+    shops.sort(key=lambda shop: (-shop.clicks_count, shop.name.casefold(), shop.pk))
 
     top_clicked_offers = (
         ProductOffer.objects.filter(store_clicks__isnull=False)
@@ -141,21 +166,24 @@ def build_analytics_dashboard(days=30):
         .annotate(visitors=Count("id"), pageviews=Coalesce(Sum("pageviews"), 0))
     }
     registrations_by_date = dict(
-        user_model.objects.filter(date_joined__date__gte=start_date)
-        .values_list("date_joined__date")
+        user_model.objects.filter(date_joined__gte=start_at)
+        .annotate(day=TruncDate("date_joined"))
+        .values_list("day")
         .annotate(total=Count("id"))
     )
     clicks_by_date = dict(
-        StoreClick.objects.filter(clicked_at__date__gte=start_date)
-        .values_list("clicked_at__date")
+        StoreClick.objects.filter(clicked_at__gte=start_at)
+        .annotate(day=TruncDate("clicked_at"))
+        .values_list("day")
         .annotate(total=Count("id"))
     )
     additions_by_date = dict(
         ShoppingListEvent.objects.filter(
-            created_at__date__gte=start_date,
+            created_at__gte=start_at,
             event_type=ShoppingListEvent.EventType.ADDED,
         )
-        .values_list("created_at__date")
+        .annotate(day=TruncDate("created_at"))
+        .values_list("day")
         .annotate(total=Count("id"))
     )
 
@@ -180,7 +208,7 @@ def build_analytics_dashboard(days=30):
         "click_totals": click_totals,
         "registered_users": user_model.objects.count(),
         "confirmed_users": user_model.objects.filter(is_active=True).exclude(email="").count(),
-        "registrations_30d": user_model.objects.filter(date_joined__date__gte=start_date).count(),
+        "registrations_30d": user_model.objects.filter(date_joined__gte=start_at).count(),
         "active_offers": ProductOffer.objects.filter(is_active=True, is_available=True).count(),
         "current_list_items": ShoppingListItem.objects.count(),
         "shops": shops,

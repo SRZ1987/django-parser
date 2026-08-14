@@ -11,13 +11,16 @@ from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.cache import cache
 from django.core.management import call_command
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
 from catalog.models import Category, Product, ProductOffer, Shop
+from main.analytics import build_analytics_dashboard
 from main.email_verification import email_verification_token
 from main.home_comparisons import get_home_price_comparisons
 from main.models import (
@@ -1363,6 +1366,44 @@ class MainCatalogTests(TestCase):
         self.assertEqual(staff_response.status_code, 200)
         self.assertTemplateUsed(staff_response, "main/statistics_dashboard.html")
         self.assertContains(staff_home, reverse("statistics_dashboard"))
+
+    def test_statistics_shop_counts_avoid_cross_product_query(self):
+        user = self.create_user("analytics-list-owner")
+        first_offer = self.create_offer(name="Tracked offer")
+        second_offer = self.create_offer(
+            name="Second tracked offer",
+            sku="TRACKED-2",
+            barcode="TRACKED-EAN-2",
+            external_id="tracked-2",
+        )
+        add_offer_to_shopping_list(user, first_offer)
+        add_offer_to_shopping_list(user, second_offer)
+        StoreClick.objects.create(
+            shop=self.shop,
+            offer=first_offer,
+            visitor_hash="analytics-visitor",
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            dashboard = build_analytics_dashboard()
+            shops = list(dashboard["shops"])
+
+        espak = next(shop for shop in shops if shop.pk == self.shop.pk)
+        self.assertEqual(espak.active_offers_count, 2)
+        self.assertEqual(espak.clicks_count, 1)
+        self.assertEqual(espak.current_list_items_count, 2)
+        self.assertEqual(espak.list_users_count, 1)
+        self.assertEqual(espak.added_events_count, 2)
+
+        normalized_sql = [query["sql"].lower() for query in queries.captured_queries]
+        self.assertFalse(
+            any(
+                "catalog_productoffer" in sql
+                and "main_storeclick" in sql
+                and "main_shoppinglistitem" in sql
+                for sql in normalized_sql
+            )
+        )
 
     def test_shared_shopping_list_is_public_and_read_only(self):
         user = self.create_user("private-share-owner")
