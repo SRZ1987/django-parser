@@ -61,6 +61,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'main.middleware.PublicReadRateLimitMiddleware',
     'main.middleware.SeoHeadersMiddleware',
     'main.middleware.AnalyticsMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -168,6 +169,22 @@ EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Tannenberg <no-reply@localhost>")
 SITE_URL = os.getenv("SITE_URL", "").rstrip("/")
 GOOGLE_SITE_VERIFICATION = os.getenv("GOOGLE_SITE_VERIFICATION", "").strip()
+PUBLIC_RATE_LIMIT_ENABLED = (
+    os.getenv("PUBLIC_RATE_LIMIT_ENABLED", "True").lower() == "true"
+)
+PUBLIC_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("PUBLIC_RATE_LIMIT_WINDOW_SECONDS", "300"))
+PUBLIC_RATE_LIMIT_SEARCH_REQUESTS = int(
+    os.getenv("PUBLIC_RATE_LIMIT_SEARCH_REQUESTS", "120")
+)
+PUBLIC_RATE_LIMIT_SUGGESTIONS_REQUESTS = int(
+    os.getenv("PUBLIC_RATE_LIMIT_SUGGESTIONS_REQUESTS", "240")
+)
+PUBLIC_RATE_LIMIT_DETAIL_REQUESTS = int(
+    os.getenv("PUBLIC_RATE_LIMIT_DETAIL_REQUESTS", "300")
+)
+PUBLIC_RATE_LIMIT_IP_MULTIPLIER = int(
+    os.getenv("PUBLIC_RATE_LIMIT_IP_MULTIPLIER", "5")
+)
 GROUP_PURCHASE_INACTIVITY_DAYS = int(os.getenv("GROUP_PURCHASE_INACTIVITY_DAYS", "7"))
 PARSER_EXPORT_RETENTION_DAYS = int(os.getenv("PARSER_EXPORT_RETENTION_DAYS", "30"))
 PARSER_EXPORT_WORK_DIR = Path(os.getenv("PARSER_EXPORT_WORK_DIR", MEDIA_ROOT / "parser_export_work"))

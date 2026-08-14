@@ -1346,6 +1346,86 @@ class MainCatalogTests(TestCase):
         visit = DailySiteVisit.objects.get()
         self.assertEqual(visit.pageviews, 2)
 
+    @override_settings(PUBLIC_RATE_LIMIT_SEARCH_REQUESTS=2)
+    def test_public_search_rate_limit_blocks_repeated_requests(self):
+        user = self.create_user("rate-limited-user")
+        self.client.force_login(user)
+
+        first = self.client.get(reverse("product_search"), {"q": "makita"})
+        second = self.client.get(reverse("product_search"), {"q": "makita"})
+        blocked = self.client.get(reverse("product_search"), {"q": "makita"})
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(blocked.status_code, 429)
+        self.assertGreater(int(blocked.headers["Retry-After"]), 0)
+        self.assertEqual(blocked.headers["Cache-Control"], "no-store")
+
+    @override_settings(PUBLIC_RATE_LIMIT_SUGGESTIONS_REQUESTS=1)
+    def test_suggestions_rate_limit_returns_small_json_error(self):
+        headers = {"HTTP_X_FORWARDED_FOR": "203.0.113.50"}
+
+        allowed = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "makita"},
+            **headers,
+        )
+        blocked = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "makita"},
+            **headers,
+        )
+
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(blocked.status_code, 429)
+        self.assertEqual(blocked.json()["error"], "rate_limited")
+        self.assertGreater(blocked.json()["retry_after"], 0)
+
+    @override_settings(PUBLIC_RATE_LIMIT_SEARCH_REQUESTS=1)
+    def test_search_engines_are_not_rate_limited(self):
+        for _ in range(3):
+            response = self.client.get(
+                reverse("catalog"),
+                HTTP_USER_AGENT="Googlebot/2.1",
+                HTTP_X_FORWARDED_FOR="203.0.113.60",
+            )
+            self.assertEqual(response.status_code, 200)
+
+    @override_settings(PUBLIC_RATE_LIMIT_SEARCH_REQUESTS=1)
+    def test_unprotected_pages_and_post_actions_are_not_rate_limited(self):
+        user = self.create_user("unlimited-actions-user")
+        offer = self.create_offer(name="Rate limit test offer")
+        self.client.force_login(user)
+
+        for _ in range(3):
+            self.assertEqual(self.client.get(reverse("home")).status_code, 200)
+
+        response = self.client.post(reverse("add_to_shopping_list", args=[offer.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            ShoppingListItem.objects.filter(
+                shopping_list__user=user,
+                source_offer=offer,
+            ).exists()
+        )
+
+    @override_settings(PUBLIC_RATE_LIMIT_SEARCH_REQUESTS=1)
+    @patch("main.middleware.cache.add", side_effect=RuntimeError("cache unavailable"))
+    def test_rate_limit_fails_open_when_cache_is_unavailable(self, cache_add):
+        for _ in range(3):
+            response = self.client.get(reverse("catalog"))
+            self.assertEqual(response.status_code, 200)
+        self.assertTrue(cache_add.called)
+
+    @override_settings(
+        PUBLIC_RATE_LIMIT_ENABLED=False,
+        PUBLIC_RATE_LIMIT_SEARCH_REQUESTS=1,
+    )
+    def test_public_rate_limit_can_be_disabled(self):
+        for _ in range(3):
+            response = self.client.get(reverse("catalog"))
+            self.assertEqual(response.status_code, 200)
+
     def test_statistics_are_visible_only_to_staff(self):
         regular_user = self.create_user("regular")
         self.client.force_login(regular_user)
