@@ -1307,6 +1307,7 @@ class MainCatalogTests(TestCase):
         browser_headers = {
             "HTTP_HOST": "127.0.0.1",
             "HTTP_USER_AGENT": "Mozilla/5.0 Test Browser",
+            "HTTP_ACCEPT": "text/html,application/xhtml+xml",
         }
         self.client.get(reverse("home"), **browser_headers)
         self.client.get(reverse("catalog"), **browser_headers)
@@ -1334,6 +1335,7 @@ class MainCatalogTests(TestCase):
         request_headers = {
             "HTTP_HOST": "127.0.0.1",
             "HTTP_USER_AGENT": "Mozilla/5.0 Cookie-less Browser",
+            "HTTP_ACCEPT": "text/html,application/xhtml+xml",
             "HTTP_ACCEPT_LANGUAGE": "et-EE,et;q=0.9",
             "REMOTE_ADDR": "203.0.113.10",
         }
@@ -1345,6 +1347,62 @@ class MainCatalogTests(TestCase):
 
         visit = DailySiteVisit.objects.get()
         self.assertEqual(visit.pageviews, 2)
+
+    def test_background_html_fragments_are_not_counted_as_pageviews(self):
+        browser_headers = {
+            "HTTP_HOST": "127.0.0.1",
+            "HTTP_USER_AGENT": "Mozilla/5.0 Test Browser",
+            "HTTP_ACCEPT": "text/html,application/xhtml+xml",
+        }
+        self.client.get(reverse("home"), **browser_headers)
+        for _ in range(3):
+            self.client.get(
+                reverse("price_comparisons"),
+                HTTP_SEC_FETCH_DEST="empty",
+                HTTP_SEC_FETCH_MODE="cors",
+                **browser_headers,
+            )
+
+        visit = DailySiteVisit.objects.get()
+        self.assertEqual(visit.pageviews, 1)
+        self.assertEqual(visit.last_path, reverse("home"))
+
+    def test_non_browser_html_request_is_not_counted_as_pageview(self):
+        self.client.get(
+            reverse("home"),
+            HTTP_HOST="127.0.0.1",
+            HTTP_USER_AGENT="Mozilla/5.0 disguised crawler",
+            HTTP_ACCEPT="*/*",
+        )
+
+        self.assertFalse(DailySiteVisit.objects.exists())
+
+    @override_settings(ANALYTICS_MAX_PAGEVIEWS_PER_VISITOR_PER_DAY=3)
+    def test_site_visit_pageviews_are_capped_per_visitor_and_day(self):
+        browser_headers = {
+            "HTTP_HOST": "127.0.0.1",
+            "HTTP_USER_AGENT": "Mozilla/5.0 Test Browser",
+            "HTTP_ACCEPT": "text/html,application/xhtml+xml",
+        }
+        for _ in range(6):
+            self.client.get(reverse("home"), **browser_headers)
+
+        self.assertEqual(DailySiteVisit.objects.get().pageviews, 3)
+
+    @override_settings(ANALYTICS_MAX_PAGEVIEWS_PER_VISITOR_PER_DAY=100)
+    def test_dashboard_caps_historical_automated_pageviews(self):
+        DailySiteVisit.objects.create(
+            date=timezone.localdate(),
+            visitor_hash="automated-client",
+            first_path="/catalog/",
+            last_path="/offer/1/",
+            pageviews=6184,
+        )
+
+        dashboard = build_analytics_dashboard()
+
+        self.assertEqual(dashboard["today"]["visitors"], 1)
+        self.assertEqual(dashboard["today"]["pageviews"], 100)
 
     @override_settings(PUBLIC_RATE_LIMIT_SEARCH_REQUESTS=2)
     def test_public_search_rate_limit_blocks_repeated_requests(self):

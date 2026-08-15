@@ -5,8 +5,8 @@ from datetime import datetime, time, timedelta
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import DatabaseError
-from django.db.models import Count, F, Min, Q, Sum
-from django.db.models.functions import Coalesce, TruncDate
+from django.db.models import Count, F, Min, Q, Sum, Value
+from django.db.models.functions import Coalesce, Least, TruncDate
 from django.utils import timezone
 
 from catalog.models import ProductOffer, Shop
@@ -49,7 +49,10 @@ def record_site_visit(request):
         },
     )
     if not created:
-        DailySiteVisit.objects.filter(pk=visit.pk).update(
+        DailySiteVisit.objects.filter(
+            pk=visit.pk,
+            pageviews__lt=settings.ANALYTICS_MAX_PAGEVIEWS_PER_VISITOR_PER_DAY,
+        ).update(
             pageviews=F("pageviews") + 1,
             last_path=request.path[:500],
             last_seen_at=now,
@@ -83,15 +86,24 @@ def build_analytics_dashboard(days=30):
     )
     user_model = get_user_model()
 
+    filtered_pageviews = Coalesce(
+        Sum(
+            Least(
+                "pageviews",
+                Value(settings.ANALYTICS_MAX_PAGEVIEWS_PER_VISITOR_PER_DAY),
+            )
+        ),
+        0,
+    )
     visit_totals = DailySiteVisit.objects.aggregate(
         unique_visitors=Count("visitor_hash", distinct=True),
         visitor_days=Count("id"),
-        pageviews=Coalesce(Sum("pageviews"), 0),
+        pageviews=filtered_pageviews,
         tracking_started=Min("date"),
     )
     today_visits = DailySiteVisit.objects.filter(date=today).aggregate(
         visitors=Count("id"),
-        pageviews=Coalesce(Sum("pageviews"), 0),
+        pageviews=filtered_pageviews,
     )
     click_totals = StoreClick.objects.aggregate(
         total=Count("id"),
@@ -163,7 +175,7 @@ def build_analytics_dashboard(days=30):
         row["date"]: row
         for row in DailySiteVisit.objects.filter(date__gte=start_date)
         .values("date")
-        .annotate(visitors=Count("id"), pageviews=Coalesce(Sum("pageviews"), 0))
+        .annotate(visitors=Count("id"), pageviews=filtered_pageviews)
     }
     registrations_by_date = dict(
         user_model.objects.filter(date_joined__gte=start_at)

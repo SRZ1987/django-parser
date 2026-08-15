@@ -152,7 +152,14 @@ class SeoHeadersMiddleware:
 
 
 class AnalyticsMiddleware:
-    EXCLUDED_PREFIXES = ("/admin/", "/statistics/", "/static/", "/media/", "/out/")
+    EXCLUDED_PREFIXES = (
+        "/admin/",
+        "/statistics/",
+        "/static/",
+        "/media/",
+        "/out/",
+        "/price-comparisons/",
+    )
     BOT_USER_AGENT_MARKERS = (
         "bot",
         "crawler",
@@ -178,10 +185,16 @@ class AnalyticsMiddleware:
         response = self.get_response(request)
         content_type = response.get("Content-Type", "")
         user_agent = request.META.get("HTTP_USER_AGENT", "").strip().lower()
+        accept = request.META.get("HTTP_ACCEPT", "").lower()
+        fetch_destination = request.META.get("HTTP_SEC_FETCH_DEST", "").lower()
+        fetch_mode = request.META.get("HTTP_SEC_FETCH_MODE", "").lower()
         if (
             request.method == "GET"
             and response.status_code < 400
             and content_type.startswith("text/html")
+            and "text/html" in accept
+            and fetch_destination in ("", "document")
+            and fetch_mode in ("", "navigate")
             and not request.path.startswith(self.EXCLUDED_PREFIXES)
             and user_agent
             and not any(marker in user_agent for marker in self.BOT_USER_AGENT_MARKERS)
