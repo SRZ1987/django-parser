@@ -1,10 +1,12 @@
 from django.contrib import admin
+from django.db.models import Count, Q
 
 from .models import (
     DailySiteVisit,
     GroupPurchase,
     GroupPurchaseMember,
     GroupPurchaseMessage,
+    SearchQueryLog,
     ShoppingList,
     ShoppingListEvent,
     ShoppingListItem,
@@ -136,6 +138,60 @@ class DailySiteVisitAdmin(ReadOnlyAnalyticsAdmin):
     @admin.display(description="Visitor")
     def visitor_hash_short(self, obj):
         return obj.visitor_hash[:12]
+
+
+@admin.register(SearchQueryLog)
+class SearchQueryLogAdmin(ReadOnlyAnalyticsAdmin):
+    change_list_template = "admin/main/searchquerylog/change_list.html"
+    list_display = [
+        "searched_at",
+        "query",
+        "results_count",
+        "has_results",
+        "source",
+        "user",
+        "visitor_hash_short",
+        "language_code",
+    ]
+    list_filter = ["has_results", "source", "language_code", "searched_at"]
+    search_fields = [
+        "query",
+        "normalized_query",
+        "visitor_hash",
+        "user__username",
+        "user__email",
+    ]
+    list_select_related = ["user"]
+    date_hierarchy = "searched_at"
+    ordering = ["-searched_at"]
+    readonly_fields = [
+        "query",
+        "normalized_query",
+        "user",
+        "visitor_hash",
+        "source",
+        "language_code",
+        "results_count",
+        "candidates_count",
+        "has_results",
+        "searched_at",
+    ]
+
+    @admin.display(description="Посетитель")
+    def visitor_hash_short(self, obj):
+        return obj.visitor_hash[:12]
+
+    def changelist_view(self, request, extra_context=None):
+        response = super().changelist_view(request, extra_context)
+        if hasattr(response, "context_data"):
+            queryset = response.context_data["cl"].queryset
+            response.context_data["search_log_summary"] = queryset.aggregate(
+                searches=Count("id"),
+                visitors=Count("visitor_hash", distinct=True),
+                registered_users=Count("user", distinct=True),
+                no_results=Count("id", filter=Q(has_results=False)),
+            )
+        return response
 
 
 @admin.register(StoreClick)

@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.cache import cache
 from django.core.management import call_command
-from django.db import connection
+from django.db import DatabaseError, connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -28,6 +28,7 @@ from main.models import (
     GroupPurchase,
     GroupPurchaseMember,
     GroupPurchaseMessage,
+    SearchQueryLog,
     ShoppingListEvent,
     ShoppingListItem,
     StoreClick,
@@ -1290,6 +1291,136 @@ class MainCatalogTests(TestCase):
                 event_type=ShoppingListEvent.EventType.CLEARED,
             ).exists()
         )
+
+    def test_human_product_search_is_recorded(self):
+        self.create_offer(name="Makita tracked drill", external_id="search-log-offer")
+
+        response = self.client.get(
+            reverse("product_search"),
+            {"q": "  Makita tracked  "},
+            HTTP_USER_AGENT="Mozilla/5.0 Test Browser",
+            HTTP_ACCEPT="text/html,application/xhtml+xml",
+            HTTP_ACCEPT_LANGUAGE="ru-RU,ru;q=0.9",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        search_log = SearchQueryLog.objects.get()
+        self.assertEqual(search_log.query, "Makita tracked")
+        self.assertEqual(search_log.normalized_query, "makita tracked")
+        self.assertEqual(search_log.results_count, 1)
+        self.assertTrue(search_log.has_results)
+        self.assertEqual(search_log.source, SearchQueryLog.Source.SEARCH)
+        self.assertIsNone(search_log.user)
+        self.assertEqual(len(search_log.visitor_hash), 64)
+
+    def test_search_without_results_is_visible_in_history(self):
+        response = self.client.get(
+            reverse("product_search"),
+            {"q": "makitaa typoo"},
+            HTTP_USER_AGENT="Mozilla/5.0 Test Browser",
+            HTTP_ACCEPT="text/html,application/xhtml+xml",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        search_log = SearchQueryLog.objects.get()
+        self.assertEqual(search_log.results_count, 0)
+        self.assertFalse(search_log.has_results)
+
+    def test_authenticated_catalog_search_records_user_and_source(self):
+        user = self.create_user("search-history-user")
+        self.client.force_login(user)
+        self.create_offer(name="Bosch tracked catalog item", external_id="catalog-log-offer")
+
+        response = self.client.get(
+            reverse("catalog"),
+            {"q": "Bosch tracked"},
+            HTTP_USER_AGENT="Mozilla/5.0 Test Browser",
+            HTTP_ACCEPT="text/html,application/xhtml+xml",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        search_log = SearchQueryLog.objects.get()
+        self.assertEqual(search_log.user, user)
+        self.assertEqual(search_log.source, SearchQueryLog.Source.CATALOG)
+        self.assertEqual(search_log.results_count, 1)
+
+    def test_bots_suggestions_and_pagination_are_not_recorded_as_searches(self):
+        self.create_offer(name="Makita tracked drill", external_id="ignored-search-offer")
+        browser_headers = {
+            "HTTP_USER_AGENT": "Mozilla/5.0 Test Browser",
+            "HTTP_ACCEPT": "text/html,application/xhtml+xml",
+        }
+
+        self.client.get(reverse("search_suggestions"), {"q": "makita"}, **browser_headers)
+        self.client.get(
+            reverse("product_search"),
+            {"q": "makita", "page": "2"},
+            **browser_headers,
+        )
+        self.client.get(
+            reverse("product_search"),
+            {"q": "makita"},
+            HTTP_USER_AGENT="Googlebot/2.1",
+            HTTP_ACCEPT="text/html,application/xhtml+xml",
+        )
+
+        self.assertFalse(SearchQueryLog.objects.exists())
+
+    @patch("main.analytics.SearchQueryLog.objects.create", side_effect=DatabaseError("unavailable"))
+    def test_search_history_failure_does_not_break_search(self, create_log):
+        response = self.client.get(
+            reverse("product_search"),
+            {"q": "makita"},
+            HTTP_USER_AGENT="Mozilla/5.0 Test Browser",
+            HTTP_ACCEPT="text/html,application/xhtml+xml",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(create_log.called)
+
+    def test_search_history_admin_shows_filtered_summary(self):
+        searched_user = self.create_user("searched-user")
+        SearchQueryLog.objects.create(
+            query="makita",
+            normalized_query="makita",
+            visitor_hash="visitor-a",
+            source=SearchQueryLog.Source.SEARCH,
+            results_count=4,
+            has_results=True,
+            user=searched_user,
+        )
+        SearchQueryLog.objects.create(
+            query="makitaa",
+            normalized_query="makitaa",
+            visitor_hash="visitor-a",
+            source=SearchQueryLog.Source.SEARCH,
+            results_count=0,
+            has_results=False,
+        )
+        SearchQueryLog.objects.create(
+            query="bosch",
+            normalized_query="bosch",
+            visitor_hash="visitor-b",
+            source=SearchQueryLog.Source.CATALOG,
+            results_count=2,
+            has_results=True,
+        )
+        admin_user = get_user_model().objects.create_superuser(
+            username="search-admin",
+            email="search-admin@example.com",
+            password="StrongPass123",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("admin:main_searchquerylog_changelist"))
+
+        self.assertEqual(response.status_code, 200)
+        summary = response.context["search_log_summary"]
+        self.assertEqual(summary["searches"], 3)
+        self.assertEqual(summary["visitors"], 2)
+        self.assertEqual(summary["registered_users"], 1)
+        self.assertEqual(summary["no_results"], 1)
+        self.assertContains(response, "makitaa")
 
     def test_store_click_is_recorded_before_redirect(self):
         offer = self.create_offer(name="Tracked offer")

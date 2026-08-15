@@ -28,7 +28,11 @@ from catalog.services.product_search import (
     search_products,
 )
 
-from .analytics import build_analytics_dashboard, record_store_click
+from .analytics import (
+    build_analytics_dashboard,
+    record_store_click,
+    safely_record_search_query,
+)
 from .email_verification import email_verification_token, send_verification_email
 from .forms import EmailRequiredUserCreationForm, ResendConfirmationForm
 from .group_purchases import (
@@ -45,6 +49,7 @@ from .models import (
     GroupPurchase,
     GroupPurchaseMember,
     GroupPurchaseMessage,
+    SearchQueryLog,
     ShoppingList,
     ShoppingListEvent,
     ShoppingListItem,
@@ -205,6 +210,14 @@ def product_search_view(request):
         request.GET.get("page"),
         page_size=DEFAULT_PAGE_SIZE,
     )
+    if query and "page" not in request.GET:
+        safely_record_search_query(
+            request,
+            query=query,
+            normalized_query=results.normalized_query,
+            results_count=results.total_count,
+            candidates_count=results.candidates_count,
+        )
 
     page_params = request.GET.copy()
     page_params.pop("page", None)
@@ -352,6 +365,15 @@ def catalog_view(request, shop_code=None, category_pk=None):
 
     paginator = Paginator(offers, CATALOG_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get("page"))
+    if query and "page" not in request.GET:
+        safely_record_search_query(
+            request,
+            query=query,
+            normalized_query=normalize_product_name(query),
+            results_count=paginator.count,
+            candidates_count=paginator.count,
+            source=SearchQueryLog.Source.CATALOG,
+        )
 
     page_params = request.GET.copy()
     page_params.pop("page", None)

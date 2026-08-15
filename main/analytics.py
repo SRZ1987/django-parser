@@ -11,10 +11,48 @@ from django.utils import timezone
 
 from catalog.models import ProductOffer, Shop
 
-from .models import DailySiteVisit, ShoppingListEvent, ShoppingListItem, StoreClick
+from .models import (
+    DailySiteVisit,
+    SearchQueryLog,
+    ShoppingListEvent,
+    ShoppingListItem,
+    StoreClick,
+)
 
 
 logger = logging.getLogger(__name__)
+
+BOT_USER_AGENT_MARKERS = (
+    "bot",
+    "crawler",
+    "spider",
+    "slurp",
+    "bingpreview",
+    "facebookexternalhit",
+    "whatsapp",
+    "telegrambot",
+    "healthcheck",
+    "uptimerobot",
+    "curl/",
+    "wget/",
+    "python-requests",
+    "aiohttp",
+    "go-http-client",
+)
+
+
+def is_human_browser_request(request):
+    user_agent = request.META.get("HTTP_USER_AGENT", "").strip().lower()
+    accept = request.META.get("HTTP_ACCEPT", "").lower()
+    fetch_destination = request.META.get("HTTP_SEC_FETCH_DEST", "").lower()
+    fetch_mode = request.META.get("HTTP_SEC_FETCH_MODE", "").lower()
+    return bool(
+        user_agent
+        and "text/html" in accept
+        and fetch_destination in ("", "document")
+        and fetch_mode in ("", "navigate")
+        and not any(marker in user_agent for marker in BOT_USER_AGENT_MARKERS)
+    )
 
 
 def visitor_hash_for_request(request):
@@ -68,6 +106,44 @@ def record_store_click(request, offer):
         visitor_hash=visitor_hash_for_request(request),
         source_path=(request.META.get("HTTP_REFERER") or request.GET.get("from") or "")[:500],
     )
+
+
+def record_search_query(
+    request,
+    *,
+    query,
+    normalized_query,
+    results_count,
+    candidates_count=0,
+    source=SearchQueryLog.Source.SEARCH,
+):
+    if not query or not is_human_browser_request(request):
+        return None
+
+    cleaned_query = query.replace("\x00", "").strip()[:500]
+    if not cleaned_query:
+        return None
+
+    results_count = max(int(results_count or 0), 0)
+    return SearchQueryLog.objects.create(
+        query=cleaned_query,
+        normalized_query=(normalized_query or "")[:500],
+        user=request.user if request.user.is_authenticated else None,
+        visitor_hash=visitor_hash_for_request(request),
+        source=source,
+        language_code=getattr(request, "LANGUAGE_CODE", "")[:10],
+        results_count=results_count,
+        candidates_count=max(int(candidates_count or 0), 0),
+        has_results=results_count > 0,
+    )
+
+
+def safely_record_search_query(request, **kwargs):
+    try:
+        return record_search_query(request, **kwargs)
+    except DatabaseError:
+        logger.exception("Could not record search query")
+        return None
 
 
 def safely_record_site_visit(request):

@@ -211,6 +211,37 @@ class DailySiteVisit(models.Model):
         return f"{self.date}: {self.visitor_hash[:10]} ({self.pageviews})"
 
 
+class SearchQueryLog(models.Model):
+    class Source(models.TextChoices):
+        SEARCH = "search", "Поиск"
+        CATALOG = "catalog", "Каталог"
+
+    query = models.CharField("Запрос", max_length=500)
+    normalized_query = models.CharField("Нормализованный запрос", max_length=500, blank=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name="search_query_logs",
+        on_delete=models.SET_NULL,
+    )
+    visitor_hash = models.CharField("Посетитель", max_length=64, db_index=True)
+    source = models.CharField("Источник", max_length=20, choices=Source.choices, db_index=True)
+    language_code = models.CharField("Язык", max_length=10, blank=True)
+    results_count = models.PositiveIntegerField("Найдено результатов", default=0)
+    candidates_count = models.PositiveIntegerField("Проверено кандидатов", default=0)
+    has_results = models.BooleanField("Есть результаты", default=False, db_index=True)
+    searched_at = models.DateTimeField("Время поиска", auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-searched_at", "-id"]
+        verbose_name = "поисковый запрос"
+        verbose_name_plural = "история поисковых запросов"
+
+    def __str__(self):
+        return self.query
+
+
 class StoreClick(models.Model):
     shop = models.ForeignKey(
         "catalog.Shop",
