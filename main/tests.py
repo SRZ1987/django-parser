@@ -62,6 +62,8 @@ class MainCatalogTests(TestCase):
             external_id="garden",
             name="Сад",
         )
+        if self._testMethodName.startswith("test_catalog_"):
+            self.client.force_login(self.create_user("catalog-test-user"))
 
     def create_offer(
         self,
@@ -372,6 +374,7 @@ class MainCatalogTests(TestCase):
 
     def test_search_and_catalog_forms_support_barcode_scanner(self):
         search_response = self.client.get(reverse("product_search"), HTTP_HOST="127.0.0.1")
+        self.client.force_login(self.create_user("catalog-scanner-user"))
         catalog_response = self.client.get(reverse("catalog"), HTTP_HOST="127.0.0.1")
 
         for response in (search_response, catalog_response):
@@ -1309,6 +1312,7 @@ class MainCatalogTests(TestCase):
             "HTTP_USER_AGENT": "Mozilla/5.0 Test Browser",
             "HTTP_ACCEPT": "text/html,application/xhtml+xml",
         }
+        self.client.force_login(self.create_user("analytics-catalog-user"))
         self.client.get(reverse("home"), **browser_headers)
         self.client.get(reverse("catalog"), **browser_headers)
 
@@ -1443,7 +1447,7 @@ class MainCatalogTests(TestCase):
     def test_search_engines_are_not_rate_limited(self):
         for _ in range(3):
             response = self.client.get(
-                reverse("catalog"),
+                reverse("product_search"),
                 HTTP_USER_AGENT="Googlebot/2.1",
                 HTTP_X_FORWARDED_FOR="203.0.113.60",
             )
@@ -1471,7 +1475,7 @@ class MainCatalogTests(TestCase):
     @patch("main.middleware.cache.add", side_effect=RuntimeError("cache unavailable"))
     def test_rate_limit_fails_open_when_cache_is_unavailable(self, cache_add):
         for _ in range(3):
-            response = self.client.get(reverse("catalog"))
+            response = self.client.get(reverse("product_search"))
             self.assertEqual(response.status_code, 200)
         self.assertTrue(cache_add.called)
 
@@ -1481,7 +1485,7 @@ class MainCatalogTests(TestCase):
     )
     def test_public_rate_limit_can_be_disabled(self):
         for _ in range(3):
-            response = self.client.get(reverse("catalog"))
+            response = self.client.get(reverse("product_search"))
             self.assertEqual(response.status_code, 200)
 
     def test_statistics_are_visible_only_to_staff(self):
@@ -1823,6 +1827,27 @@ class MainCatalogTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Каталог товаров")
+
+    def test_guest_is_redirected_from_catalog_to_login(self):
+        response = self.client.get(reverse("catalog"))
+
+        self.assertRedirects(
+            response,
+            f'{reverse("login")}?next={reverse("catalog")}',
+        )
+
+    def test_guest_is_redirected_from_category_catalog_to_login(self):
+        category_url = reverse(
+            "category_catalog",
+            args=[self.shop.code, self.category.pk],
+        )
+
+        response = self.client.get(category_url)
+
+        self.assertRedirects(
+            response,
+            f'{reverse("login")}?next={category_url}',
+        )
 
     def test_catalog_does_not_render_categories_until_store_is_selected(self):
         self.create_offer(name="ESPAK drill", external_id="espak-category-offer")
@@ -3048,6 +3073,11 @@ class SeoTests(TestCase):
 
     def test_category_page_has_stable_url_and_canonical(self):
         offer = self.create_offer()
+        user = get_user_model().objects.create_user(
+            username="seo-category-user",
+            password="StrongPass123",
+        )
+        self.client.force_login(user)
         url = reverse(
             "category_catalog",
             args=[self.first_shop.code, self.first_category.pk],
@@ -3063,6 +3093,11 @@ class SeoTests(TestCase):
 
     def test_filtered_catalog_and_search_are_noindex(self):
         self.create_offer()
+        user = get_user_model().objects.create_user(
+            username="seo-catalog-user",
+            password="StrongPass123",
+        )
+        self.client.force_login(user)
 
         catalog_response = self.client.get(reverse("catalog"), {"shop": "depo"})
         search_response = self.client.get(reverse("product_search"), {"q": "makita"})
@@ -3078,6 +3113,7 @@ class SeoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response["Content-Type"].startswith("text/plain"))
         self.assertContains(response, "Disallow: /my-list/")
+        self.assertContains(response, "Disallow: /catalog/")
         self.assertContains(response, "Sitemap: https://tannenberg.example/sitemap.xml")
 
     def test_sitemap_index_contains_all_sections(self):
@@ -3088,7 +3124,7 @@ class SeoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "/sitemap-static.xml")
         self.assertContains(response, "/sitemap-products.xml")
-        self.assertContains(response, "/sitemap-categories.xml")
+        self.assertNotContains(response, "/sitemap-categories.xml")
 
     @override_settings(SITE_URL="", ALLOWED_HOSTS=["tannenberg.example"])
     def test_sitemap_uses_forwarded_https_in_production(self):

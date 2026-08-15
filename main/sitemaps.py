@@ -2,7 +2,7 @@ from django.contrib.sitemaps import Sitemap
 from django.db.models import Count, Q
 from django.urls import reverse
 
-from catalog.models import Category, ProductOffer
+from catalog.models import ProductOffer
 
 
 class StaticSitemap(Sitemap):
@@ -10,7 +10,7 @@ class StaticSitemap(Sitemap):
     priority = 0.7
 
     def items(self):
-        return ("home", "catalog")
+        return ("home",)
 
     def location(self, item):
         return reverse(item)
@@ -42,32 +42,7 @@ class BarcodeComparisonSitemap(Sitemap):
         return reverse("barcode_product_detail", args=[barcode])
 
 
-class CategorySitemap(Sitemap):
-    changefreq = "daily"
-    priority = 0.6
-    limit = 50000
-
-    def items(self):
-        return (
-            Category.objects.filter(
-                shop__is_active=True,
-                offers__is_active=True,
-                offers__is_available=True,
-            )
-            .select_related("shop")
-            .distinct()
-            .order_by("pk")
-        )
-
-    def location(self, category):
-        return reverse(
-            "category_catalog",
-            args=[category.shop.code, category.pk],
-        )
-
-
 sitemaps = {
     "static": StaticSitemap,
     "products": BarcodeComparisonSitemap,
-    "categories": CategorySitemap,
 }

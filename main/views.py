@@ -302,6 +302,7 @@ def _with_effective_price(offers):
     )
 
 
+@login_required
 def catalog_view(request, shop_code=None, category_pk=None):
     query = request.GET.get("q", "").strip()
     is_category_route = shop_code is not None and category_pk is not None
@@ -565,6 +566,7 @@ def robots_txt(request):
         "Allow: /",
         "Disallow: /admin/",
         "Disallow: /accounts/",
+        "Disallow: /catalog/",
         "Disallow: /group-purchases/",
         "Disallow: /my-list/",
         "Disallow: /out/",
