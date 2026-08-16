@@ -815,3 +815,66 @@ msgstr[2] "%(count)s магазинов"
 
 msgid "Lowest price"
 msgstr "Самая низкая цена"
+
+msgid "Searches today"
+msgstr "Поисков сегодня"
+
+#, python-format
+msgid "%(count)s searching visitors"
+msgstr "Искали: %(count)s посетителей"
+
+msgid "All searches"
+msgstr "Всего поисков"
+
+#, python-format
+msgid "%(count)s without results"
+msgstr "%(count)s без результатов"
+
+msgid "What people search for"
+msgstr "Что ищут люди"
+
+#, python-format
+msgid "Search queries from the last %(count)s days"
+msgstr "Поисковые запросы за последние %(count)s дней"
+
+msgid "Full search history"
+msgstr "Полная история поиска"
+
+msgid "Popular searches"
+msgstr "Популярные запросы"
+
+msgid "Searches / visitors"
+msgstr "Поиски / посетители"
+
+msgid "No search data yet"
+msgstr "Данных о поиске пока нет"
+
+msgid "Searches without results"
+msgstr "Запросы без результатов"
+
+msgid "Possible typos or missing products"
+msgstr "Возможные опечатки или отсутствующие товары"
+
+msgid "No unsuccessful searches yet"
+msgstr "Неудачных поисков пока нет"
+
+msgid "Latest search queries"
+msgstr "Последние поисковые запросы"
+
+msgid "The 50 most recent searches"
+msgstr "50 последних поисков"
+
+msgid "Time"
+msgstr "Время"
+
+msgid "Query"
+msgstr "Запрос"
+
+msgid "Results"
+msgstr "Результаты"
+
+msgid "Source"
+msgstr "Источник"
+
+msgid "Visitor"
+msgstr "Посетитель"

@@ -1640,6 +1640,55 @@ class MainCatalogTests(TestCase):
         self.assertTemplateUsed(staff_response, "main/statistics_dashboard.html")
         self.assertContains(staff_home, reverse("statistics_dashboard"))
 
+    def test_statistics_dashboard_includes_search_activity(self):
+        SearchQueryLog.objects.create(
+            query="Makita",
+            normalized_query="makita",
+            visitor_hash="search-visitor-a",
+            source=SearchQueryLog.Source.SEARCH,
+            results_count=8,
+            has_results=True,
+        )
+        SearchQueryLog.objects.create(
+            query="  makita  ",
+            normalized_query="makita",
+            visitor_hash="search-visitor-b",
+            source=SearchQueryLog.Source.SEARCH,
+            results_count=8,
+            has_results=True,
+        )
+        SearchQueryLog.objects.create(
+            query="makitaa",
+            normalized_query="makitaa",
+            visitor_hash="search-visitor-a",
+            source=SearchQueryLog.Source.SEARCH,
+            results_count=0,
+            has_results=False,
+        )
+
+        dashboard = build_analytics_dashboard()
+
+        self.assertEqual(dashboard["search_totals"]["total"], 3)
+        self.assertEqual(dashboard["search_totals"]["unique_visitors"], 2)
+        self.assertEqual(dashboard["search_totals"]["no_results"], 1)
+        self.assertEqual(dashboard["search_totals"]["today"], 3)
+        self.assertEqual(dashboard["popular_searches"][0]["normalized_query"], "makita")
+        self.assertEqual(dashboard["popular_searches"][0]["searches"], 2)
+        self.assertEqual(dashboard["popular_searches"][0]["visitors"], 2)
+        self.assertEqual(dashboard["no_result_searches"][0]["normalized_query"], "makitaa")
+        self.assertEqual(len(dashboard["recent_searches"]), 3)
+
+        staff_user = self.create_user("search-statistics-staff")
+        staff_user.is_staff = True
+        staff_user.save(update_fields=["is_staff"])
+        self.client.force_login(staff_user)
+        response = self.client.get(reverse("statistics_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "makita")
+        self.assertContains(response, "makitaa")
+        self.assertContains(response, reverse("admin:main_searchquerylog_changelist"))
+
     def test_statistics_shop_counts_avoid_cross_product_query(self):
         user = self.create_user("analytics-list-owner")
         first_offer = self.create_offer(name="Tracked offer")

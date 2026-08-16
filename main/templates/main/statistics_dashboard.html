@@ -20,6 +20,85 @@
         <article><span>{% translate "Registrations in 30 days" %}</span><strong>{{ registrations_30d }}</strong><small>{% translate "new accounts" %}</small></article>
         <article><span>{% translate "Store clicks" %}</span><strong>{{ click_totals.total }}</strong><small>{% blocktranslate with count=click_totals.unique_visitors %}{{ count }} visitors{% endblocktranslate %}</small></article>
         <article><span>{% translate "Products in lists" %}</span><strong>{{ current_list_items }}</strong><small>{% blocktranslate with count=active_offers %}{{ count }} active offers{% endblocktranslate %}</small></article>
+        <article><span>{% translate "Searches today" %}</span><strong>{{ search_totals.today }}</strong><small>{% blocktranslate with count=search_totals.today_visitors %}{{ count }} searching visitors{% endblocktranslate %}</small></article>
+        <article><span>{% translate "All searches" %}</span><strong>{{ search_totals.total }}</strong><small>{% blocktranslate with count=search_totals.no_results %}{{ count }} without results{% endblocktranslate %}</small></article>
+    </section>
+
+    <section class="statistics-section" aria-labelledby="search-statistics-title">
+        <div class="statistics-section-head">
+            <div>
+                <h2 id="search-statistics-title">{% translate "What people search for" %}</h2>
+                <span>{% blocktranslate with count=period_days %}Search queries from the last {{ count }} days{% endblocktranslate %}</span>
+            </div>
+            <a class="list-action-button" href="{% url 'admin:main_searchquerylog_changelist' %}">{% translate "Full search history" %}</a>
+        </div>
+
+        <div class="statistics-columns">
+            <section aria-labelledby="popular-searches-title">
+                <div class="statistics-section-head">
+                    <h3 id="popular-searches-title">{% translate "Popular searches" %}</h3>
+                    <span>{% translate "Searches / visitors" %}</span>
+                </div>
+                <ol class="statistics-ranking statistics-search-ranking">
+                    {% for row in popular_searches %}
+                        <li>
+                            <span>{{ row.normalized_query }}</span>
+                            <strong>{{ row.searches }} / {{ row.visitors }}</strong>
+                        </li>
+                    {% empty %}
+                        <li>{% translate "No search data yet" %}</li>
+                    {% endfor %}
+                </ol>
+            </section>
+
+            <section aria-labelledby="no-result-searches-title">
+                <div class="statistics-section-head">
+                    <h3 id="no-result-searches-title">{% translate "Searches without results" %}</h3>
+                    <span>{% translate "Possible typos or missing products" %}</span>
+                </div>
+                <ol class="statistics-ranking statistics-search-ranking">
+                    {% for row in no_result_searches %}
+                        <li>
+                            <span>{{ row.normalized_query }}</span>
+                            <strong>{{ row.searches }}</strong>
+                        </li>
+                    {% empty %}
+                        <li>{% translate "No unsuccessful searches yet" %}</li>
+                    {% endfor %}
+                </ol>
+            </section>
+        </div>
+
+        <div class="statistics-section-head statistics-recent-searches-head">
+            <h3>{% translate "Latest search queries" %}</h3>
+            <span>{% translate "The 50 most recent searches" %}</span>
+        </div>
+        <div class="statistics-table-wrap">
+            <table class="statistics-table statistics-search-table">
+                <thead>
+                    <tr>
+                        <th>{% translate "Time" %}</th>
+                        <th>{% translate "Query" %}</th>
+                        <th>{% translate "Results" %}</th>
+                        <th>{% translate "Source" %}</th>
+                        <th>{% translate "Visitor" %}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for search in recent_searches %}
+                        <tr>
+                            <td>{{ search.searched_at|date:"d.m H:i" }}</td>
+                            <th>{{ search.query }}</th>
+                            <td>{{ search.results_count }}</td>
+                            <td>{% if search.source == "catalog" %}{% translate "Catalog" %}{% else %}{% translate "Search" %}{% endif %}</td>
+                            <td>{% if search.user %}{{ search.user.username }}{% else %}{{ search.visitor_hash|slice:":8" }}{% endif %}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="5">{% translate "No search data yet" %}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </section>
 
     <section class="statistics-section" aria-labelledby="shops-statistics-title">

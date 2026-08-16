@@ -813,3 +813,66 @@ msgstr[1] "%(count)s kauplust"
 
 msgid "Lowest price"
 msgstr "Madalaim hind"
+
+msgid "Searches today"
+msgstr "Tänased otsingud"
+
+#, python-format
+msgid "%(count)s searching visitors"
+msgstr "%(count)s otsivat külastajat"
+
+msgid "All searches"
+msgstr "Kõik otsingud"
+
+#, python-format
+msgid "%(count)s without results"
+msgstr "%(count)s tulemusteta"
+
+msgid "What people search for"
+msgstr "Mida inimesed otsivad"
+
+#, python-format
+msgid "Search queries from the last %(count)s days"
+msgstr "Viimase %(count)s päeva otsingupäringud"
+
+msgid "Full search history"
+msgstr "Täielik otsinguajalugu"
+
+msgid "Popular searches"
+msgstr "Populaarsed otsingud"
+
+msgid "Searches / visitors"
+msgstr "Otsingud / külastajad"
+
+msgid "No search data yet"
+msgstr "Otsinguandmeid veel pole"
+
+msgid "Searches without results"
+msgstr "Tulemusteta otsingud"
+
+msgid "Possible typos or missing products"
+msgstr "Võimalikud kirjavead või puuduvad tooted"
+
+msgid "No unsuccessful searches yet"
+msgstr "Ebaõnnestunud otsinguid veel pole"
+
+msgid "Latest search queries"
+msgstr "Viimased otsingupäringud"
+
+msgid "The 50 most recent searches"
+msgstr "50 viimast otsingut"
+
+msgid "Time"
+msgstr "Aeg"
+
+msgid "Query"
+msgstr "Päring"
+
+msgid "Results"
+msgstr "Tulemused"
+
+msgid "Source"
+msgstr "Allikas"
+
+msgid "Visitor"
+msgstr "Külastaja"

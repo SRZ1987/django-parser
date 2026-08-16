@@ -5,7 +5,7 @@ from datetime import datetime, time, timedelta
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import DatabaseError
-from django.db.models import Count, F, Min, Q, Sum, Value
+from django.db.models import Count, F, Max, Min, Q, Sum, Value
 from django.db.models.functions import Coalesce, Least, TruncDate
 from django.utils import timezone
 
@@ -156,6 +156,10 @@ def safely_record_site_visit(request):
 def build_analytics_dashboard(days=30):
     today = timezone.localdate()
     start_date = today - timedelta(days=days - 1)
+    today_start = timezone.make_aware(
+        datetime.combine(today, time.min),
+        timezone.get_current_timezone(),
+    )
     start_at = timezone.make_aware(
         datetime.combine(start_date, time.min),
         timezone.get_current_timezone(),
@@ -184,6 +188,46 @@ def build_analytics_dashboard(days=30):
     click_totals = StoreClick.objects.aggregate(
         total=Count("id"),
         unique_visitors=Count("visitor_hash", distinct=True),
+    )
+    search_totals = SearchQueryLog.objects.aggregate(
+        total=Count("id"),
+        unique_visitors=Count("visitor_hash", distinct=True),
+        no_results=Count("id", filter=Q(has_results=False)),
+        today=Count("id", filter=Q(searched_at__gte=today_start)),
+        today_visitors=Count(
+            "visitor_hash",
+            distinct=True,
+            filter=Q(searched_at__gte=today_start),
+        ),
+    )
+    popular_searches = list(
+        SearchQueryLog.objects.filter(searched_at__gte=start_at)
+        .exclude(normalized_query="")
+        .values("normalized_query")
+        .annotate(
+            searches=Count("id"),
+            visitors=Count("visitor_hash", distinct=True),
+            no_results=Count("id", filter=Q(has_results=False)),
+            last_searched_at=Max("searched_at"),
+        )
+        .order_by("-searches", "-last_searched_at", "normalized_query")[:15]
+    )
+    no_result_searches = list(
+        SearchQueryLog.objects.filter(
+            searched_at__gte=start_at,
+            has_results=False,
+        )
+        .exclude(normalized_query="")
+        .values("normalized_query")
+        .annotate(
+            searches=Count("id"),
+            visitors=Count("visitor_hash", distinct=True),
+            last_searched_at=Max("searched_at"),
+        )
+        .order_by("-searches", "-last_searched_at", "normalized_query")[:15]
+    )
+    recent_searches = list(
+        SearchQueryLog.objects.select_related("user").order_by("-searched_at", "-id")[:50]
     )
 
     active_offer_counts = dict(
@@ -294,6 +338,10 @@ def build_analytics_dashboard(days=30):
         "today": today_visits,
         "visit_totals": visit_totals,
         "click_totals": click_totals,
+        "search_totals": search_totals,
+        "popular_searches": popular_searches,
+        "no_result_searches": no_result_searches,
+        "recent_searches": recent_searches,
         "registered_users": user_model.objects.count(),
         "confirmed_users": user_model.objects.filter(is_active=True).exclude(email="").count(),
         "registrations_30d": user_model.objects.filter(date_joined__gte=start_at).count(),

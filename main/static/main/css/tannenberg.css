@@ -1268,7 +1268,7 @@ body::before {
 .statistics-summary {
     margin: 24px 0 30px;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     border-top: 1px solid var(--border);
     border-left: 1px solid var(--border);
 }
@@ -1311,6 +1311,11 @@ body::before {
 .statistics-section-head h2 {
     margin: 0;
     font-size: 1rem;
+}
+
+.statistics-section-head h3 {
+    margin: 0;
+    font-size: 0.95rem;
 }
 
 .statistics-table-wrap {
@@ -1386,6 +1391,28 @@ body::before {
 
 .statistics-ranking small {
     margin-left: 6px;
+}
+
+.statistics-search-ranking span {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.statistics-recent-searches-head {
+    margin-top: 14px;
+}
+
+.statistics-search-table th:nth-child(2) {
+    min-width: 280px;
+    white-space: normal;
+}
+
+@media (max-width: 980px) {
+    .statistics-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 760px) {
