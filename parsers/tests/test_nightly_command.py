@@ -32,6 +32,7 @@ class NightlyParsersCommandTests(TestCase):
         "esvika",
         "arcade",
         "elektrikaup",
+        "feb",
     ]
 
     def setUp(self):

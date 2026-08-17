@@ -9,6 +9,7 @@ from parsers.services.ehituseabc import EHITUSEABC_WEBSITE_URL
 from parsers.services.espak_client import ESPAK_WEBSITE_URL
 from parsers.services.fere import FERE_WEBSITE_URL
 from parsers.standalone.handymann_parser import BASE_URL as HANDYMANN_WEBSITE_URL
+from parsers.standalone.feb_parser import BASE_URL as FEB_WEBSITE_URL
 from parsers.standalone.lemona_parser import BASE_URL as LEMONA_WEBSITE_URL
 from parsers.standalone.motonet_parser import BASE_URL as MOTONET_WEBSITE_URL
 from parsers.standalone.oomipood_parser import BASE_URL as OOMIPOOD_WEBSITE_URL
@@ -129,6 +130,13 @@ class Command(BaseCommand):
                 parser_name=f"{store.name} parser",
                 run_order=run_order,
             )
+        self._setup_parser(
+            shop_code="feb",
+            shop_name="FEB",
+            website_url=FEB_WEBSITE_URL,
+            parser_name="FEB parser",
+            run_order=first_additional_order + len(additional_retailers),
+        )
 
     def _setup_parser(
         self,

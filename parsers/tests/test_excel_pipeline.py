@@ -1223,6 +1223,7 @@ class AdapterRegistryTests(TestCase):
         "esvika",
         "arcade",
         "elektrikaup",
+        "feb",
     }
     expected_production_codes = existing_production_codes | set(PUBLIC_COMMERCE_STORES) | custom_retail_codes
 

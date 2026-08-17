@@ -7,6 +7,7 @@ from .depo import DepoAdapter
 from .ehituseabc import EhituseABCAdapter
 from .espak import EspakAdapter
 from .fere import FereAdapter
+from .feb import FebAdapter
 from .handymann import HandymannAdapter
 from .lemona import LemonaAdapter
 from .motonet import MotonetAdapter
@@ -22,6 +23,7 @@ ADAPTERS = {
     EhituseABCAdapter.code: EhituseABCAdapter,
     EspakAdapter.code: EspakAdapter,
     FereAdapter.code: FereAdapter,
+    FebAdapter.code: FebAdapter,
     HandymannAdapter.code: HandymannAdapter,
     LemonaAdapter.code: LemonaAdapter,
     MotonetAdapter.code: MotonetAdapter,
