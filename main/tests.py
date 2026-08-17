@@ -1,10 +1,11 @@
 import json
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from io import StringIO
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -1688,6 +1689,28 @@ class MainCatalogTests(TestCase):
         self.assertContains(response, "makita")
         self.assertContains(response, "makitaa")
         self.assertContains(response, reverse("admin:main_searchquerylog_changelist"))
+
+    def test_statistics_dashboard_displays_search_time_in_tallinn_timezone(self):
+        search_log = SearchQueryLog.objects.create(
+            query="murutrimmer",
+            normalized_query="murutrimmer",
+            visitor_hash="tallinn-time-visitor",
+            source=SearchQueryLog.Source.SEARCH,
+            results_count=10,
+            has_results=True,
+        )
+        SearchQueryLog.objects.filter(pk=search_log.pk).update(
+            searched_at=datetime(2026, 8, 17, 12, 34, tzinfo=ZoneInfo("UTC")),
+        )
+        staff_user = self.create_user("tallinn-time-staff")
+        staff_user.is_staff = True
+        staff_user.save(update_fields=["is_staff"])
+        self.client.force_login(staff_user)
+
+        response = self.client.get(reverse("statistics_dashboard"))
+
+        self.assertContains(response, "murutrimmer")
+        self.assertContains(response, "17.08 15:34")
 
     def test_statistics_shop_counts_avoid_cross_product_query(self):
         user = self.create_user("analytics-list-owner")
