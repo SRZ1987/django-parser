@@ -449,6 +449,8 @@ def search_suggestions(request):
         .order_by("original_name")[:8]
     )
 
+    suggestion_query = urlencode({"from": "suggestions", "q": query})
+
     return JsonResponse(
         {
             "results": [
@@ -466,7 +468,9 @@ def search_suggestions(request):
                     "currency": offer.currency,
                     "image_url": offer.image_url,
                     "product_url": offer.product_url,
-                    "detail_url": reverse("offer_detail", args=[offer.pk]),
+                    "detail_url": (
+                        f'{reverse("offer_detail", args=[offer.pk])}?{suggestion_query}'
+                    ),
                 }
                 for offer in offers
             ]
@@ -479,6 +483,15 @@ def offer_detail(request, pk):
         available_offers().select_related("shop", "category", "product"),
         pk=pk,
     )
+    suggestion_query = request.GET.get("q", "").strip()
+    if request.GET.get("from") == "suggestions" and suggestion_query:
+        safely_record_search_query(
+            request,
+            query=suggestion_query,
+            normalized_query=normalize_product_name(suggestion_query),
+            results_count=1,
+            candidates_count=1,
+        )
     detail_path = reverse("offer_detail", args=[offer.pk])
     comparison_offers = _get_barcode_comparison_offers(offer.barcode)
     comparison_url = None

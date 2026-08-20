@@ -15,13 +15,13 @@
 
     <section class="statistics-summary" aria-label="{% translate 'General statistics' %}">
         <article><span>{% translate "Browsers today" %}</span><strong>{{ today.visitors }}</strong><small>{% blocktranslate with count=today.pageviews %}{{ count }} page views{% endblocktranslate %}</small></article>
+        <article><span>{% translate "Searches today" %}</span><strong>{{ search_totals.today }}</strong><small>{% blocktranslate with count=search_totals.today_visitors %}{{ count }} searching visitors{% endblocktranslate %}</small></article>
+        <article><span>{% translate "All searches" %}</span><strong>{{ search_totals.total }}</strong><small>{% blocktranslate with count=search_totals.no_results %}{{ count }} without results{% endblocktranslate %}</small></article>
         <article><span>{% translate "All-time browsers" %}</span><strong>{{ visit_totals.unique_visitors }}</strong><small>{% blocktranslate with count=visit_totals.pageviews %}{{ count }} total page views{% endblocktranslate %}</small></article>
         <article><span>{% translate "Users" %}</span><strong>{{ registered_users }}</strong><small>{% blocktranslate with count=confirmed_users %}{{ count }} active accounts with email{% endblocktranslate %}</small></article>
         <article><span>{% translate "Registrations in 30 days" %}</span><strong>{{ registrations_30d }}</strong><small>{% translate "new accounts" %}</small></article>
         <article><span>{% translate "Store clicks" %}</span><strong>{{ click_totals.total }}</strong><small>{% blocktranslate with count=click_totals.unique_visitors %}{{ count }} visitors{% endblocktranslate %}</small></article>
         <article><span>{% translate "Products in lists" %}</span><strong>{{ current_list_items }}</strong><small>{% blocktranslate with count=active_offers %}{{ count }} active offers{% endblocktranslate %}</small></article>
-        <article><span>{% translate "Searches today" %}</span><strong>{{ search_totals.today }}</strong><small>{% blocktranslate with count=search_totals.today_visitors %}{{ count }} searching visitors{% endblocktranslate %}</small></article>
-        <article><span>{% translate "All searches" %}</span><strong>{{ search_totals.total }}</strong><small>{% blocktranslate with count=search_totals.no_results %}{{ count }} without results{% endblocktranslate %}</small></article>
     </section>
 
     <section class="statistics-section" aria-labelledby="search-statistics-title">

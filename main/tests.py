@@ -2509,14 +2509,55 @@ class MainCatalogTests(TestCase):
         self.assertEqual(result["sale_price"], "9.99")
         self.assertEqual(result["quantity_price"], "7.49")
         self.assertEqual(result["quantity_price_min_quantity"], 6)
-        self.assertEqual(result["detail_url"], reverse("offer_detail", args=[offer.pk]))
+        self.assertEqual(
+            result["detail_url"],
+            f'{reverse("offer_detail", args=[offer.pk])}?from=suggestions&q=Bosch',
+        )
 
     def test_suggestion_detail_url_matches_offer(self):
         offer = self.create_offer(name="Bosch drill")
 
         response = self.client.get(reverse("search_suggestions"), {"q": "Bosch"}, HTTP_HOST="127.0.0.1")
 
-        self.assertEqual(response.json()["results"][0]["detail_url"], f"/offer/{offer.pk}/")
+        detail_url = response.json()["results"][0]["detail_url"]
+        self.assertEqual(
+            detail_url,
+            f"/offer/{offer.pk}/?from=suggestions&q=Bosch",
+        )
+
+    def test_opening_live_suggestion_records_completed_search(self):
+        offer = self.create_offer(name="Bosch drill")
+        browser_headers = {
+            "HTTP_USER_AGENT": "Mozilla/5.0 Test Browser",
+            "HTTP_ACCEPT": "text/html,application/xhtml+xml",
+        }
+
+        response = self.client.get(
+            reverse("offer_detail", args=[offer.pk]),
+            {"from": "suggestions", "q": "  Bosch drill  "},
+            HTTP_HOST="127.0.0.1",
+            **browser_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        search_log = SearchQueryLog.objects.get()
+        self.assertEqual(search_log.query, "Bosch drill")
+        self.assertEqual(search_log.normalized_query, "bosch drill")
+        self.assertEqual(search_log.results_count, 1)
+        self.assertEqual(search_log.source, SearchQueryLog.Source.SEARCH)
+
+    def test_opening_offer_directly_does_not_record_search(self):
+        offer = self.create_offer(name="Bosch drill")
+
+        response = self.client.get(
+            reverse("offer_detail", args=[offer.pk]),
+            HTTP_HOST="127.0.0.1",
+            HTTP_USER_AGENT="Mozilla/5.0 Test Browser",
+            HTTP_ACCEPT="text/html,application/xhtml+xml",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SearchQueryLog.objects.exists())
 
     def test_best_offer_selects_cheapest_offer_across_same_product(self):
         user = self.create_user()
